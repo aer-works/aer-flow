@@ -16,7 +16,7 @@ class _ChatMessage {
 }
 
 /// The mobile chat/codebase-session screen (M24, issue #262) — the Flutter counterpart of
-/// Aer.Ui's dedicated Chat view. `Turns` (the actual message content) live outside TaskProjection
+/// Aer.Ui's dedicated Chat view. `Turns` (the actual message content) live outside RoomProjection
 /// entirely, in SessionMetadata, so this screen re-fetches GET /api/sessions/{sessionId} rather
 /// than reading anything off InboxScreen's projection.
 ///
@@ -45,7 +45,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
 
-  StreamSubscription<TaskProjection>? _projectionSubscription;
+  StreamSubscription<RoomProjection>? _projectionSubscription;
   StreamSubscription<SessionProgressEvent>? _progressSubscription;
   Timer? _sendTimeoutTimer;
 

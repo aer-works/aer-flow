@@ -16,12 +16,12 @@ namespace Aer.Cli;
 /// surprising half of the pair.
 /// </para>
 /// <para>
-/// Every entry point taking one calls this, and <c>TaskDirectoryIsResolvedAtTheBoundaryTests</c>
+/// Every entry point taking one calls this, and <c>RoomDirectoryIsResolvedAtTheBoundaryTests</c>
 /// discovers that population by reflection rather than listing it, so a fifth parser fails the test
 /// until it is covered.
 /// </para>
 /// </remarks>
-public static class TaskDirectoryPath
+public static class RoomDirectoryPath
 {
     /// <summary>Absolute form of <paramref name="path"/>, resolved against the CLI's own directory.</summary>
     public static string Resolve(string path) => Path.GetFullPath(path);

@@ -12,7 +12,7 @@ public class RunOptionsParserTests
         Assert.Equal("bindings.json", options.BindingsFilePath);
         Assert.Equal(
             Path.Combine(Directory.GetCurrentDirectory(), ".aer", "workflow"),
-            options.TaskDirectoryPath);
+            options.RoomDirectoryPath);
         Assert.Null(options.WorkflowId);
     }
 
@@ -22,7 +22,7 @@ public class RunOptionsParserTests
         var options = RunOptionsParser.Parse(
             ["workflow.json", "--bindings", "bindings.json", "--task-dir", "/tmp/task", "--workflow-id", "wf-1"]);
 
-        Assert.Equal(Path.GetFullPath("/tmp/task"), options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("/tmp/task"), options.RoomDirectoryPath);
         Assert.Equal("wf-1", options.WorkflowId);
     }
 

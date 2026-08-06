@@ -87,14 +87,14 @@ public class PumpCheckpointCarryTests
     /// exactly the shape whose aggregates <c>Prune</c> keeps. Returns the failed attempt's id.
     /// </summary>
     private static async Task<ExecutionId> RunPumpToDeferralSaveAsync(
-        string taskDirectory, string artifactsRoot, string logPath, FakeTimeProvider fakeTime)
+        string roomDirectory, string artifactsRoot, string logPath, FakeTimeProvider fakeTime)
     {
         using var cts = new CancellationTokenSource();
         await using var writer = new FlowEventLogWriter(logPath);
         var reader = new FlowEventLogReader(logPath);
 
         var pumpTask = MutationInterface.StartWorkflowAsync(
-            new WorkflowId("wf-carry"), taskDirectory, MakeRetryableSnapshot(), FailingBindings(),
+            new WorkflowId("wf-carry"), roomDirectory, MakeRetryableSnapshot(), FailingBindings(),
             artifactsRoot, reader, writer, new CoreDispatcher(writer),
             timeProvider: fakeTime, jitterSource: () => 0.0, cancellationToken: cts.Token);
 
@@ -116,12 +116,12 @@ public class PumpCheckpointCarryTests
         // persist into the checkpoint and both Empty asserts fail. The unpruned direction is the
         // real defect class: a long-lived task's checkpoint accreting every execution it ever ran.
         // Deliberately NOT a fold test — see the class comment for why none can exist today.
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var attempt1 = await RunPumpToDeferralSaveAsync(
-                taskDirectory, Path.Combine(taskDirectory, "artifacts"), logPath,
+                roomDirectory, Path.Combine(roomDirectory, "artifacts"), logPath,
                 new FakeTimeProvider(new DateTimeOffset(2026, 8, 4, 12, 0, 0, TimeSpan.Zero)));
 
             // The in-test control: attempt 1's core events genuinely exist in the log, so the
@@ -130,7 +130,7 @@ public class PumpCheckpointCarryTests
             Assert.Contains(coreEvents, e => e is CoreEvent.ExecutionStarted s && s.ExecutionId == attempt1);
             Assert.Contains(coreEvents, e => e is CoreEvent.ExecutionExited x && x.ExecutionId == attempt1);
 
-            var checkpoint = ProjectionCheckpointStore.Load(taskDirectory);
+            var checkpoint = ProjectionCheckpointStore.Load(roomDirectory);
             Assert.NotNull(checkpoint);
             // A real, tail-mode checkpoint (the next pump will seek, not replay) whose aggregates
             // hold nothing: attempt 1 is resolved (ExecutionFailed recorded), so its core events
@@ -141,7 +141,7 @@ public class PumpCheckpointCarryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -153,13 +153,13 @@ public class PumpCheckpointCarryTests
         // The wrong branch is a real dispatch (ToResubmit spawns the recorded request again), so a
         // regression here double-runs a worker that may still be alive — the stub dispatcher plus
         // the accepted-count assert make that direction loud.
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 8, 4, 12, 0, 0, TimeSpan.Zero));
         try
         {
-            await RunPumpToDeferralSaveAsync(taskDirectory, artifactsRoot, logPath, fakeTime);
+            await RunPumpToDeferralSaveAsync(roomDirectory, artifactsRoot, logPath, fakeTime);
 
             // The crashed second pump, reconstructed as the exact log lines it would have left:
             // it dispatched the scheduled retry (attempt 2 of 2), Core recorded the spawn, and the
@@ -184,7 +184,7 @@ public class PumpCheckpointCarryTests
             {
                 var reader = new FlowEventLogReader(logPath);
                 finalState = await MutationInterface.StartWorkflowAsync(
-                        new WorkflowId("wf-carry"), taskDirectory, MakeRetryableSnapshot(), FailingBindings(),
+                        new WorkflowId("wf-carry"), roomDirectory, MakeRetryableSnapshot(), FailingBindings(),
                         artifactsRoot, reader, writer, stub,
                         timeProvider: fakeTime, jitterSource: () => 0.0,
                         cancellationToken: TestContext.Current.CancellationToken)
@@ -202,7 +202,7 @@ public class PumpCheckpointCarryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -217,9 +217,9 @@ public class PumpCheckpointCarryTests
         // keeps it visible: red-proven by deleting the fold, which turns the round-2 abandon into
         // a resubmission — the double-spawn hazard the fold's own comment in MutationInterface
         // names as what it exists to prevent.
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var stepY = new StepId("step-y");
@@ -265,7 +265,7 @@ public class PumpCheckpointCarryTests
             {
                 var reader = new FlowEventLogReader(logPath);
                 finalState = await MutationInterface.StartWorkflowAsync(
-                        new WorkflowId("wf-two-buckets"), taskDirectory, snapshot, FailingBindings(),
+                        new WorkflowId("wf-two-buckets"), roomDirectory, snapshot, FailingBindings(),
                         artifactsRoot, reader, writer, stub,
                         timeProvider: new FakeTimeProvider(new DateTimeOffset(2026, 8, 4, 12, 0, 0, TimeSpan.Zero)),
                         jitterSource: () => 0.0,
@@ -286,7 +286,7 @@ public class PumpCheckpointCarryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 }

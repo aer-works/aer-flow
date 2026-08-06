@@ -22,8 +22,8 @@ class InboxScreen extends StatefulWidget {
 
 class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   DaemonClient? _client;
-  StreamSubscription<TaskProjection>? _subscription;
-  TaskProjection? _projection;
+  StreamSubscription<RoomProjection>? _subscription;
+  RoomProjection? _projection;
   String? _connectionError;
   final _pendingStepIds = <String>{};
 
@@ -33,7 +33,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   /// brand-new WS connection sees before this phone has opened anything of its own; `_connect`'s
   /// listener adopts that once, then filters every later push against this field so a different
   /// client opening a different task can't silently change what this phone shows (pre-M24 defect,
-  /// fixed alongside issue #262's chat work — see TaskProjection's doc comment in models.dart).
+  /// fixed alongside issue #262's chat work — see RoomProjection's doc comment in models.dart).
   String? _openDirectoryPath;
 
   @override
@@ -238,7 +238,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
         }
       } catch (_) {}
 
-      final taskNameController = TextEditingController();
+      final roomNameController = TextEditingController();
       final customPromptController = TextEditingController();
       final secondaryCustomPromptController = TextEditingController();
 
@@ -308,7 +308,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                   ],
                   const SizedBox(height: 12),
                   TextField(
-                    controller: taskNameController,
+                    controller: roomNameController,
                     decoration: const InputDecoration(labelText: 'Room / Task Name (Optional)', hintText: 'e.g. my-room'),
                   ),
                   const SizedBox(height: 12),
@@ -384,7 +384,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                         adapter: primaryVendor,
                         workingDirectory: selectedTemplateId == 'codebase-session' ? selectedProjectPath : null, // vocabulary-ok: template id key
                         initialMessage: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
-                        taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
+                        roomName: roomNameController.text.trim().isEmpty ? null : roomNameController.text.trim(),
                       );
                       final metaCi = caseInsensitive(meta);
                       final startedDirectoryPath = metaCi['taskdirectorypath']?.toString();
@@ -406,7 +406,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                         templateId: selectedTemplateId,
                         primaryAdapter: primaryVendor,
                         secondaryAdapter: (selectedTemplateId == 'review-run' || selectedTemplateId == 'two-vendor-dialogue') ? secondaryVendor : null,
-                        taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
+                        roomName: roomNameController.text.trim().isEmpty ? null : roomNameController.text.trim(),
                         customPrompt: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
                         secondaryCustomPrompt: (selectedTemplateId == 'review-run' || selectedTemplateId == 'two-vendor-dialogue') && secondaryCustomPromptController.text.trim().isNotEmpty
                             ? secondaryCustomPromptController.text.trim()
@@ -565,13 +565,13 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final projection = _projection;
 
-    final taskTitle = projection?.directoryPath == null
+    final roomTitle = projection?.directoryPath == null
         ? (projection?.workflowTemplateId ?? 'Baton')
         : projection!.directoryPath!.split(RegExp(r'[\\/]')).last;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(projection == null ? 'Baton' : '$taskTitle — ${projection.status}'), // vocabulary-ok: internal status string
+        title: Text(projection == null ? 'Baton' : '$roomTitle — ${projection.status}'), // vocabulary-ok: internal status string
         actions: [
           IconButton(icon: const Icon(Icons.chat_bubble_outline), tooltip: 'Start new chat', onPressed: _startNewChat),
           IconButton(icon: const Icon(Icons.add), tooltip: 'Start from template', onPressed: _showTemplatePicker),
@@ -599,7 +599,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildBody(BuildContext context, TaskProjection? projection) {
+  Widget _buildBody(BuildContext context, RoomProjection? projection) {
     if (_connectionError != null) {
       return Center(
         child: Padding(

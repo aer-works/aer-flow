@@ -24,20 +24,20 @@ public class DialogueDispatchEndToEndTests
     public async Task A_dialogue_step_runs_to_terminal_and_writes_the_transcript_and_final_output()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"dialogue-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
             var workflowFilePath = await WriteSingleDialogueStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteDialogueBindingsAsync(testRoot);
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             var stepState = AssertStepSucceeded(finalState);
 
-            var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
+            var outputDirectory = Path.Combine(roomDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
 
             var transcriptPath = Path.Combine(outputDirectory, "transcript.jsonl");
             Assert.True(File.Exists(transcriptPath));
@@ -70,13 +70,13 @@ public class DialogueDispatchEndToEndTests
     public async Task A_three_party_dialogue_step_round_robins_to_terminal_through_the_real_engine()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"dialogue-e2e-3party-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
             var workflowFilePath = await WriteSingleDialogueStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreePartyDialogueBindingsAsync(testRoot);
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(
                 options, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken)).State;
@@ -84,7 +84,7 @@ public class DialogueDispatchEndToEndTests
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             var stepState = AssertStepSucceeded(finalState);
 
-            var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
+            var outputDirectory = Path.Combine(roomDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
 
             var transcriptPath = Path.Combine(outputDirectory, "transcript.jsonl");
             var transcriptLines = await File.ReadAllLinesAsync(transcriptPath, TestContext.Current.CancellationToken);

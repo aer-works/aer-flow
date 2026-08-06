@@ -31,20 +31,20 @@ public class ConversationRoundTripTests
     public async Task A_dialogue_run_to_terminal_projects_its_conversation_in_the_ui()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"conv-gate-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
             var workflowFilePath = await WriteSingleDialogueStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteDialogueBindingsAsync(testRoot, responderFails: false);
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default)).State;
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             Assert.Equal(StepStatus.Succeeded, Assert.Single(finalState.Steps).Status);
 
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             // Discovery: the run's single execution offers exactly one conversation row.
             var entriesPanel = window.FindViewControl<StackPanel>("ConversationExecutionsPanel")!;
@@ -53,7 +53,7 @@ public class ConversationRoundTripTests
             Assert.StartsWith("debate —", label);
 
             var executionId = Assert.Single(finalState.Steps).LatestExecutionId;
-            var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{executionId}");
+            var outputDirectory = Path.Combine(roomDirectory, "artifacts", $"execution_{executionId}");
             window.ShowConversation(outputDirectory, label);
 
             // The rendered conversation matches what the real worker's stub exchange produced:
@@ -92,13 +92,13 @@ public class ConversationRoundTripTests
     public async Task A_failed_exchanges_forensic_prefix_still_renders_as_a_conversation()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"conv-gate-fail-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
             var workflowFilePath = await WriteSingleDialogueStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteDialogueBindingsAsync(testRoot, responderFails: true);
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default)).State;
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
@@ -106,7 +106,7 @@ public class ConversationRoundTripTests
             Assert.Equal(StepStatus.Failed, stepState.Status);
 
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             // The failed execution still gets a conversation row — the transcript on disk is the
             // forensic record M17 Phase 3 deliberately leaves (§10.1: partial is honest data).
@@ -115,7 +115,7 @@ public class ConversationRoundTripTests
             var label = row.Children.OfType<TextBlock>().Single().Text!;
 
             var outputDirectory = Path.Combine(
-                taskDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
+                roomDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
             window.ShowConversation(outputDirectory, label);
 
             // Exactly the prefix that completed before the failing turn: turn 1, intact, no

@@ -34,9 +34,9 @@ public static class WorktreeWorkspaces
     /// </summary>
     public static (IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings,
                    IReadOnlyList<ProvisionedWorktree> Provisioned)
-        Provision(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string taskDirectoryPath)
+        Provision(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string roomDirectoryPath)
     {
-        var (rewritten, provisioned, _) = Walk(bindings, taskDirectoryPath, throwOnFailure: true);
+        var (rewritten, provisioned, _) = Walk(bindings, roomDirectoryPath, throwOnFailure: true);
         return (rewritten, provisioned);
     }
 
@@ -53,8 +53,8 @@ public static class WorktreeWorkspaces
     public static (IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings,
                    IReadOnlyList<ProvisionedWorktree> Provisioned,
                    IReadOnlyList<SkippedWorktreeProvisioning> Skipped)
-        ProvisionLazily(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string taskDirectoryPath) =>
-        Walk(bindings, taskDirectoryPath, throwOnFailure: false);
+        ProvisionLazily(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string roomDirectoryPath) =>
+        Walk(bindings, roomDirectoryPath, throwOnFailure: false);
 
     /// <summary>
     /// The one walk both entry points above share. <paramref name="throwOnFailure"/> rethrows at the
@@ -64,12 +64,12 @@ public static class WorktreeWorkspaces
     private static (IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings,
                     IReadOnlyList<ProvisionedWorktree> Provisioned,
                     IReadOnlyList<SkippedWorktreeProvisioning> Skipped)
-        Walk(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string taskDirectoryPath, bool throwOnFailure)
+        Walk(IReadOnlyDictionary<string, WorkerBindingConfigEntry> bindings, string roomDirectoryPath, bool throwOnFailure)
     {
         ArgumentNullException.ThrowIfNull(bindings);
-        ArgumentException.ThrowIfNullOrWhiteSpace(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(roomDirectoryPath);
 
-        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, "worktree provisioning");
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath, "worktree provisioning");
 
         Dictionary<string, WorkerBindingConfigEntry>? rewritten = null;
         var provisioned = new List<ProvisionedWorktree>();
@@ -101,7 +101,7 @@ public static class WorktreeWorkspaces
             {
                 // Validate on every path (a resume reuses the tree but must still refuse a bad spec).
                 WorktreeProvisioner.ValidateSpec(spec.Repository, spec.Ref);
-                var worktreePath = Path.Combine(taskDirectoryPath, WorkspacesDirectoryName, workerName);
+                var worktreePath = Path.Combine(roomDirectoryPath, WorkspacesDirectoryName, workerName);
 
                 if (!Directory.Exists(worktreePath))
                 {

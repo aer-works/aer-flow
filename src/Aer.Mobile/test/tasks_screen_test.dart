@@ -14,7 +14,7 @@ import 'package:aer_mobile/tasks_screen.dart';
 /// screen was built on).
 void main() {
   Map<String, dynamic> fleetItemJson(String path, {bool archived = false}) => {
-        'taskDirectoryPath': path,
+        'roomDirectoryPath': path,
         'friendlyName': path.split('/').last,
         'typeLabel': 'solo-run-template',
         'statusText': 'Idle',
@@ -25,7 +25,7 @@ void main() {
   group('TasksScreen bulk select (#288)', () {
     testWidgets('Long-pressing a card enters selection mode and shows the selected count', (tester) async {
       final mockClient = MockClient((request) async {
-        if (request.method == 'GET' && request.url.path == '/api/tasks') {
+        if (request.method == 'GET' && request.url.path == '/api/rooms') {
           return http.Response(jsonEncode([fleetItemJson('/tasks/a'), fleetItemJson('/tasks/b')]), 200);
         }
         return http.Response('unexpected request: ${request.method} ${request.url}', 500);
@@ -48,10 +48,10 @@ void main() {
     testWidgets('Archive selected only archives the selected, not-yet-archived items and exits selection mode', (tester) async {
       final archiveRequests = <String>[];
       final mockClient = MockClient((request) async {
-        if (request.method == 'GET' && request.url.path == '/api/tasks') {
+        if (request.method == 'GET' && request.url.path == '/api/rooms') {
           return http.Response(jsonEncode([fleetItemJson('/tasks/a'), fleetItemJson('/tasks/b')]), 200);
         }
-        if (request.method == 'POST' && request.url.path == '/api/tasks/archive') {
+        if (request.method == 'POST' && request.url.path == '/api/rooms/archive') {
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           archiveRequests.add(body['directoryPath'] as String);
           return http.Response('', 200);
@@ -77,10 +77,10 @@ void main() {
     testWidgets('Delete selected asks one confirm naming the count, then deletes every selected item', (tester) async {
       final deleteRequests = <String>[];
       final mockClient = MockClient((request) async {
-        if (request.method == 'GET' && request.url.path == '/api/tasks') {
+        if (request.method == 'GET' && request.url.path == '/api/rooms') {
           return http.Response(jsonEncode([fleetItemJson('/tasks/a'), fleetItemJson('/tasks/b')]), 200);
         }
-        if (request.method == 'POST' && request.url.path == '/api/tasks/delete') {
+        if (request.method == 'POST' && request.url.path == '/api/rooms/delete') {
           final body = jsonDecode(request.body) as Map<String, dynamic>;
           deleteRequests.add(body['directoryPath'] as String);
           return http.Response('', 200);
@@ -114,7 +114,7 @@ void main() {
 
     testWidgets('Cancelling the bulk delete confirm deletes nothing', (tester) async {
       final mockClient = MockClient((request) async {
-        if (request.method == 'GET' && request.url.path == '/api/tasks') {
+        if (request.method == 'GET' && request.url.path == '/api/rooms') {
           return http.Response(jsonEncode([fleetItemJson('/tasks/a')]), 200);
         }
         return http.Response('unexpected request: ${request.method} ${request.url}', 500);

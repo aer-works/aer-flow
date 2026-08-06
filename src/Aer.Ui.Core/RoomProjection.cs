@@ -19,5 +19,5 @@ namespace Aer.Ui.Core;
 /// <see cref="History"/>, following the same "derived from the same events, owned by <c>Aer.Ui</c>"
 /// shape <see cref="History"/> established (Phase 2).
 /// </param>
-public sealed record TaskProjection(
+public sealed record RoomProjection(
     WorkflowDefinitionSnapshot Snapshot, FlowState State, ExecutionHistory History, ArtifactLineage Lineage);

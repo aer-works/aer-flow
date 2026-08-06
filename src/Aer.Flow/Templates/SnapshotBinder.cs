@@ -168,7 +168,7 @@ public static class SnapshotBinder
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
             // Most callers pre-check existence and throw their own SnapshotLoadException, but not all
-            // (TaskProjectionLoader, StatusCommand, WorkflowTerminalProbe read straight through), and a
+            // (RoomProjectionLoader, StatusCommand, WorkflowTerminalProbe read straight through), and a
             // pre-check races a file that vanishes before the open. Translating here makes the loader
             // self-protecting: a raw FileNotFoundException is not an AerFlowException and would escape
             // the CLI's typed boundary as a crash.

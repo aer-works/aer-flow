@@ -29,7 +29,7 @@ public class LiveCancellationEndToEndTests
     [Fact]
     public async Task Cancelling_one_real_in_flight_execution_leaves_a_concurrent_sibling_to_succeed_and_never_dispatches_downstream()
     {
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var snapshot = MakeSnapshot(
@@ -60,7 +60,7 @@ public class LiveCancellationEndToEndTests
             var workflowId = new WorkflowId("wf-live-cancel");
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
                 inFlightExecutions: registry, cancellationToken: TestContext.Current.CancellationToken);
 
             await WaitForLogConditionAsync(logPath, s => s.CoreEvents.OfType<CoreEvent.ExecutionStarted>().Any());
@@ -86,15 +86,15 @@ public class LiveCancellationEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task A_cancelled_real_PausePoint_step_pauses_then_RetryWithRevision_reruns_it_to_success()
     {
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
-        var scriptDirectory = Path.Combine(taskDirectory, "scripts");
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var scriptDirectory = Path.Combine(roomDirectory, "scripts");
         try
         {
             var snapshot = MakeSnapshot(Step(H, dependsOn: [], maxAttempts: 2, pausePoint: new PausePoint([])));
@@ -122,7 +122,7 @@ public class LiveCancellationEndToEndTests
             var workflowId = new WorkflowId("wf-cancel-pause-recover");
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, sleepingBindings, artifactsRoot, reader, writer, dispatcher,
+                workflowId, roomDirectory, snapshot, sleepingBindings, artifactsRoot, reader, writer, dispatcher,
                 inFlightExecutions: registry, cancellationToken: TestContext.Current.CancellationToken);
 
             await WaitForLogConditionAsync(logPath, s => s.CoreEvents.OfType<CoreEvent.ExecutionStarted>().Any());
@@ -135,16 +135,16 @@ public class LiveCancellationEndToEndTests
             Assert.Equal(StepStatus.Cancelled, pausedState.Steps.Single().PausedOutcome);
 
             var (mintedState, revisionExecutionId) = await MutationInterface.RecordSupplementaryExecutionAsync(
-                workflowId, taskDirectory, snapshot, revisionBindings, artifactsRoot, "human", inputs: [], reader, writer, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, revisionBindings, artifactsRoot, "human", inputs: [], reader, writer, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Single(mintedState.StepLessExecutions);
             var revisionOutputDirectory = Path.Combine(artifactsRoot, $"execution_{revisionExecutionId}");
             await File.WriteAllTextAsync(Path.Combine(revisionOutputDirectory, "revision.md"), "revised-result", TestContext.Current.CancellationToken);
 
             await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, revisionBindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, revisionBindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var retriedState = await MutationInterface.RecordDecisionAsync(
-                workflowId, taskDirectory, snapshot, revisionBindings, artifactsRoot, reader, writer, dispatcher,
+                workflowId, roomDirectory, snapshot, revisionBindings, artifactsRoot, reader, writer, dispatcher,
                 hExecutionId, DecisionType.RetryWithRevision, supplementaryExecutionId: revisionExecutionId, cancellationToken: TestContext.Current.CancellationToken);
 
             var hAfterRetry = retriedState.Steps.Single();
@@ -153,7 +153,7 @@ public class LiveCancellationEndToEndTests
             Assert.NotEqual(hExecutionId, hAfterRetry.LatestExecutionId);
 
             var finalState = await MutationInterface.RecordDecisionAsync(
-                workflowId, taskDirectory, snapshot, revisionBindings, artifactsRoot, reader, writer, dispatcher,
+                workflowId, roomDirectory, snapshot, revisionBindings, artifactsRoot, reader, writer, dispatcher,
                 hAfterRetry.LatestExecutionId!.Value, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
@@ -163,14 +163,14 @@ public class LiveCancellationEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task A_cancellation_request_against_an_already_succeeded_real_execution_is_a_too_late_no_op()
     {
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var snapshot = MakeSnapshot(Step(A, dependsOn: [], maxAttempts: 1));
@@ -188,13 +188,13 @@ public class LiveCancellationEndToEndTests
             var workflowId = new WorkflowId("wf-too-late-success");
 
             var succeededState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
             var executionId = succeededState.Steps.Single().LatestExecutionId!.Value;
             Assert.Equal(StepStatus.Succeeded, succeededState.Steps.Single().Status);
             var eventCountBefore = (await reader.ReadAllAsync(TestContext.Current.CancellationToken)).Count;
 
             var afterTooLateCancel = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Succeeded, afterTooLateCancel.Steps.Single().Status);
             var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
@@ -205,14 +205,14 @@ public class LiveCancellationEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task A_cancellation_request_against_an_already_failed_real_execution_is_a_too_late_no_op()
     {
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var snapshot = MakeSnapshot(Step(A, dependsOn: [], maxAttempts: 1));
@@ -230,13 +230,13 @@ public class LiveCancellationEndToEndTests
             var workflowId = new WorkflowId("wf-too-late-failure");
 
             var failedState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
             var executionId = failedState.Steps.Single().LatestExecutionId!.Value;
             Assert.Equal(StepStatus.Failed, failedState.Steps.Single().Status);
             var eventCountBefore = (await reader.ReadAllAsync(TestContext.Current.CancellationToken)).Count;
 
             var afterTooLateCancel = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Failed, afterTooLateCancel.Steps.Single().Status);
             var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
@@ -247,14 +247,14 @@ public class LiveCancellationEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task A_second_cancellation_request_against_an_already_cancelled_real_execution_is_a_too_late_no_op()
     {
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var snapshot = MakeSnapshot(Step(A, dependsOn: [], maxAttempts: 5));
@@ -273,7 +273,7 @@ public class LiveCancellationEndToEndTests
             var workflowId = new WorkflowId("wf-too-late-cancelled");
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
                 inFlightExecutions: registry, cancellationToken: TestContext.Current.CancellationToken);
 
             await WaitForLogConditionAsync(logPath, s => s.CoreEvents.OfType<CoreEvent.ExecutionStarted>().Any());
@@ -287,7 +287,7 @@ public class LiveCancellationEndToEndTests
             // A second, independent mutation-surface call — the too-late request itself, this time
             // with nothing live left to deliver to at all.
             var afterSecondCancel = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, executionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Cancelled, afterSecondCancel.Steps.Single().Status);
             var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
@@ -298,7 +298,7 @@ public class LiveCancellationEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -340,7 +340,7 @@ public class LiveCancellationEndToEndTests
 
     private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"live-cancel-task-{Guid.NewGuid():N}");
-        return (taskDirectory, Path.Combine(taskDirectory, "artifacts"), Path.Combine(taskDirectory, "flow.jsonl"));
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"live-cancel-task-{Guid.NewGuid():N}");
+        return (roomDirectory, Path.Combine(roomDirectory, "artifacts"), Path.Combine(roomDirectory, "flow.jsonl"));
     }
 }

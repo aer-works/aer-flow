@@ -10,9 +10,9 @@ namespace Aer.Ui.Core;
 /// One task/session directory's lightweight status (M24 Phase 5, #278's fleet list) — friendly
 /// name, a template id or "interactive session" label, a plain status line, paused-step count,
 /// archived state, and the creation/last-updated timestamps (#322) that let a client sort by
-/// recency and render relative times ("2h ago"). Deliberately not a <see cref="TaskProjection"/>:
+/// recency and render relative times ("2h ago"). Deliberately not a <see cref="RoomProjection"/>:
 /// a fleet list showing every known task/session at once can't afford
-/// <see cref="TaskProjectionLoader.LoadAsync"/>'s full per-execution history/artifact-lineage
+/// <see cref="RoomProjectionLoader.LoadAsync"/>'s full per-execution history/artifact-lineage
 /// projection cost for every item.
 /// </summary>
 /// <param name="Created">When this task/session was first created (UTC).</param>
@@ -27,8 +27,8 @@ namespace Aer.Ui.Core;
 /// <param name="LastActivityAt">
 /// Timestamp of the newest event in the task's journal (#640) — used for sorting fleet items by recency of actual activity.
 /// </param>
-public sealed record TaskFleetItem(
-    string TaskDirectoryPath,
+public sealed record RoomFleetItem(
+    string RoomDirectoryPath,
     string FriendlyName,
     string TypeLabel,
     string StatusText,
@@ -51,44 +51,44 @@ public sealed record TaskFleetItem(
 /// plus the artifacts directory, for per-execution artifact provenance. A UI built this way inherits
 /// §11's determinism guarantee by construction, per UI spec §11.
 /// </summary>
-public static class TaskProjectionLoader
+public static class RoomProjectionLoader
 {
     private const string SnapshotFileName = "snapshot.json";
     private const string LogFileName = "flow.jsonl";
     private const string ArtifactsDirectoryName = Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="InvalidTaskDirectoryException">
-    /// <paramref name="taskDirectoryPath"/> has no persisted snapshot — UI spec §3.1's
+    /// <paramref name="roomDirectoryPath"/> has no persisted snapshot — UI spec §3.1's
     /// self-describing-directory contract confirmed by contents, not assumed from a path.
     /// </exception>
     /// <exception cref="SnapshotLoadException">The persisted snapshot is malformed.</exception>
     /// <exception cref="FlowEventLogReadException">The persisted Flow Event Store is malformed.</exception>
-    public static async Task<TaskProjection> LoadAsync(
-        string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public static async Task<RoomProjection> LoadAsync(
+        string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(taskDirectoryPath);
+        ArgumentNullException.ThrowIfNull(roomDirectoryPath);
 
-        var snapshotPath = Path.Combine(taskDirectoryPath, SnapshotFileName);
+        var snapshotPath = Path.Combine(roomDirectoryPath, SnapshotFileName);
         if (!File.Exists(snapshotPath))
         {
             throw new InvalidTaskDirectoryException(
-                $"Not a task directory (no '{SnapshotFileName}' found): '{taskDirectoryPath}'");
+                $"Not a task directory (no '{SnapshotFileName}' found): '{roomDirectoryPath}'");
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
 
-        var logPath = Path.Combine(taskDirectoryPath, LogFileName);
+        var logPath = Path.Combine(roomDirectoryPath, LogFileName);
         var reader = new FlowEventLogReader(logPath);
         var events = await reader.ReadAllAsync(cancellationToken).ConfigureAwait(false);
 
-        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var checkpoint = ProjectionCheckpointStore.Load(roomDirectoryPath);
         var state = StateProjector.Project(events, snapshot, checkpoint);
         var history = ExecutionHistoryProjector.Project(events, snapshot);
 
-        var artifactsRootPath = Path.Combine(taskDirectoryPath, ArtifactsDirectoryName);
+        var artifactsRootPath = Path.Combine(roomDirectoryPath, ArtifactsDirectoryName);
         var lineage = ArtifactLineageProjector.Project(events, snapshot, artifactsRootPath);
 
-        return new TaskProjection(snapshot, state, history, lineage);
+        return new RoomProjection(snapshot, state, history, lineage);
     }
 
     /// <summary>
@@ -99,17 +99,17 @@ public static class TaskProjectionLoader
     /// read itself still happens — that's unavoidable for a correct status — this only skips the
     /// two additional, more expensive re-folds of the same event list.
     /// </summary>
-    public static async Task<TaskFleetItem> LoadFleetStatusAsync(
-        string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public static async Task<RoomFleetItem> LoadFleetStatusAsync(
+        string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(taskDirectoryPath);
+        ArgumentNullException.ThrowIfNull(roomDirectoryPath);
 
-        var friendlyName = Path.GetFileName(Path.TrimEndingDirectorySeparator(taskDirectoryPath));
-        var isArchived = TaskLifecycle.IsArchived(taskDirectoryPath);
-        var isSession = File.Exists(Path.Combine(taskDirectoryPath, ".aer", "session.json")); // vocabulary-ok: technical file path
-        var (created, updated) = await ResolveTimestampsAsync(taskDirectoryPath, isSession, cancellationToken).ConfigureAwait(false);
+        var friendlyName = Path.GetFileName(Path.TrimEndingDirectorySeparator(roomDirectoryPath));
+        var isArchived = RoomLifecycle.IsArchived(roomDirectoryPath);
+        var isSession = File.Exists(Path.Combine(roomDirectoryPath, ".aer", "session.json")); // vocabulary-ok: technical file path
+        var (created, updated) = await ResolveTimestampsAsync(roomDirectoryPath, isSession, cancellationToken).ConfigureAwait(false);
 
-        var snapshotPath = Path.Combine(taskDirectoryPath, SnapshotFileName);
+        var snapshotPath = Path.Combine(roomDirectoryPath, SnapshotFileName);
         if (!File.Exists(snapshotPath))
         {
             // A materialized interactive session with no initial message never actually runs (a
@@ -118,8 +118,8 @@ public static class TaskProjectionLoader
             // represented the same defensive way rather than thrown on.
             // For a room with no journal/snapshot yet, LastActivityAt falls back to created timestamp
             // (scoped strictly to the pre-first-event window).
-            return new TaskFleetItem(
-                taskDirectoryPath, friendlyName, isSession ? "interactive session" : "workflow", // vocabulary-ok: internal type label
+            return new RoomFleetItem(
+                roomDirectoryPath, friendlyName, isSession ? "interactive session" : "workflow", // vocabulary-ok: internal type label
                 isSession ? "Not yet run" : "Not yet run", PausedStepCount: 0, isArchived, created, updated,
                 isSession, LastActivityAt: created);
         }
@@ -127,7 +127,7 @@ public static class TaskProjectionLoader
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
         var typeLabel = isSession ? "interactive session" : snapshot.WorkflowTemplateId.Value; // vocabulary-ok: internal type label
 
-        var logPath = Path.Combine(taskDirectoryPath, LogFileName);
+        var logPath = Path.Combine(roomDirectoryPath, LogFileName);
         var reader = new FlowEventLogReader(logPath);
         var entries = await reader.ReadAllEntriesWithTimestampsAsync(cancellationToken).ConfigureAwait(false);
 
@@ -159,7 +159,7 @@ public static class TaskProjectionLoader
             }
         }
 
-        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var checkpoint = ProjectionCheckpointStore.Load(roomDirectoryPath);
         var state = StateProjector.Project(events, snapshot, checkpoint);
         var pausedStepCount = state.Steps.Count(s => s.Status == StepStatus.Paused);
 
@@ -167,7 +167,7 @@ public static class TaskProjectionLoader
         // (scoped strictly to the pre-first-event window).
         var lastActivityAt = newestEventTimestamp ?? created;
 
-        return new TaskFleetItem(taskDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived, created, updated, isSession, lastActivityAt);
+        return new RoomFleetItem(roomDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived, created, updated, isSession, lastActivityAt);
     }
 
     /// <summary>
@@ -188,11 +188,11 @@ public static class TaskProjectionLoader
     /// </para>
     /// </summary>
     private static async Task<(DateTimeOffset Created, DateTimeOffset Updated)> ResolveTimestampsAsync(
-        string taskDirectoryPath, bool isSession, CancellationToken cancellationToken)
+        string roomDirectoryPath, bool isSession, CancellationToken cancellationToken)
     {
         if (isSession)
         {
-            var sessionMetadataPath = Path.Combine(taskDirectoryPath, ".aer", "session.json"); // vocabulary-ok: technical file path
+            var sessionMetadataPath = Path.Combine(roomDirectoryPath, ".aer", "session.json"); // vocabulary-ok: technical file path
             var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(sessionMetadataPath, cancellationToken).ConfigureAwait(false);
             if (metadata is not null)
             {
@@ -200,18 +200,18 @@ public static class TaskProjectionLoader
             }
         }
 
-        var snapshotPath = Path.Combine(taskDirectoryPath, SnapshotFileName);
-        var logPath = Path.Combine(taskDirectoryPath, LogFileName);
+        var snapshotPath = Path.Combine(roomDirectoryPath, SnapshotFileName);
+        var logPath = Path.Combine(roomDirectoryPath, LogFileName);
 
         var created = File.Exists(snapshotPath)
             ? File.GetLastWriteTimeUtc(snapshotPath)
-            : Directory.GetCreationTimeUtc(taskDirectoryPath);
+            : Directory.GetCreationTimeUtc(roomDirectoryPath);
 
         var updated = File.Exists(logPath)
             ? File.GetLastWriteTimeUtc(logPath)
             : File.Exists(snapshotPath)
                 ? File.GetLastWriteTimeUtc(snapshotPath)
-                : Directory.GetLastWriteTimeUtc(taskDirectoryPath);
+                : Directory.GetLastWriteTimeUtc(roomDirectoryPath);
 
         return (new DateTimeOffset(created), new DateTimeOffset(updated));
     }

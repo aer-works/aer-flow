@@ -16,7 +16,7 @@ public sealed record SessionTurn(
 
 public sealed record SessionMetadata(
     string SessionId,
-    string TaskDirectoryPath,
+    string RoomDirectoryPath,
     string CurrentAdapter,
     string? CurrentVendorSessionId,
     string? Model,
@@ -37,7 +37,7 @@ public sealed record SessionMetadata(
 public sealed record StartSessionRequest(
     string? Adapter = null,
     string? Model = null,
-    string? TaskName = null,
+    string? RoomName = null,
     string? DirectoryPath = null,
     string? WorkingDirectory = null,
     string? InitialMessage = null,
@@ -254,7 +254,7 @@ public static class InteractiveSessionMaterializer
 
     public static (WorkflowDefinition Definition, IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings, SessionMetadata Metadata) Materialize(
         string sessionId,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         string adapter,
         string? model = null,
         string? workingDirectory = null,
@@ -357,7 +357,7 @@ public static class InteractiveSessionMaterializer
 
         var metadata = new SessionMetadata(
             SessionId: sessionId,
-            TaskDirectoryPath: taskDirectoryPath,
+            RoomDirectoryPath: roomDirectoryPath,
             CurrentAdapter: normalizedAdapter,
             CurrentVendorSessionId: vendorSessionId,
             Model: model,
@@ -375,10 +375,10 @@ public static class InteractiveSessionMaterializer
     /// Computes a session's directory path the same way for every caller -- the daemon's
     /// POST /api/sessions/start handler and the desktop's in-process fallback both need this, and
     /// disagreeing between them is exactly the bug that made a session creatable but unreachable by
-    /// id (fixed in Aer.Daemon.Program's session lookups). A caller-supplied <paramref name="taskName"/>
+    /// id (fixed in Aer.Daemon.Program's session lookups). A caller-supplied <paramref name="roomName"/>
     /// produces a differently-named folder than the "session-{id}" fallback used when it is omitted.
     /// </summary>
-    public static string ResolveTaskDirectoryPath(string sessionId, string? taskName, string? directoryPathOverride)
+    public static string ResolveTaskDirectoryPath(string sessionId, string? roomName, string? directoryPathOverride)
     {
         if (directoryPathOverride != null && Path.IsPathRooted(directoryPathOverride))
         {
@@ -386,13 +386,13 @@ public static class InteractiveSessionMaterializer
         }
 
         var baseSessionsDir = AerPaths.Sessions;
-        var folderName = string.IsNullOrWhiteSpace(taskName) ? $"session-{sessionId}" : taskName.Trim();
+        var folderName = string.IsNullOrWhiteSpace(roomName) ? $"session-{sessionId}" : roomName.Trim();
         return Path.GetFullPath(Path.Combine(baseSessionsDir, folderName));
     }
 
     public static async Task<SessionMetadata> MaterializeToDirectoryAsync(
         string sessionId,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         string adapter,
         string? model = null,
         string? workingDirectory = null,
@@ -401,26 +401,26 @@ public static class InteractiveSessionMaterializer
         PermissionGrant? grant = null,
         CancellationToken cancellationToken = default)
     {
-        var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
+        var workflowFilePath = Path.Combine(roomDirectoryPath, "workflow.json");
         if (File.Exists(workflowFilePath))
         {
-            throw new TaskDirectoryAlreadyExistsException(
-                TaskLifecycle.IsArchived(taskDirectoryPath)
-                    ? $"A task already exists at '{taskDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
-                    : $"A task already exists at '{taskDirectoryPath}'. Choose a different task/session name.");
+            throw new RoomDirectoryAlreadyExistsException(
+                RoomLifecycle.IsArchived(roomDirectoryPath)
+                    ? $"A task already exists at '{roomDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
+                    : $"A task already exists at '{roomDirectoryPath}'. Choose a different task/session name.");
         }
 
-        Directory.CreateDirectory(taskDirectoryPath);
+        Directory.CreateDirectory(roomDirectoryPath);
         var (definition, bindings, metadata) = Materialize(
-            sessionId, taskDirectoryPath, adapter, model, workingDirectory, initialMessage, safetyCeiling, grant);
+            sessionId, roomDirectoryPath, adapter, model, workingDirectory, initialMessage, safetyCeiling, grant);
 
-        var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
-        var metadataFilePath = Path.Combine(taskDirectoryPath, ".aer", "session.json");
+        var bindingsFilePath = Path.Combine(roomDirectoryPath, "bindings.json");
+        var metadataFilePath = Path.Combine(roomDirectoryPath, ".aer", "session.json");
 
         await WorkflowDefinitionWriter.SaveToFileAsync(definition, workflowFilePath, cancellationToken).ConfigureAwait(false);
         await WorkerBindingConfigWriter.SaveToFileAsync(bindings, bindingsFilePath, cancellationToken).ConfigureAwait(false);
 
-        var aerDir = Path.Combine(taskDirectoryPath, ".aer");
+        var aerDir = Path.Combine(roomDirectoryPath, ".aer");
         Directory.CreateDirectory(aerDir);
         await File.WriteAllTextAsync(Path.Combine(aerDir, "workflow-path"), workflowFilePath, cancellationToken).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(aerDir, "bindings-path"), bindingsFilePath, cancellationToken).ConfigureAwait(false);

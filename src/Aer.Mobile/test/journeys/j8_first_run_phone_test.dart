@@ -27,7 +27,7 @@ import 'package:aer_mobile/tasks_screen.dart';
 void main() {
   testWidgets('J8 (phone): an empty task list offers a real first action, not just a dead-end message', (tester) async {
     final mockClient = MockClient((request) async {
-      if (request.method == 'GET' && request.url.path == '/api/tasks') {
+      if (request.method == 'GET' && request.url.path == '/api/rooms') {
         return http.Response(jsonEncode([]), 200);
       }
       return http.Response('unexpected request: ${request.method} ${request.url}', 500);

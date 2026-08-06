@@ -20,7 +20,7 @@ namespace Aer.Flow.Artifacts;
 public static class ArtifactPruner
 {
     /// <summary>
-    /// Prunes artifacts for the run/task at <paramref name="taskDirectoryPath"/> if it is terminal and not marked keep.
+    /// Prunes artifacts for the run/task at <paramref name="roomDirectoryPath"/> if it is terminal and not marked keep.
     /// Returns <c>true</c> if any artifact directory was pruned (moved), or <c>false</c> otherwise.
     /// <para>
     /// <b>Caller constraint:</b> acquires the task's <see cref="ConcurrencyGuard"/> non-reentrantly
@@ -31,25 +31,25 @@ public static class ArtifactPruner
     /// </para>
     /// </summary>
     public static async Task<bool> PruneAsync(
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
 
-        var artifactsRootPath = Path.Combine(taskDirectoryPath, ArtifactManager.ArtifactsDirectoryName);
-        return await PruneTaskArtifactsAsync(taskDirectoryPath, artifactsRootPath, cancellationToken).ConfigureAwait(false);
+        var artifactsRootPath = Path.Combine(roomDirectoryPath, ArtifactManager.ArtifactsDirectoryName);
+        return await PruneTaskArtifactsAsync(roomDirectoryPath, artifactsRootPath, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Prunes active execution artifact directories under <paramref name="artifactsRootPath"/> for the task at
-    /// <paramref name="taskDirectoryPath"/> if the run is terminal and not marked keep.
+    /// <paramref name="roomDirectoryPath"/> if the run is terminal and not marked keep.
     /// </summary>
     public static async Task<bool> PruneTaskArtifactsAsync(
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         string artifactsRootPath,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
         ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
 
         if (!Directory.Exists(artifactsRootPath))
@@ -57,7 +57,7 @@ public static class ArtifactPruner
             return false;
         }
 
-        if (KeepMarker.IsKept(taskDirectoryPath))
+        if (KeepMarker.IsKept(roomDirectoryPath))
         {
             return false;
         }
@@ -66,9 +66,9 @@ public static class ArtifactPruner
         // the probe reads a run terminal, then this MOVES the directory a resumed run would write back
         // into. Without the lock, an `aer decide`/`supply` resume can repopulate execution_{id} between
         // the two steps, and the move then pulls the active directory out from under the resumed write.
-        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, "artifact pruning");
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath, "artifact pruning");
 
-        var probeResult = await WorkflowTerminalProbe.ProbeAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(false);
+        var probeResult = await WorkflowTerminalProbe.ProbeAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(false);
         if (!probeResult.IsTerminal)
         {
             return false;

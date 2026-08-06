@@ -27,19 +27,19 @@ public class LocalUiConfigurationStoreTests
     {
         var configFilePath = NewConfigFilePath();
         var store = new LocalUiConfigurationStore(configFilePath);
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(taskDirectory);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(roomDirectory);
         try
         {
-            await store.RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await store.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
 
-            Assert.Equal(Path.GetFullPath(taskDirectory), Assert.Single(recents));
+            Assert.Equal(Path.GetFullPath(roomDirectory), Assert.Single(recents));
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -74,10 +74,10 @@ public class LocalUiConfigurationStoreTests
     {
         var configFilePath = NewConfigFilePath();
         var store = new LocalUiConfigurationStore(configFilePath);
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(taskDirectory);
-        await store.RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
-        DirectoryCleanup.DeleteRecursively(taskDirectory);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(roomDirectory);
+        await store.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
+        DirectoryCleanup.DeleteRecursively(roomDirectory);
 
         var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
 
@@ -111,22 +111,22 @@ public class LocalUiConfigurationStoreTests
     {
         var configFilePath = NewConfigFilePath();
         var store = new LocalUiConfigurationStore(configFilePath);
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(taskDirectory);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(roomDirectory);
         try
         {
-            await store.RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await store.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
             await store.RecordBindingsFilePathAsync("bindings.json", TestContext.Current.CancellationToken);
             await store.RecordWorkflowTemplateFilePathAsync("workflow.json", TestContext.Current.CancellationToken);
 
             Assert.Equal(Path.GetFullPath("bindings.json"), await store.LoadLastBindingsFilePathAsync(TestContext.Current.CancellationToken));
             Assert.Equal(Path.GetFullPath("workflow.json"), await store.LoadLastWorkflowTemplateFilePathAsync(TestContext.Current.CancellationToken));
             Assert.Equal(
-                Path.GetFullPath(taskDirectory), Assert.Single(await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken)));
+                Path.GetFullPath(roomDirectory), Assert.Single(await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken)));
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -138,16 +138,16 @@ public class LocalUiConfigurationStoreTests
         var taskDirectories = Enumerable.Range(0, 12)
             .Select(_ => Path.Combine(Path.GetTempPath(), $"ui-config-task-{Guid.NewGuid():N}"))
             .ToList();
-        foreach (var taskDirectory in taskDirectories)
+        foreach (var roomDirectory in taskDirectories)
         {
-            Directory.CreateDirectory(taskDirectory);
+            Directory.CreateDirectory(roomDirectory);
         }
 
         try
         {
-            foreach (var taskDirectory in taskDirectories)
+            foreach (var roomDirectory in taskDirectories)
             {
-                await store.RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+                await store.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
             }
 
             var recents = await store.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
@@ -157,9 +157,9 @@ public class LocalUiConfigurationStoreTests
         }
         finally
         {
-            foreach (var taskDirectory in taskDirectories)
+            foreach (var roomDirectory in taskDirectories)
             {
-                DirectoryCleanup.DeleteRecursively(taskDirectory);
+                DirectoryCleanup.DeleteRecursively(roomDirectory);
             }
         }
     }

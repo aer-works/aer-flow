@@ -40,15 +40,15 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     }
 
     /// <summary>
-    /// Records <paramref name="taskDirectoryPath"/> as the most recently opened directory,
+    /// Records <paramref name="roomDirectoryPath"/> as the most recently opened directory,
     /// deduplicated against any existing entry for the same path and capped at
     /// <see cref="MaxRecentTaskDirectories"/> — the list is a bounded convenience, not a full
     /// history.
     /// </summary>
-    public async Task RecordOpenedAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public async Task RecordOpenedAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
         var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
-        var fullPath = Path.GetFullPath(taskDirectoryPath);
+        var fullPath = Path.GetFullPath(roomDirectoryPath);
 
         var updated = new List<string> { fullPath };
         updated.AddRange(configuration.RecentTaskDirectories.Where(
@@ -62,14 +62,14 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     }
 
     /// <summary>
-    /// Strips <paramref name="taskDirectoryPath"/> from the recents list (M24 Phase 5, #278) — used
+    /// Strips <paramref name="roomDirectoryPath"/> from the recents list (M24 Phase 5, #278) — used
     /// by a real delete so a stale recent doesn't 404 on the next open. A no-op if the path isn't
     /// present, matching this store's own "rebuildable convenience, not authoritative" stance.
     /// </summary>
-    public async Task RemoveRecentTaskDirectoryAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public async Task RemoveRecentTaskDirectoryAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
         var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
-        var fullPath = Path.GetFullPath(taskDirectoryPath);
+        var fullPath = Path.GetFullPath(roomDirectoryPath);
 
         var updated = configuration.RecentTaskDirectories
             .Where(path => !string.Equals(Path.GetFullPath(path), fullPath, StringComparison.Ordinal))

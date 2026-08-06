@@ -109,10 +109,10 @@ class DaemonClient {
     return http.post(url, headers: mergedHeaders, body: body);
   }
 
-  /// A full TaskProjection snapshot on connect (if a task is currently open server-side) and again
-  /// on every state change thereafter — never a diff. See TaskProjection's doc comment for why the
+  /// A full RoomProjection snapshot on connect (if a task is currently open server-side) and again
+  /// on every state change thereafter — never a diff. See RoomProjection's doc comment for why the
   /// snapshot alone doesn't tell this client which directory it's for.
-  Stream<TaskProjection> watch() {
+  Stream<RoomProjection> watch() {
     if (tsnetRouted) {
       return _watchOverTsnet();
     }
@@ -120,13 +120,13 @@ class DaemonClient {
       Uri.parse('ws://$host/api/ws?token=$token'),
     );
     return channel.stream.map(
-      (raw) => TaskProjection.fromJson(
+      (raw) => RoomProjection.fromJson(
         jsonDecode(raw as String) as Map<String, dynamic>,
       ),
     );
   }
 
-  Stream<TaskProjection> _watchOverTsnet() async* {
+  Stream<RoomProjection> _watchOverTsnet() async* {
     await _ensureTsnetUp();
     final parts = host.split(':');
     final targetHost = parts[0];
@@ -142,7 +142,7 @@ class DaemonClient {
 
     try {
       yield* wsChannel.stream.map(
-        (raw) => TaskProjection.fromJson(
+        (raw) => RoomProjection.fromJson(
           jsonDecode(raw) as Map<String, dynamic>,
         ),
       );
@@ -221,7 +221,7 @@ class DaemonClient {
   }
 
   Future<List<String>> recentTasks() async {
-    final response = await _get(Uri.http(host, '/api/tasks/recent'));
+    final response = await _get(Uri.http(host, '/api/rooms/recent'));
     _throwIfFailed(response);
     return (jsonDecode(response.body) as List<dynamic>)
         .map((d) => d.toString())
@@ -229,13 +229,13 @@ class DaemonClient {
   }
 
   /// Reassigns Aer.Daemon's own notion of "current" task, which still broadcasts to every
-  /// connected client — see TaskProjection's doc comment. Callers must also update their own
+  /// connected client — see RoomProjection's doc comment. Callers must also update their own
   /// local `_openDirectoryPath` (or equivalent) after this succeeds, or their own filter will
   /// discard the resulting push. Only call this from an explicit user action (the recent-tasks
   /// picker), never automatically.
   Future<void> openTask(String directoryPath) async {
     final response = await _post(
-      Uri.http(host, '/api/tasks/open'),
+      Uri.http(host, '/api/rooms/open'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'directoryPath': directoryPath}),
     );
@@ -244,13 +244,13 @@ class DaemonClient {
 
   /// Text content of one execution's output file, or null if the daemon has no such file (already
   /// deleted, or the execution/fileName pair doesn't match its recorded OutputFiles). See
-  /// src/Aer.Daemon/Program.cs's /api/tasks/artifact handler (M21 Phase 2, #232).
+  /// src/Aer.Daemon/Program.cs's /api/rooms/artifact handler (M21 Phase 2, #232).
   Future<String?> fetchArtifact({
     required String directoryPath,
     required String executionId,
     required String fileName,
   }) async {
-    final uri = Uri.http(host, '/api/tasks/artifact', {
+    final uri = Uri.http(host, '/api/rooms/artifact', {
       'directoryPath': directoryPath,
       'executionId': executionId,
       'fileName': fileName,
@@ -276,7 +276,7 @@ class DaemonClient {
     required String templateId,
     String? primaryAdapter,
     String? secondaryAdapter,
-    String? taskName,
+    String? roomName,
     String? customPrompt,
     String? secondaryCustomPrompt,
   }) async {
@@ -287,13 +287,13 @@ class DaemonClient {
         'templateId': templateId,
         'primaryAdapter': primaryAdapter,
         'secondaryAdapter': secondaryAdapter,
-        'taskName': taskName,
+        'roomName': roomName,
         'customPrompt': customPrompt,
         'secondaryCustomPrompt': secondaryCustomPrompt,
       }),
     );
     final body = caseInsensitive(jsonDecode(response.body) as Map<String, dynamic>);
-    return (body['taskdirectorypath'] ?? body['taskDirectoryPath'])?.toString() ?? '';
+    return (body['taskdirectorypath'] ?? body['roomDirectoryPath'])?.toString() ?? '';
   }
 
   /// Starts an interactive session on the daemon (M24).
@@ -302,7 +302,7 @@ class DaemonClient {
     String? model,
     String? workingDirectory,
     String? initialMessage,
-    String? taskName,
+    String? roomName,
   }) async {
     final response = await _post(
       Uri.http(host, '/api/sessions/start'),
@@ -312,7 +312,7 @@ class DaemonClient {
         'model': model,
         'workingDirectory': workingDirectory,
         'initialMessage': initialMessage,
-        'taskName': taskName,
+        'roomName': roomName,
       }),
     );
     _throwIfFailed(response);
@@ -440,7 +440,7 @@ class DaemonClient {
       if (artifactReference != null) 'artifactReference': artifactReference,
     };
     final response = await _post(
-      Uri.http(host, '/api/tasks/decide'),
+      Uri.http(host, '/api/rooms/decide'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(payload),
     );
@@ -449,19 +449,19 @@ class DaemonClient {
 
   /// Every known task/session directory's lightweight status (M24 Phase 5, #278) — archived items
   /// are filtered out by default, matching desktop's own TasksViewModel.
-  Future<List<TaskFleetItem>> listTasks({bool includeArchived = false}) async {
-    final uri = Uri.http(host, '/api/tasks', {'includeArchived': includeArchived.toString()});
+  Future<List<RoomFleetItem>> listTasks({bool includeArchived = false}) async {
+    final uri = Uri.http(host, '/api/rooms', {'includeArchived': includeArchived.toString()});
     final response = await _get(uri);
     _throwIfFailed(response);
     final list = jsonDecode(response.body) as List<dynamic>;
-    return list.map((item) => TaskFleetItem.fromJson(item as Map<String, dynamic>)).toList();
+    return list.map((item) => RoomFleetItem.fromJson(item as Map<String, dynamic>)).toList();
   }
 
   /// Hides a task/session directory from the default fleet list — the name stays reserved until a
   /// real [deleteTask].
   Future<void> archiveTask(String directoryPath) async {
     final response = await _post(
-      Uri.http(host, '/api/tasks/archive'),
+      Uri.http(host, '/api/rooms/archive'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'directoryPath': directoryPath}),
     );
@@ -471,7 +471,7 @@ class DaemonClient {
   /// Reinstates a task/session directory into the default fleet list.
   Future<void> unarchiveTask(String directoryPath) async {
     final response = await _post(
-      Uri.http(host, '/api/tasks/unarchive'),
+      Uri.http(host, '/api/rooms/unarchive'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'directoryPath': directoryPath}),
     );
@@ -481,7 +481,7 @@ class DaemonClient {
   /// Really deletes a task/session directory — the only action that frees its name for reuse.
   Future<void> deleteTask(String directoryPath) async {
     final response = await _post(
-      Uri.http(host, '/api/tasks/delete'),
+      Uri.http(host, '/api/rooms/delete'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'directoryPath': directoryPath}),
     );
@@ -494,7 +494,7 @@ class DaemonClient {
     String? executionId,
   }) async {
     final response = await _post(
-      Uri.http(host, '/api/tasks/cancel'),
+      Uri.http(host, '/api/rooms/cancel'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'directoryPath': directoryPath,

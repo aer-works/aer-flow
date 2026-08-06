@@ -22,7 +22,7 @@ public class WireFixtureStalenessTests
                 $"""
                 {relativePath} is out of date with the daemon's real serializer options.
 
-                Either it was hand-edited, or TaskProjection / DaemonSerializerOptions changed without regenerating.
+                Either it was hand-edited, or RoomProjection / DaemonSerializerOptions changed without regenerating.
                 To regenerate, run the fixture generator or update the checked-in fixture files.
 
                 {FirstDifference(expectedNormalized, actual)}

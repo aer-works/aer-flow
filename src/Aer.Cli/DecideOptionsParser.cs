@@ -20,7 +20,7 @@ public static class DecideOptionsParser
 
     public static DecideOptions Parse(IReadOnlyList<string> args)
     {
-        string? taskDirectoryPath = null;
+        string? roomDirectoryPath = null;
         string? executionId = null;
         string? typeText = null;
         string? targetStep = null;
@@ -58,18 +58,18 @@ public static class DecideOptionsParser
                         throw new CliArgumentException($"Unknown option '{arg}'. {Usage}");
                     }
 
-                    if (taskDirectoryPath is not null)
+                    if (roomDirectoryPath is not null)
                     {
                         throw new CliArgumentException($"Unexpected extra argument '{arg}'. {Usage}");
                     }
 
-                    taskDirectoryPath = arg;
+                    roomDirectoryPath = arg;
                     i++;
                     break;
             }
         }
 
-        if (taskDirectoryPath is null)
+        if (roomDirectoryPath is null)
         {
             throw new CliArgumentException($"Missing required <task-dir> argument. {Usage}");
         }
@@ -92,7 +92,7 @@ public static class DecideOptionsParser
         var decisionType = ParseDecisionType(typeText);
 
         return new DecideOptions(
-            TaskDirectoryPath.Resolve(taskDirectoryPath),
+            RoomDirectoryPath.Resolve(roomDirectoryPath),
             executionId,
             decisionType,
             targetStep is null ? null : new StepId(targetStep),

@@ -30,7 +30,7 @@ public delegate Task DecideDelegate(
 /// <c>Reject</c> records <see cref="DecisionType.Reject"/>, <c>Retry</c> records
 /// <see cref="DecisionType.RetryWithRevision"/>, and each <see cref="SendBackTargets"/> entry records
 /// <see cref="DecisionType.Supersede"/> against its own declared <c>TargetStepId</c> — never a
-/// UI-invented decision type (UI spec §6). Rebuilt from <see cref="TaskProjection"/> on every load —
+/// UI-invented decision type (UI spec §6). Rebuilt from <see cref="RoomProjection"/> on every load —
 /// a projected fact, not retained handler state, the same "re-derived, not remembered" discipline the
 /// rest of <see cref="MainWindow"/>'s rendering already follows.
 /// </summary>

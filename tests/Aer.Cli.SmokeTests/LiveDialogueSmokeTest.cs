@@ -33,13 +33,13 @@ public class LiveDialogueSmokeTest
     public async Task A_dialogue_step_runs_to_completion_against_the_real_claude_and_agy_clis()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"dialogue-smoke-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
             var workflowFilePath = await WriteDialogueWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteDialogueBindingsAsync(testRoot);
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken)).State;
 
@@ -47,7 +47,7 @@ public class LiveDialogueSmokeTest
             var stepState = Assert.Single(finalState.Steps);
             Assert.Equal(StepStatus.Succeeded, stepState.Status);
 
-            var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
+            var outputDirectory = Path.Combine(roomDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}");
 
             var transcriptPath = Path.Combine(outputDirectory, "transcript.jsonl");
             Assert.True(File.Exists(transcriptPath), $"Expected a transcript at '{transcriptPath}'.");

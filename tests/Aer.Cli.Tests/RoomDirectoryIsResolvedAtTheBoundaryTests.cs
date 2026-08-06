@@ -4,7 +4,7 @@ namespace Aer.Cli.Tests;
 
 /// <summary>
 /// #668: what a relative <c>--task-dir</c> cost, and why it is resolved here rather than anywhere
-/// downstream, is recorded on <see cref="TaskDirectoryPath"/>.
+/// downstream, is recorded on <see cref="RoomDirectoryPath"/>.
 /// </summary>
 /// <remarks>
 /// The population is discovered rather than listed. Four entry points take a task directory today
@@ -13,7 +13,7 @@ namespace Aer.Cli.Tests;
 /// fails until a new one is covered here.
 /// </remarks>
 [Collection(WorkingDirectoryCollection.Name)]
-public class TaskDirectoryIsResolvedAtTheBoundaryTests
+public class RoomDirectoryIsResolvedAtTheBoundaryTests
 {
     private const string Relative = "task2";
 
@@ -22,21 +22,21 @@ public class TaskDirectoryIsResolvedAtTheBoundaryTests
     {
         [typeof(RunOptionsParser)] = () =>
             RunOptionsParser.Parse(["workflow.json", "--bindings", "b.json", "--task-dir", Relative])
-                .TaskDirectoryPath,
+                .RoomDirectoryPath,
         [typeof(DispatchOptionsParser)] = () =>
             DispatchOptionsParser.Parse(["review", "--spec", "s.md", "--task-dir", Relative])
-                .TaskDirectoryPath,
+                .RoomDirectoryPath,
         [typeof(CancelOptionsParser)] = () =>
             CancelOptionsParser.Parse([Relative, "--execution", "e1", "--bindings", "b.json"])
-                .TaskDirectoryPath,
+                .RoomDirectoryPath,
         [typeof(DecideOptionsParser)] = () =>
             DecideOptionsParser.Parse([Relative, "--execution", "e1", "--type", "resume", "--bindings", "b.json"])
-                .TaskDirectoryPath,
+                .RoomDirectoryPath,
         [typeof(SupplyOptionsParser)] = () =>
             SupplyOptionsParser.Parse([Relative, "--worker", "w", "--output", "o", "--file", "f.txt", "--bindings", "b.json"])
-                .TaskDirectoryPath,
+                .RoomDirectoryPath,
         [typeof(StatusOptionsParser)] = () =>
-            StatusOptionsParser.Parse([Relative]).TaskDirectoryPath,
+            StatusOptionsParser.Parse([Relative]).RoomDirectoryPath,
     };
 
     [Fact]
@@ -65,7 +65,7 @@ public class TaskDirectoryIsResolvedAtTheBoundaryTests
             .GetTypes()
             .Where(t => t.IsClass && t.Name.EndsWith("OptionsParser", StringComparison.Ordinal))
             .Where(t => t.GetMethod("Parse", BindingFlags.Public | BindingFlags.Static)
-                         ?.ReturnType.GetProperty("TaskDirectoryPath") is not null)
+                         ?.ReturnType.GetProperty("RoomDirectoryPath") is not null)
             .ToList();
 
         Assert.NotEmpty(takesOne);
@@ -112,6 +112,6 @@ public class TaskDirectoryIsResolvedAtTheBoundaryTests
         Assert.Equal(
             Path.GetFullPath(absolute),
             RunOptionsParser.Parse(["workflow.json", "--bindings", "b.json", "--task-dir", absolute])
-                .TaskDirectoryPath);
+                .RoomDirectoryPath);
     }
 }

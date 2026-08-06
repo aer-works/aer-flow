@@ -12,7 +12,7 @@ public static class StatusOptionsParser
 
     public static StatusOptions Parse(IReadOnlyList<string> args)
     {
-        string? taskDirectoryPath = null;
+        string? roomDirectoryPath = null;
         var follow = false;
 
         var i = 0;
@@ -31,22 +31,22 @@ public static class StatusOptionsParser
                         throw new CliArgumentException($"Unknown option '{arg}'. {Usage}");
                     }
 
-                    if (taskDirectoryPath is not null)
+                    if (roomDirectoryPath is not null)
                     {
                         throw new CliArgumentException($"Unexpected extra argument '{arg}'. {Usage}");
                     }
 
-                    taskDirectoryPath = arg;
+                    roomDirectoryPath = arg;
                     i++;
                     break;
             }
         }
 
-        if (taskDirectoryPath is null)
+        if (roomDirectoryPath is null)
         {
             throw new CliArgumentException($"Missing required <task-dir> argument. {Usage}");
         }
 
-        return new StatusOptions(TaskDirectoryPath.Resolve(taskDirectoryPath), follow);
+        return new StatusOptions(RoomDirectoryPath.Resolve(roomDirectoryPath), follow);
     }
 }

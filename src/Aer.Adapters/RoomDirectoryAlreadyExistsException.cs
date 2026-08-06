@@ -10,6 +10,6 @@ namespace Aer.Adapters;
 /// turn history and vendor session id with no error at all, since <c>Directory.CreateDirectory</c>
 /// is a no-op on an existing directory and every writer downstream truncates unconditionally.
 /// </summary>
-public sealed class TaskDirectoryAlreadyExistsException(string message) : AerFlowException(message)
+public sealed class RoomDirectoryAlreadyExistsException(string message) : AerFlowException(message)
 {
 }

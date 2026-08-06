@@ -16,7 +16,7 @@ namespace Aer.Ui.Tests;
 /// </summary>
 public class StatusDerivationTests
 {
-    private static TaskProjection ProjectionWith(WorkflowStatus status, params StepStatus[] stepStatuses)
+    private static RoomProjection ProjectionWith(WorkflowStatus status, params StepStatus[] stepStatuses)
     {
         var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
             new WorkflowTemplateId("status-derivation-fixture"),
@@ -27,7 +27,7 @@ public class StatusDerivationTests
             .Select((s, i) => new StepState(new StepId($"step-{i}"), s, LatestExecutionId: null, UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>()))
             .ToList();
 
-        return new TaskProjection(
+        return new RoomProjection(
             snapshot,
             new FlowState(snapshot.WorkflowDefinitionSnapshotId, steps, status),
             new ExecutionHistory(new Dictionary<StepId, IReadOnlyList<ExecutionAttempt>>(), [], []),
@@ -66,7 +66,7 @@ public class StatusDerivationTests
         var projection = ProjectionWith(status, stepStatuses);
 
         Assert.Equal(
-            TaskCardViewModel.DeriveStatus(projection).StatusText,
+            RoomCardViewModel.DeriveStatus(projection).StatusText,
             PlainLanguage.ForWorkflow(projection));
     }
 

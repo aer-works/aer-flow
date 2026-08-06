@@ -15,7 +15,7 @@ public static class SupplyOptionsParser
 
     public static SupplyOptions Parse(IReadOnlyList<string> args)
     {
-        string? taskDirectoryPath = null;
+        string? roomDirectoryPath = null;
         string? worker = null;
         string? outputName = null;
         string? sourceFilePath = null;
@@ -49,18 +49,18 @@ public static class SupplyOptionsParser
                         throw new CliArgumentException($"Unknown option '{arg}'. {Usage}");
                     }
 
-                    if (taskDirectoryPath is not null)
+                    if (roomDirectoryPath is not null)
                     {
                         throw new CliArgumentException($"Unexpected extra argument '{arg}'. {Usage}");
                     }
 
-                    taskDirectoryPath = arg;
+                    roomDirectoryPath = arg;
                     i++;
                     break;
             }
         }
 
-        if (taskDirectoryPath is null)
+        if (roomDirectoryPath is null)
         {
             throw new CliArgumentException($"Missing required <task-dir> argument. {Usage}");
         }
@@ -86,7 +86,7 @@ public static class SupplyOptionsParser
         }
 
         return new SupplyOptions(
-            TaskDirectoryPath.Resolve(taskDirectoryPath), worker, outputName, sourceFilePath, bindingsFilePath, workflowId);
+            RoomDirectoryPath.Resolve(roomDirectoryPath), worker, outputName, sourceFilePath, bindingsFilePath, workflowId);
     }
 
     private static string RequireValue(IReadOnlyList<string> args, ref int index, string optionName)

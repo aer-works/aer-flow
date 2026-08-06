@@ -12,22 +12,22 @@ public static class ProjectionCheckpointStore
     private const string AerDirectoryName = ".aer";
     private const string CheckpointFileName = "checkpoint.json";
 
-    public static string GetCheckpointFilePath(string taskDirectoryPath)
-        => Path.Combine(taskDirectoryPath, AerDirectoryName, CheckpointFileName);
+    public static string GetCheckpointFilePath(string roomDirectoryPath)
+        => Path.Combine(roomDirectoryPath, AerDirectoryName, CheckpointFileName);
 
     /// <summary>
-    /// Loads the projection checkpoint from <paramref name="taskDirectoryPath"/> if present and valid.
+    /// Loads the projection checkpoint from <paramref name="roomDirectoryPath"/> if present and valid.
     /// If the file is missing, corrupt, or unparseable, logs LOUDLY to <see cref="Console.Error"/>
     /// and returns <c>null</c> to trigger full event log replay.
     /// </summary>
-    public static ProjectionCheckpoint? Load(string taskDirectoryPath)
+    public static ProjectionCheckpoint? Load(string roomDirectoryPath)
     {
-        if (string.IsNullOrEmpty(taskDirectoryPath))
+        if (string.IsNullOrEmpty(roomDirectoryPath))
         {
             return null;
         }
 
-        var filePath = GetCheckpointFilePath(taskDirectoryPath);
+        var filePath = GetCheckpointFilePath(roomDirectoryPath);
         if (!File.Exists(filePath))
         {
             return null;
@@ -55,18 +55,18 @@ public static class ProjectionCheckpointStore
     }
 
     /// <summary>
-    /// Persists <paramref name="checkpoint"/> to <c>.aer/checkpoint.json</c> within <paramref name="taskDirectoryPath"/>.
+    /// Persists <paramref name="checkpoint"/> to <c>.aer/checkpoint.json</c> within <paramref name="roomDirectoryPath"/>.
     /// Assumes the caller holds the task directory's concurrency guard.
     /// </summary>
-    public static void Save(string taskDirectoryPath, ProjectionCheckpoint checkpoint)
+    public static void Save(string roomDirectoryPath, ProjectionCheckpoint checkpoint)
     {
-        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
         ArgumentNullException.ThrowIfNull(checkpoint);
 
-        var aerDir = Path.Combine(taskDirectoryPath, AerDirectoryName);
+        var aerDir = Path.Combine(roomDirectoryPath, AerDirectoryName);
         Directory.CreateDirectory(aerDir);
 
-        var filePath = GetCheckpointFilePath(taskDirectoryPath);
+        var filePath = GetCheckpointFilePath(roomDirectoryPath);
         var json = JsonSerializer.Serialize(checkpoint, FlowEventLogJson.Options);
 
         var tempFilePath = filePath + ".tmp." + Guid.NewGuid().ToString("n");
@@ -77,14 +77,14 @@ public static class ProjectionCheckpointStore
     /// <summary>
     /// Deletes the checkpoint file if present. Used for determinism testing and forced full replays.
     /// </summary>
-    public static void Delete(string taskDirectoryPath)
+    public static void Delete(string roomDirectoryPath)
     {
-        if (string.IsNullOrEmpty(taskDirectoryPath))
+        if (string.IsNullOrEmpty(roomDirectoryPath))
         {
             return;
         }
 
-        var filePath = GetCheckpointFilePath(taskDirectoryPath);
+        var filePath = GetCheckpointFilePath(roomDirectoryPath);
         if (File.Exists(filePath))
         {
             File.Delete(filePath);

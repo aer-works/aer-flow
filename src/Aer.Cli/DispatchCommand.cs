@@ -45,13 +45,13 @@ public static class DispatchCommand
         var workspace = workspaceDirectory ?? Directory.GetCurrentDirectory();
         var (definition, bindings) = await MaterializeAsync(options, workspace, cancellationToken).ConfigureAwait(false);
 
-        Directory.CreateDirectory(options.TaskDirectoryPath);
-        var workflowFilePath = Path.Combine(options.TaskDirectoryPath, WorkflowFileName);
-        var bindingsFilePath = Path.Combine(options.TaskDirectoryPath, BindingsFileName);
+        Directory.CreateDirectory(options.RoomDirectoryPath);
+        var workflowFilePath = Path.Combine(options.RoomDirectoryPath, WorkflowFileName);
+        var bindingsFilePath = Path.Combine(options.RoomDirectoryPath, BindingsFileName);
         await WorkflowDefinitionWriter.SaveToFileAsync(definition, workflowFilePath, cancellationToken).ConfigureAwait(false);
         await WorkerBindingConfigWriter.SaveToFileAsync(bindings, bindingsFilePath, cancellationToken).ConfigureAwait(false);
 
-        var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, options.TaskDirectoryPath, options.WorkflowId);
+        var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, options.RoomDirectoryPath, options.WorkflowId);
         return await RunCommand.ExecuteAsync(runOptions, adapters, cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 

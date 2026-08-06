@@ -17,7 +17,7 @@ public class DispatchOptionsParserTests
         Assert.Equal("task.md", options.SpecFilePath);
         Assert.Equal("agy", options.Adapter);
         Assert.Equal("wf", options.WorkflowId);
-        Assert.EndsWith("out", options.TaskDirectoryPath);
+        Assert.EndsWith("out", options.RoomDirectoryPath);
     }
 
     [Fact]
@@ -55,8 +55,8 @@ public class DispatchOptionsParserTests
     {
         // A one-shot dispatch must run anew each time; two default directories that collided would
         // make the second invocation resume — and replay — the first's terminal snapshot.
-        var first = DispatchOptionsParser.Parse(["review", "--spec", "t.md"]).TaskDirectoryPath;
-        var second = DispatchOptionsParser.Parse(["review", "--spec", "t.md"]).TaskDirectoryPath;
+        var first = DispatchOptionsParser.Parse(["review", "--spec", "t.md"]).RoomDirectoryPath;
+        var second = DispatchOptionsParser.Parse(["review", "--spec", "t.md"]).RoomDirectoryPath;
         Assert.NotEqual(first, second);
     }
 }

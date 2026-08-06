@@ -23,7 +23,7 @@ public class LiveReadOnlyReviewerSmokeTest
     {
         var fixtures = Path.Combine(AppContext.BaseDirectory, "Fixtures");
         var testRoot = Path.Combine(Path.GetTempPath(), $"readonly-smoke-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         var workspace = Directory.CreateDirectory(Path.Combine(testRoot, "workspace")).FullName;
         try
         {
@@ -40,7 +40,7 @@ public class LiveReadOnlyReviewerSmokeTest
                 bindingsPath, bindings.ToJsonString(), TestContext.Current.CancellationToken);
 
             var options = new RunOptions(
-                Path.Combine(fixtures, "readonly-reviewer-workflow.json"), bindingsPath, taskDirectory);
+                Path.Combine(fixtures, "readonly-reviewer-workflow.json"), bindingsPath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(
                 options, WorkerAdapterRegistry.Default,
@@ -53,7 +53,7 @@ public class LiveReadOnlyReviewerSmokeTest
             // the grant not being enforced at all.
             Assert.Equal(StepStatus.Succeeded, step.Status);
 
-            var outbox = Path.Combine(taskDirectory, "artifacts", $"execution_{step.LatestExecutionId}");
+            var outbox = Path.Combine(roomDirectory, "artifacts", $"execution_{step.LatestExecutionId}");
             var report = Path.Combine(outbox, "review.md");
             Assert.True(File.Exists(report), $"the withheld write never reached its outbox at '{report}'.");
             Assert.False(

@@ -26,19 +26,19 @@ public class DecideCommandEndToEndTests
     public async Task An_approval_gate_pauses_A_then_aer_decide_Resume_runs_B_to_the_fixed_point()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, pausedResult.State.Status);
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
 
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
             var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
@@ -58,22 +58,22 @@ public class DecideCommandEndToEndTests
         // #816's measured crash, decide's half; see FlowEventLogWriterTests for the mechanism.
         Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows; the Unix arm below proves the open just succeeds there");
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             using var liveEngineHolder = new FileStream(
                 logPath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 1, useAsync: true);
 
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
             await Assert.ThrowsAsync<FlowJournalHeldException>(
@@ -96,22 +96,22 @@ public class DecideCommandEndToEndTests
         // (plus FlowJournalHeldException's platform note) must be revisited together.
         Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows OS-enforces the sharing violation; the tests above pin that arm");
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-unix-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             using var liveEngineHolder = new FileStream(
                 logPath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 1, useAsync: true);
 
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
             // No FlowJournalHeldException, no raw IOException: the decision against the genuinely
@@ -135,7 +135,7 @@ public class DecideCommandEndToEndTests
         // Aer.Cli executable, the same way an operator would invoke 'aer decide'.
         Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows; the Unix arm below proves the open just succeeds there");
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-proc-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             // Uses the real WorkerAdapterRegistry.Default (the "noop" bookkeeping adapter), not
@@ -144,12 +144,12 @@ public class DecideCommandEndToEndTests
             // produce a task directory that registry can also resolve.
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteNoOpApprovalGateBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken);
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             using var liveEngineHolder = new FileStream(
                 logPath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 1, useAsync: true);
 
@@ -163,7 +163,7 @@ public class DecideCommandEndToEndTests
             startInfo.ArgumentList.Add("exec");
             startInfo.ArgumentList.Add(typeof(DecideCommand).Assembly.Location);
             startInfo.ArgumentList.Add("decide");
-            startInfo.ArgumentList.Add(taskDirectory);
+            startInfo.ArgumentList.Add(roomDirectory);
             startInfo.ArgumentList.Add("--execution");
             startInfo.ArgumentList.Add(pausedExecutionId.Value);
             startInfo.ArgumentList.Add("--type");
@@ -195,18 +195,18 @@ public class DecideCommandEndToEndTests
     public async Task Reject_on_a_successful_outcome_projects_A_terminally_failed_and_B_never_dispatches()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
 
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Reject, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Reject, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
             var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
@@ -225,12 +225,12 @@ public class DecideCommandEndToEndTests
     public async Task Exhaustion_then_aer_supply_then_aer_decide_RetryWithRevision_succeeds_and_downstream_runs()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteRetryWithRevisionWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteRetryWithRevisionBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, pausedResult.State.Status);
@@ -240,12 +240,12 @@ public class DecideCommandEndToEndTests
 
             var revisionFilePath = Path.Combine(testRoot, "revised.md");
             await File.WriteAllTextAsync(revisionFilePath, "revised-result", TestContext.Current.CancellationToken);
-            var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", revisionFilePath, bindingsFilePath);
+            var supplyOptions = new SupplyOptions(roomDirectory, "human", "revision", revisionFilePath, bindingsFilePath);
             var supplyResult = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken);
             Assert.Empty(supplyResult.Command.State.StepLessExecutions);
 
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.RetryWithRevision, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.RetryWithRevision, TargetStepId: null,
                 supplyResult.ExecutionId.Value, bindingsFilePath);
             var retriedResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -255,7 +255,7 @@ public class DecideCommandEndToEndTests
             Assert.NotEqual(pausedExecutionId, flakyAfterRetry.LatestExecutionId);
 
             var resumeOptions = new DecideOptions(
-                taskDirectory, flakyAfterRetry.LatestExecutionId!.Value.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, flakyAfterRetry.LatestExecutionId!.Value.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
             var finalResult = await DecideCommand.ExecuteAsync(resumeOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -263,7 +263,7 @@ public class DecideCommandEndToEndTests
             Assert.Equal(StepStatus.Succeeded, finalResult.State.Steps.Single(s => s.StepId.Value == "flaky").Status);
             Assert.Equal(StepStatus.Succeeded, finalResult.State.Steps.Single(s => s.StepId.Value == "downstream").Status);
 
-            var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+            var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
             var downstreamOutput = Path.Combine(
                 artifactsRoot,
                 $"execution_{finalResult.State.Steps.Single(s => s.StepId.Value == "downstream").LatestExecutionId}",
@@ -280,12 +280,12 @@ public class DecideCommandEndToEndTests
     public async Task Aer_supply_then_aer_decide_Supersede_reruns_the_target_step_and_a_final_Resume_reaches_terminal()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteSupersedeWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteSupersedeBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var firstPauseResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, firstPauseResult.State.Status);
@@ -294,11 +294,11 @@ public class DecideCommandEndToEndTests
 
             var revisionFilePath = Path.Combine(testRoot, "revision.txt");
             await File.WriteAllTextAsync(revisionFilePath, "revised-plan", TestContext.Current.CancellationToken);
-            var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", revisionFilePath, bindingsFilePath);
+            var supplyOptions = new SupplyOptions(roomDirectory, "human", "revision", revisionFilePath, bindingsFilePath);
             var supplyResult = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken);
 
             var supersedeOptions = new DecideOptions(
-                taskDirectory, reviewerExecutionId1.Value, DecisionType.Supersede, new StepId("source"),
+                roomDirectory, reviewerExecutionId1.Value, DecisionType.Supersede, new StepId("source"),
                 supplyResult.ExecutionId.Value, bindingsFilePath);
             var secondPauseResult = await DecideCommand.ExecuteAsync(supersedeOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -308,12 +308,12 @@ public class DecideCommandEndToEndTests
             Assert.NotEqual(sourceExecutionId1, sourceExecutionId2);
             Assert.NotEqual(reviewerExecutionId1, reviewerExecutionId2);
 
-            var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+            var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
             var sourceOutput2 = Path.Combine(artifactsRoot, $"execution_{sourceExecutionId2}", "plan");
             Assert.Equal("revised-plan", (await File.ReadAllTextAsync(sourceOutput2, TestContext.Current.CancellationToken)).Trim());
 
             var resumeOptions = new DecideOptions(
-                taskDirectory, reviewerExecutionId2.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, reviewerExecutionId2.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
             var finalResult = await DecideCommand.ExecuteAsync(resumeOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -331,24 +331,24 @@ public class DecideCommandEndToEndTests
     public async Task A_decision_against_a_non_paused_execution_throws_a_typed_error_and_appends_nothing()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
 
             var invalidOptions = new DecideOptions(
-                taskDirectory, "not-a-real-execution-id", DecisionType.Resume, TargetStepId: null,
+                roomDirectory, "not-a-real-execution-id", DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
             await Assert.ThrowsAsync<InvalidExternalDecisionException>(() => DecideCommand.ExecuteAsync(invalidOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken));
 
             // The paused workflow is still perfectly resolvable by a valid decision afterward.
             var validOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
             var finalResult = await DecideCommand.ExecuteAsync(validOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
@@ -363,13 +363,13 @@ public class DecideCommandEndToEndTests
     public async Task Deciding_against_a_task_directory_with_no_snapshot_throws_a_typed_error()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
             var options = new DecideOptions(
-                taskDirectory, "exec-1", DecisionType.Resume, TargetStepId: null, SupplementaryExecutionId: null, bindingsFilePath);
+                roomDirectory, "exec-1", DecisionType.Resume, TargetStepId: null, SupplementaryExecutionId: null, bindingsFilePath);
 
             await Assert.ThrowsAsync<SnapshotLoadException>(() => DecideCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken));
         }

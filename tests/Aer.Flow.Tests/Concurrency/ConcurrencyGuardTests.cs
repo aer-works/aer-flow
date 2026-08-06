@@ -8,51 +8,51 @@ public class ConcurrencyGuardTests
     [Fact]
     public void Acquire_creates_the_task_directory_if_it_does_not_exist()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            Assert.False(Directory.Exists(taskDirectory));
+            Assert.False(Directory.Exists(roomDirectory));
 
-            using var guard = ConcurrencyGuard.Acquire(taskDirectory);
+            using var guard = ConcurrencyGuard.Acquire(roomDirectory);
 
-            Assert.True(Directory.Exists(taskDirectory));
+            Assert.True(Directory.Exists(roomDirectory));
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public void Acquire_throws_WorkflowLockedException_when_another_holder_already_has_the_lock()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            using var firstHolder = ConcurrencyGuard.Acquire(taskDirectory);
+            using var firstHolder = ConcurrencyGuard.Acquire(roomDirectory);
 
-            Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
+            Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(roomDirectory));
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public void Dispose_releases_the_lock_so_a_subsequent_Acquire_succeeds()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            var firstHolder = ConcurrencyGuard.Acquire(taskDirectory);
+            var firstHolder = ConcurrencyGuard.Acquire(roomDirectory);
             firstHolder.Dispose();
 
-            using var secondHolder = ConcurrencyGuard.Acquire(taskDirectory);
+            using var secondHolder = ConcurrencyGuard.Acquire(roomDirectory);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -61,21 +61,21 @@ public class ConcurrencyGuardTests
     {
         // Proves the guard is not a sentinel-file mechanism (§15): the lock file's mere existence
         // must never be read as "still locked" — only the live FileShare.None hold does that.
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            var holder = ConcurrencyGuard.Acquire(taskDirectory);
-            var lockFilePath = Path.Combine(taskDirectory, "flow.lock");
+            var holder = ConcurrencyGuard.Acquire(roomDirectory);
+            var lockFilePath = Path.Combine(roomDirectory, "flow.lock");
             Assert.True(File.Exists(lockFilePath));
 
             holder.Dispose();
 
             Assert.True(File.Exists(lockFilePath));
-            using var secondHolder = ConcurrencyGuard.Acquire(taskDirectory);
+            using var secondHolder = ConcurrencyGuard.Acquire(roomDirectory);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -93,11 +93,11 @@ public class ConcurrencyGuardTests
     [Fact]
     public void AcquireWithin_waits_out_a_holder_that_releases_inside_the_budget()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         var hold = TimeSpan.FromMilliseconds(250);
         try
         {
-            var holder = ConcurrencyGuard.Acquire(taskDirectory);
+            var holder = ConcurrencyGuard.Acquire(roomDirectory);
             var release = new Thread(() =>
             {
                 Thread.Sleep(hold);
@@ -111,7 +111,7 @@ public class ConcurrencyGuardTests
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
             release.Start();
 
-            using (ConcurrencyGuard.AcquireWithin(taskDirectory, TimeSpan.FromSeconds(5)))
+            using (ConcurrencyGuard.AcquireWithin(roomDirectory, TimeSpan.FromSeconds(5))) // wait-ok: test timing bounds lock acquisition
             {
                 elapsed.Stop();
             }
@@ -125,7 +125,7 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -137,19 +137,19 @@ public class ConcurrencyGuardTests
     [Fact]
     public void AcquireWithin_still_throws_when_the_holder_outlasts_the_budget()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            using var holder = ConcurrencyGuard.Acquire(taskDirectory);
+            using var holder = ConcurrencyGuard.Acquire(roomDirectory);
 
             var exception = Assert.Throws<WorkflowLockedException>(
-                () => ConcurrencyGuard.AcquireWithin(taskDirectory, TimeSpan.FromMilliseconds(100)));
+                () => ConcurrencyGuard.AcquireWithin(roomDirectory, TimeSpan.FromMilliseconds(100))); // wait-ok: test timing bounds timeout
 
             Assert.Contains("not a routine overlap", exception.Message, StringComparison.Ordinal);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -178,20 +178,20 @@ public class ConcurrencyGuardTests
     [Fact]
     public void Acquire_remains_fail_fast_and_does_not_wait()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            using var holder = ConcurrencyGuard.Acquire(taskDirectory);
+            using var holder = ConcurrencyGuard.Acquire(roomDirectory);
 
             // wait-ok: the measured-against clock, not a condition-wait ceiling (#1008, doc comment)
             var waitBudget = TimeSpan.FromSeconds(2);
 
             var fast = System.Diagnostics.Stopwatch.StartNew();
-            Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
+            Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(roomDirectory));
             fast.Stop();
 
             var waited = System.Diagnostics.Stopwatch.StartNew();
-            Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.AcquireWithin(taskDirectory, waitBudget));
+            Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.AcquireWithin(roomDirectory, waitBudget));
             waited.Stop();
 
             Assert.True(
@@ -203,7 +203,7 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -215,12 +215,12 @@ public class ConcurrencyGuardTests
     [Fact]
     public void The_locked_message_does_not_blame_a_pump_as_the_single_likely_cause()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            using var holder = ConcurrencyGuard.Acquire(taskDirectory);
+            using var holder = ConcurrencyGuard.Acquire(roomDirectory);
 
-            var exception = Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
+            var exception = Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(roomDirectory));
 
             Assert.DoesNotContain("most likely a live 'aer run' pump", exception.Message, StringComparison.Ordinal);
             // Deliberately not "room sweep" -- BuildLockedMessage's own summary owns why. What is
@@ -229,18 +229,18 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public void Acquire_writes_holder_sidecar_file_with_caller_description()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            using var holder = ConcurrencyGuard.Acquire(taskDirectory, "Test Runner (pid 999)");
-            var sidecarPath = Path.Combine(taskDirectory, "flow.lock.holder");
+            using var holder = ConcurrencyGuard.Acquire(roomDirectory, "Test Runner (pid 999)");
+            var sidecarPath = Path.Combine(roomDirectory, "flow.lock.holder");
 
             Assert.True(File.Exists(sidecarPath));
             var content = File.ReadAllText(sidecarPath);
@@ -248,20 +248,20 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public void Second_Acquire_exception_carries_first_holder_description_and_acquired_at()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            using var holder = ConcurrencyGuard.Acquire(taskDirectory, "Custom Holder (pid 123)");
+            using var holder = ConcurrencyGuard.Acquire(roomDirectory, "Custom Holder (pid 123)");
 
             var exception = Assert.Throws<WorkflowLockedException>(
-                () => ConcurrencyGuard.Acquire(taskDirectory, "Second Holder"));
+                () => ConcurrencyGuard.Acquire(roomDirectory, "Second Holder"));
 
             Assert.Equal("Custom Holder (pid 123)", exception.HolderDescription);
             Assert.NotNull(exception.AcquiredAtUtc);
@@ -269,22 +269,22 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public void Missing_sidecar_polarity_leaves_HolderDescription_null_and_retains_two_shapes_message()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            using var holder = ConcurrencyGuard.Acquire(taskDirectory);
-            var sidecarPath = Path.Combine(taskDirectory, "flow.lock.holder");
+            using var holder = ConcurrencyGuard.Acquire(roomDirectory);
+            var sidecarPath = Path.Combine(roomDirectory, "flow.lock.holder");
             FileCleanup.EnsureDeleted(sidecarPath);
 
             var exception = Assert.Throws<WorkflowLockedException>(
-                () => ConcurrencyGuard.Acquire(taskDirectory));
+                () => ConcurrencyGuard.Acquire(roomDirectory));
 
             Assert.Null(exception.HolderDescription);
             Assert.Null(exception.AcquiredAtUtc);
@@ -293,18 +293,18 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public void Dispose_removes_holder_sidecar_file()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            var holder = ConcurrencyGuard.Acquire(taskDirectory, "Temp Holder");
-            var sidecarPath = Path.Combine(taskDirectory, "flow.lock.holder");
+            var holder = ConcurrencyGuard.Acquire(roomDirectory, "Temp Holder");
+            var sidecarPath = Path.Combine(roomDirectory, "flow.lock.holder");
             Assert.True(File.Exists(sidecarPath));
 
             holder.Dispose();
@@ -313,7 +313,7 @@ public class ConcurrencyGuardTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -327,25 +327,25 @@ public class ConcurrencyGuardTests
     public void Only_the_exhausted_wait_enriches_the_locked_message_with_the_probed_holder()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
-            Directory.CreateDirectory(taskDirectory);
-            var lockPath = Path.Combine(taskDirectory, "flow.lock");
+            Directory.CreateDirectory(roomDirectory);
+            var lockPath = Path.Combine(roomDirectory, "flow.lock");
             using var lockHolder = new FileStream(lockPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
 
-            var fastEx = Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(taskDirectory));
+            var fastEx = Assert.Throws<WorkflowLockedException>(() => ConcurrencyGuard.Acquire(roomDirectory));
             Assert.DoesNotContain("Current holder:", fastEx.Message);
 
             var waitedEx = Assert.Throws<WorkflowLockedException>(
-                () => ConcurrencyGuard.AcquireWithin(taskDirectory, TimeSpan.FromMilliseconds(50)));
+                () => ConcurrencyGuard.AcquireWithin(roomDirectory, TimeSpan.FromMilliseconds(50))); // wait-ok: test timing bounds timeout
 
             Assert.Contains("Current holder:", waitedEx.Message);
             Assert.Contains($"(pid {Environment.ProcessId})", waitedEx.Message);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 

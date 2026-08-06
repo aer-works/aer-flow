@@ -6,11 +6,11 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
-             x:Class="Aer.Ui.Views.TaskView"
+             x:Class="Aer.Ui.Views.RoomView"
              x:DataType="vm:MainWindowViewModel">
   <ScrollViewer>
     <StackPanel Margin="24" Spacing="12">
-      <TextBlock Classes="display" Text="{Binding TaskHeadlineText}" />
+      <TextBlock Classes="display" Text="{Binding RoomHeadlineText}" />
       <!-- The empty state says what to do next (Phase 5): nothing open, two ways forward. -->
       <TextBlock Classes="secondary" IsVisible="{Binding !HasSelectedStep}" TextWrapping="Wrap"
                  Text="Open a task from Home, or create and run a workflow in Author — this view fills in as soon as a task is open." />
@@ -179,7 +179,7 @@
         </Panel>
       </Border>
 
-      <ItemsControl x:Name="StepChipsList" ItemsSource="{Binding TaskSteps}">
+      <ItemsControl x:Name="StepChipsList" ItemsSource="{Binding RoomSteps}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
             <WrapPanel />

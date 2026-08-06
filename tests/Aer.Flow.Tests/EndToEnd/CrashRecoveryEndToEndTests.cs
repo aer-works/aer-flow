@@ -28,10 +28,10 @@ public class CrashRecoveryEndToEndTests
     [Fact]
     public async Task A_host_killed_before_a_real_dispatch_ever_starts_has_its_recorded_intent_resubmitted_on_recovery()
     {
-        var (taskDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal) = MakeTaskPaths();
         try
         {
-            var host = Launch("before-dispatch", taskDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal);
+            var host = Launch("before-dispatch", roomDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal);
             try
             {
                 // Durable proof the safe pre-spawn crash state (§7) has been reached: the intent is
@@ -50,7 +50,7 @@ public class CrashRecoveryEndToEndTests
 
             var originalExecutionId = await GetAcceptedExecutionIdAsync(logPath);
 
-            var finalState = await RunRecoveryAsync(taskDirectory, artifactsRoot, logPath, ScenarioWorker.QuickSuccess);
+            var finalState = await RunRecoveryAsync(roomDirectory, artifactsRoot, logPath, ScenarioWorker.QuickSuccess);
 
             var stepState = finalState.Steps.Single();
             Assert.Equal(StepStatus.Succeeded, stepState.Status);
@@ -65,17 +65,17 @@ public class CrashRecoveryEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task A_host_killed_after_an_unfulfilled_cancellation_for_a_never_started_execution_finalizes_it_cancelled_on_recovery()
     {
-        var (taskDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal) = MakeTaskPaths();
         try
         {
-            var host = Launch("before-dispatch", taskDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal);
+            var host = Launch("before-dispatch", roomDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal);
             try
             {
                 await WaitForLogConditionAsync(logPath, s => s.FlowEvents.OfType<FlowEvent.ExecutionRequestAccepted>().Any());
@@ -98,7 +98,7 @@ public class CrashRecoveryEndToEndTests
 
             var originalExecutionId = await GetAcceptedExecutionIdAsync(logPath);
 
-            var finalState = await RunRecoveryAsync(taskDirectory, artifactsRoot, logPath, ScenarioWorker.QuickSuccess);
+            var finalState = await RunRecoveryAsync(roomDirectory, artifactsRoot, logPath, ScenarioWorker.QuickSuccess);
 
             var stepState = finalState.Steps.Single();
             Assert.Equal(StepStatus.Cancelled, stepState.Status);
@@ -112,17 +112,17 @@ public class CrashRecoveryEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task A_host_killed_after_a_real_process_exits_but_before_classification_classifies_it_on_recovery_from_the_recorded_exit()
     {
-        var (taskDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal) = MakeTaskPaths();
         try
         {
-            var host = Launch("after-dispatch", taskDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal);
+            var host = Launch("after-dispatch", roomDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal);
             try
             {
                 // Durable proof the real process really ran and really exited (§6's "ran while Flow
@@ -142,7 +142,7 @@ public class CrashRecoveryEndToEndTests
 
             var originalExecutionId = await GetAcceptedExecutionIdAsync(logPath);
 
-            var finalState = await RunRecoveryAsync(taskDirectory, artifactsRoot, logPath, ScenarioWorker.QuickSuccess);
+            var finalState = await RunRecoveryAsync(roomDirectory, artifactsRoot, logPath, ScenarioWorker.QuickSuccess);
 
             var stepState = finalState.Steps.Single();
             Assert.Equal(StepStatus.Succeeded, stepState.Status);
@@ -158,18 +158,18 @@ public class CrashRecoveryEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task A_host_killed_while_its_real_child_is_still_running_leaves_the_attempt_abandoned_and_retried_on_recovery()
     {
-        var (taskDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal) = MakeTaskPaths();
         var orphanedChildPid = -1;
         try
         {
-            var host = Launch("none", taskDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal);
+            var host = Launch("none", roomDirectory, artifactsRoot, logPath, pauseSignal, cancelSignal);
             try
             {
                 // Durable proof of a real, still-executing child (§7's third crash state, the
@@ -197,7 +197,7 @@ public class CrashRecoveryEndToEndTests
             // actually protects correctness here, not the still-possibly-alive orphan going away) —
             // the operator recovering from this crash has no reason to repeat the same 2-minute
             // sleep, and this test would otherwise block for it.
-            var finalState = await RunRecoveryAsync(taskDirectory, artifactsRoot, logPath, ScenarioWorker.QuickSuccess);
+            var finalState = await RunRecoveryAsync(roomDirectory, artifactsRoot, logPath, ScenarioWorker.QuickSuccess);
 
             var stepState = finalState.Steps.Single();
             Assert.Equal(StepStatus.Succeeded, stepState.Status);
@@ -233,12 +233,12 @@ public class CrashRecoveryEndToEndTests
                 TryKillOrphanedChild(orphanedChildPid);
             }
 
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     private static async Task<FlowState> RunRecoveryAsync(
-        string taskDirectory, string artifactsRoot, string logPath, ScenarioWorker recoveryWorker)
+        string roomDirectory, string artifactsRoot, string logPath, ScenarioWorker recoveryWorker)
     {
         var (snapshot, bindings) = Scenarios.Build(recoveryWorker);
 
@@ -262,7 +262,7 @@ public class CrashRecoveryEndToEndTests
         {
             var completed = await Task.WhenAny(
                 MutationInterface.StartWorkflowAsync(
-                    Scenarios.WorkflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher),
+                    Scenarios.WorkflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher),
                 Task.Delay(TimeSpan.FromSeconds(60)));
 
             if (completed is not Task<FlowState> stateTask)
@@ -323,12 +323,12 @@ public class CrashRecoveryEndToEndTests
 
     private static (string TaskDirectory, string ArtifactsRoot, string LogPath, string PauseSignal, string CancelSignal) MakeTaskPaths()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"crash-task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"crash-task-{Guid.NewGuid():N}");
         return (
-            taskDirectory,
-            Path.Combine(taskDirectory, "artifacts"),
-            Path.Combine(taskDirectory, "flow.jsonl"),
-            Path.Combine(taskDirectory, "pause.signal"),
-            Path.Combine(taskDirectory, "cancel.signal"));
+            roomDirectory,
+            Path.Combine(roomDirectory, "artifacts"),
+            Path.Combine(roomDirectory, "flow.jsonl"),
+            Path.Combine(roomDirectory, "pause.signal"),
+            Path.Combine(roomDirectory, "cancel.signal"));
     }
 }

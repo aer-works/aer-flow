@@ -35,7 +35,7 @@ public class MutationInterfaceCancellationTests
             Step(H, dependsOn: [A], worker: "human", maxAttempts: 5),
             Step(C, dependsOn: [H]));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var stub = new StubCoreDispatcher();
@@ -47,7 +47,7 @@ public class MutationInterfaceCancellationTests
             var workflowId = new WorkflowId("wf");
 
             var firstRunTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var firstState = await firstRunTask;
@@ -58,7 +58,7 @@ public class MutationInterfaceCancellationTests
             // Nothing enqueued for C on the stub: if cancellation somehow let it through,
             // StubCoreDispatcher would throw.
             var cancelledState = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, hExecutionId, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, hExecutionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Cancelled, cancelledState.Steps.Single(s => s.StepId == H).Status);
             Assert.Equal(StepStatus.Pending, cancelledState.Steps.Single(s => s.StepId == C).Status);
@@ -73,7 +73,7 @@ public class MutationInterfaceCancellationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -82,7 +82,7 @@ public class MutationInterfaceCancellationTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: []));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var stub = new StubCoreDispatcher();
@@ -94,7 +94,7 @@ public class MutationInterfaceCancellationTests
             var workflowId = new WorkflowId("wf");
 
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var state = await runTask;
@@ -103,7 +103,7 @@ public class MutationInterfaceCancellationTests
             var eventsBefore = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
 
             var finalState = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, aExecutionId, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, aExecutionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Succeeded, finalState.Steps.Single().Status);
 
@@ -114,7 +114,7 @@ public class MutationInterfaceCancellationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -123,7 +123,7 @@ public class MutationInterfaceCancellationTests
     {
         var snapshot = MakeSnapshot(Step(H, dependsOn: [], worker: "human", pausePoint: new PausePoint([])));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -133,12 +133,12 @@ public class MutationInterfaceCancellationTests
             var stub = new StubCoreDispatcher();
 
             var firstState = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             var hExecutionId = firstState.Steps.Single().LatestExecutionId!.Value;
             Assert.Equal(StepStatus.Running, firstState.Steps.Single().Status);
 
             var cancelledState = await MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, hExecutionId, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, hExecutionId, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Paused, cancelledState.Steps.Single().Status);
             Assert.Equal(StepStatus.Cancelled, cancelledState.Steps.Single().PausedOutcome);
@@ -146,7 +146,7 @@ public class MutationInterfaceCancellationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -155,7 +155,7 @@ public class MutationInterfaceCancellationTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: []));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -167,7 +167,7 @@ public class MutationInterfaceCancellationTests
             var eventsBefore = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
 
             await Assert.ThrowsAsync<UnknownExecutionIdException>(() => MutationInterface.RequestCancellationAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
                 new ExecutionId("no-such-execution"), cancellationToken: TestContext.Current.CancellationToken));
 
             var eventsAfter = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
@@ -175,7 +175,7 @@ public class MutationInterfaceCancellationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -201,8 +201,8 @@ public class MutationInterfaceCancellationTests
 
     private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        return (taskDirectory, Path.Combine(taskDirectory, "artifacts"), Path.Combine(taskDirectory, "flow.jsonl"));
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        return (roomDirectory, Path.Combine(roomDirectory, "artifacts"), Path.Combine(roomDirectory, "flow.jsonl"));
     }
 
     private static async Task<StepId> ReadNextDispatchAsync(StubCoreDispatcher stub)

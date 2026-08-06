@@ -31,7 +31,7 @@ public class MutationInterfaceDecisionTests
             Step(A, dependsOn: [], pausePoint: new PausePoint([])),
             Step(B, dependsOn: [A]));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var stub = new StubCoreDispatcher();
@@ -43,7 +43,7 @@ public class MutationInterfaceDecisionTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var pausedState = await pausedTask;
@@ -52,7 +52,7 @@ public class MutationInterfaceDecisionTests
 
             var bResult = stub.EnqueueResult(B);
             var resumedTask = MutationInterface.RecordDecisionAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
                 pausedExecutionId, DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(B, await ReadNextDispatchAsync(stub));
             bResult.SetResult(Succeeded);
@@ -68,7 +68,7 @@ public class MutationInterfaceDecisionTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -79,7 +79,7 @@ public class MutationInterfaceDecisionTests
             Step(A, dependsOn: [], pausePoint: new PausePoint([])),
             Step(B, dependsOn: [A]));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var stub = new StubCoreDispatcher();
@@ -91,7 +91,7 @@ public class MutationInterfaceDecisionTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var pausedState = await pausedTask;
@@ -100,7 +100,7 @@ public class MutationInterfaceDecisionTests
 
             // Nothing enqueued for B on the stub: if Reject dispatched it, StubCoreDispatcher throws.
             var finalState = await MutationInterface.RecordDecisionAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
                 pausedExecutionId, DecisionType.Reject, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
@@ -112,7 +112,7 @@ public class MutationInterfaceDecisionTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -121,7 +121,7 @@ public class MutationInterfaceDecisionTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: [], pausePoint: new PausePoint([])));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var stub = new StubCoreDispatcher();
@@ -133,7 +133,7 @@ public class MutationInterfaceDecisionTests
             var workflowId = new WorkflowId("wf");
 
             var pausedTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             await pausedTask;
@@ -141,7 +141,7 @@ public class MutationInterfaceDecisionTests
             var eventsBefore = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
 
             await Assert.ThrowsAsync<InvalidExternalDecisionException>(() => MutationInterface.RecordDecisionAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
                 new ExecutionId("no-such-execution"), DecisionType.Resume, cancellationToken: TestContext.Current.CancellationToken));
 
             var eventsAfter = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
@@ -149,7 +149,7 @@ public class MutationInterfaceDecisionTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -168,8 +168,8 @@ public class MutationInterfaceDecisionTests
 
     private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        return (taskDirectory, Path.Combine(taskDirectory, "artifacts"), Path.Combine(taskDirectory, "flow.jsonl"));
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        return (roomDirectory, Path.Combine(roomDirectory, "artifacts"), Path.Combine(roomDirectory, "flow.jsonl"));
     }
 
     private static async Task<StepId> ReadNextDispatchAsync(StubCoreDispatcher stub)

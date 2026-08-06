@@ -14,7 +14,7 @@ public static class CancelOptionsParser
 
     public static CancelOptions Parse(IReadOnlyList<string> args)
     {
-        string? taskDirectoryPath = null;
+        string? roomDirectoryPath = null;
         string? executionId = null;
         string? bindingsFilePath = null;
         string? workflowId = null;
@@ -40,18 +40,18 @@ public static class CancelOptionsParser
                         throw new CliArgumentException($"Unknown option '{arg}'. {Usage}");
                     }
 
-                    if (taskDirectoryPath is not null)
+                    if (roomDirectoryPath is not null)
                     {
                         throw new CliArgumentException($"Unexpected extra argument '{arg}'. {Usage}");
                     }
 
-                    taskDirectoryPath = arg;
+                    roomDirectoryPath = arg;
                     i++;
                     break;
             }
         }
 
-        if (taskDirectoryPath is null)
+        if (roomDirectoryPath is null)
         {
             throw new CliArgumentException($"Missing required <task-dir> argument. {Usage}");
         }
@@ -67,7 +67,7 @@ public static class CancelOptionsParser
         }
 
         return new CancelOptions(
-            TaskDirectoryPath.Resolve(taskDirectoryPath), executionId, bindingsFilePath, workflowId);
+            RoomDirectoryPath.Resolve(roomDirectoryPath), executionId, bindingsFilePath, workflowId);
     }
 
     private static string RequireValue(IReadOnlyList<string> args, ref int index, string optionName)

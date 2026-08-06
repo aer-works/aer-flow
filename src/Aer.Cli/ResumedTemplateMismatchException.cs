@@ -27,18 +27,18 @@ public sealed class ResumedTemplateMismatchException : AerFlowException
 
     public string NamedTemplateId { get; }
 
-    public string TaskDirectoryPath { get; }
+    public string RoomDirectoryPath { get; }
 
     public ResumedTemplateMismatchException(
-        string boundTemplateId, string namedTemplateId, string taskDirectoryPath)
+        string boundTemplateId, string namedTemplateId, string roomDirectoryPath)
         : base(
-            $"Task directory '{taskDirectoryPath}' is already bound to workflow template " +
+            $"Task directory '{roomDirectoryPath}' is already bound to workflow template " +
             $"'{boundTemplateId}', but the workflow file given names '{namedTemplateId}'. Resuming " +
             "would run the bound template and report its result, not the one asked for. Use a fresh " +
             $"task directory for '{namedTemplateId}', or pass the template the directory is bound to.")
     {
         BoundTemplateId = boundTemplateId;
         NamedTemplateId = namedTemplateId;
-        TaskDirectoryPath = taskDirectoryPath;
+        RoomDirectoryPath = roomDirectoryPath;
     }
 }

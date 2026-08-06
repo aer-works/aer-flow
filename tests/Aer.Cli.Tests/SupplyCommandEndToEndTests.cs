@@ -21,26 +21,26 @@ public class SupplyCommandEndToEndTests
     public async Task Supplying_an_artifact_mints_populates_and_settles_it_in_one_call()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-supply-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteSingleStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var sourceFilePath = Path.Combine(testRoot, "revision.txt");
             await File.WriteAllTextAsync(sourceFilePath, "the-revision", TestContext.Current.CancellationToken);
-            var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", sourceFilePath, bindingsFilePath);
+            var supplyOptions = new SupplyOptions(roomDirectory, "human", "revision", sourceFilePath, bindingsFilePath);
 
             var result = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken);
 
             Assert.Empty(result.Command.State.StepLessExecutions);
-            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var reader = new FlowEventLogReader(Path.Combine(roomDirectory, "flow.jsonl"));
             var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Contains(events, e => e is FlowEvent.ExecutionSucceeded succeeded && succeeded.ExecutionId == result.ExecutionId);
 
-            var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+            var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
             var outputPath = Path.Combine(artifactsRoot, $"execution_{result.ExecutionId}", "revision");
             Assert.Equal("the-revision", (await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken)).Trim());
         }
@@ -57,22 +57,22 @@ public class SupplyCommandEndToEndTests
         // decide/cancel, so it must surface the typed refusal too.
         Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows; see DecideCommandEndToEndTests' Unix arm");
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-supply-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteSingleStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var sourceFilePath = Path.Combine(testRoot, "revision.txt");
             await File.WriteAllTextAsync(sourceFilePath, "the-revision", TestContext.Current.CancellationToken);
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             using var liveEngineHolder = new FileStream(
                 logPath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 1, useAsync: true);
 
-            var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", sourceFilePath, bindingsFilePath);
+            var supplyOptions = new SupplyOptions(roomDirectory, "human", "revision", sourceFilePath, bindingsFilePath);
 
             await Assert.ThrowsAsync<FlowJournalHeldException>(
                 () => SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken));
@@ -90,18 +90,18 @@ public class SupplyCommandEndToEndTests
         // naming a worker "human" never dispatches (here, an entry whose contract and grant make it
         // permanently unresolvable) must not block supplying an artifact for a different worker.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-supply-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteSingleStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var sourceFilePath = Path.Combine(testRoot, "revision.txt");
             await File.WriteAllTextAsync(sourceFilePath, "the-revision", TestContext.Current.CancellationToken);
             var unresolvableBindingsFilePath = await WriteSingleStepBindingsWithAnUnresolvableEntryAsync(testRoot);
-            var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", sourceFilePath, unresolvableBindingsFilePath);
+            var supplyOptions = new SupplyOptions(roomDirectory, "human", "revision", sourceFilePath, unresolvableBindingsFilePath);
 
             var adapters = new Dictionary<string, IWorkerAdapter>
             {
@@ -111,7 +111,7 @@ public class SupplyCommandEndToEndTests
 
             var result = await SupplyCommand.ExecuteAsync(supplyOptions, adapters, TestContext.Current.CancellationToken);
 
-            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var reader = new FlowEventLogReader(Path.Combine(roomDirectory, "flow.jsonl"));
             var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             Assert.Contains(events, e => e is FlowEvent.ExecutionSucceeded succeeded && succeeded.ExecutionId == result.ExecutionId);
         }
@@ -125,23 +125,23 @@ public class SupplyCommandEndToEndTests
     public async Task A_missing_source_file_throws_before_minting_anything()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-supply-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteSingleStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var missingSourcePath = Path.Combine(testRoot, "does-not-exist.txt");
-            var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", missingSourcePath, bindingsFilePath);
+            var supplyOptions = new SupplyOptions(roomDirectory, "human", "revision", missingSourcePath, bindingsFilePath);
 
             // Typed CliArgumentException, not a raw FileNotFoundException: the latter is not an
             // AerFlowException and would escape Program's typed boundary as a crash rather than a clean
             // CLI failure — the missing-file class fixed alongside the file loaders.
             await Assert.ThrowsAsync<CliArgumentException>(() => SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken));
 
-            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var reader = new FlowEventLogReader(Path.Combine(roomDirectory, "flow.jsonl"));
             Assert.DoesNotContain(await reader.ReadAllAsync(TestContext.Current.CancellationToken), e => e is FlowEvent.ExecutionRequestAccepted accepted && accepted.Request.StepId is null);
         }
         finally
@@ -154,14 +154,14 @@ public class SupplyCommandEndToEndTests
     public async Task Supplying_against_a_task_directory_with_no_snapshot_throws_a_typed_error()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-supply-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
             var bindingsFilePath = await WriteSingleStepBindingsAsync(testRoot);
             var sourceFilePath = Path.Combine(testRoot, "revision.txt");
             await File.WriteAllTextAsync(sourceFilePath, "the-revision", TestContext.Current.CancellationToken);
-            var supplyOptions = new SupplyOptions(taskDirectory, "human", "revision", sourceFilePath, bindingsFilePath);
+            var supplyOptions = new SupplyOptions(roomDirectory, "human", "revision", sourceFilePath, bindingsFilePath);
 
             await Assert.ThrowsAsync<SnapshotLoadException>(() => SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken));
         }

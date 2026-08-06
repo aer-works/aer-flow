@@ -17,7 +17,7 @@ public delegate Task CancelDelegate(ExecutionId executionId);
 /// One currently-running (or cancellation-pending) execution's §7 Cancel action surface (M15 Phase 4,
 /// issue #140) — process-bound steps still dispatched to Core, and step-less supplementary/human
 /// executions still awaiting completion (spec §17.3), rendered uniformly since both are valid
-/// <c>MutationInterface.RequestCancellationAsync</c> targets. Rebuilt from <see cref="TaskProjection"/>
+/// <c>MutationInterface.RequestCancellationAsync</c> targets. Rebuilt from <see cref="RoomProjection"/>
 /// on every load, the same "projected fact, not retained handler state" discipline
 /// <see cref="PausedStepViewModel"/> already follows — an execution that settles simply stops
 /// appearing next load.

@@ -39,7 +39,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Loaded through the same real Aer.Flow read-model calls Aer.Ui.TaskProjectionLoader uses,
+    <!-- Loaded through the same real Aer.Flow read-model calls Aer.Ui.RoomProjectionLoader uses,
          from a fixture file on disk rather than an in-memory WorkflowDefinition (matches
          Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests' convention, issue #14). -->
     <None Include="Fixtures\**\*.json" CopyToOutputDirectory="PreserveNewest" />

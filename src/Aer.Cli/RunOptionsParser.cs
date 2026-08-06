@@ -29,7 +29,7 @@ public static class RunOptionsParser
     {
         string? workflowFilePath = null;
         string? bindingsFilePath = null;
-        string? taskDirectoryPath = null;
+        string? roomDirectoryPath = null;
         string? workflowId = null;
         var echoWorker = false;
 
@@ -43,7 +43,7 @@ public static class RunOptionsParser
                     bindingsFilePath = RequireValue(args, ref i, arg);
                     break;
                 case "--task-dir":
-                    taskDirectoryPath = RequireValue(args, ref i, arg);
+                    roomDirectoryPath = RequireValue(args, ref i, arg);
                     break;
                 case "--workflow-id":
                     workflowId = RequireValue(args, ref i, arg);
@@ -82,11 +82,11 @@ public static class RunOptionsParser
         // Derived from the workflow file's own name when not given, so `aer run workflow.json`
         // twice in the same directory naturally resumes the same task (§21) rather than each
         // invocation needing its own explicit --task-dir.
-        taskDirectoryPath ??= Path.Combine(
+        roomDirectoryPath ??= Path.Combine(
             Directory.GetCurrentDirectory(), ".aer", Path.GetFileNameWithoutExtension(workflowFilePath));
 
         return new RunOptions(
-            workflowFilePath, bindingsFilePath, TaskDirectoryPath.Resolve(taskDirectoryPath), workflowId, echoWorker);
+            workflowFilePath, bindingsFilePath, RoomDirectoryPath.Resolve(roomDirectoryPath), workflowId, echoWorker);
     }
 
     private static string RequireValue(IReadOnlyList<string> args, ref int index, string optionName)

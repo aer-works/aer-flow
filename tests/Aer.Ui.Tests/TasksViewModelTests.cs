@@ -6,7 +6,7 @@ namespace Aer.Ui.Tests;
 
 /// <summary>
 /// Bulk select (issue #288) — the ViewModel-layer unit-test level for <see cref="TasksViewModel"/>
-/// and <see cref="TaskFleetItemViewModel"/>'s selection bookkeeping, mirroring
+/// and <see cref="RoomFleetItemViewModel"/>'s selection bookkeeping, mirroring
 /// <see cref="PausedStepViewModelTests"/>'s "plain unit test, no headless Avalonia session, no live
 /// daemon" approach. There was no pre-existing <c>TasksViewModelTests</c> file (the issue's
 /// description of one is stale) — this is the first ViewModel-level coverage for
@@ -16,7 +16,7 @@ namespace Aer.Ui.Tests;
 /// </summary>
 public class TasksViewModelTests
 {
-    private static TaskFleetItem NewItem(string path, bool isArchived = false) =>
+    private static RoomFleetItem NewItem(string path, bool isArchived = false) =>
         new(path, FriendlyName: path, TypeLabel: "solo-run-template", StatusText: "Idle", PausedStepCount: 0,
             IsArchived: isArchived, Created: DateTimeOffset.UnixEpoch, Updated: DateTimeOffset.UnixEpoch);
 
@@ -155,7 +155,7 @@ public class TasksViewModelTests
     // on — before this, TasksViewModel.RefreshAsync on activation was the *only* thing keeping it
     // current. These cover the replacement: a live projection push folded into the right row.
 
-    private static TaskProjection ProjectionWith(WorkflowStatus status, params StepStatus[] stepStatuses)
+    private static RoomProjection ProjectionWith(WorkflowStatus status, params StepStatus[] stepStatuses)
     {
         var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
             new WorkflowTemplateId("switcher-fixture"),
@@ -166,7 +166,7 @@ public class TasksViewModelTests
             .Select((s, i) => new StepState(new StepId($"step-{i}"), s, LatestExecutionId: null, UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>()))
             .ToList();
 
-        return new TaskProjection(
+        return new RoomProjection(
             snapshot,
             new FlowState(snapshot.WorkflowDefinitionSnapshotId, steps, status),
             new ExecutionHistory(new Dictionary<StepId, IReadOnlyList<ExecutionAttempt>>(), [], []),
@@ -183,7 +183,7 @@ public class TasksViewModelTests
         viewModel.ApplyProjectionPush("/tasks/a", ProjectionWith(WorkflowStatus.Terminal));
 
         Assert.Equal("Finished", row.StatusText);
-        Assert.Equal(TaskCardStatus.Finished, row.Status);
+        Assert.Equal(RoomCardStatus.Finished, row.Status);
     }
 
     [Fact]
@@ -213,7 +213,7 @@ public class TasksViewModelTests
             "/tasks/a", ProjectionWith(WorkflowStatus.Terminal, StepStatus.Cancelled));
 
         Assert.Equal("Cancelled", row.StatusText);
-        Assert.Equal(TaskCardStatus.Cancelled, row.Status);
+        Assert.Equal(RoomCardStatus.Cancelled, row.Status);
     }
 
     [Fact]
@@ -285,8 +285,8 @@ public class TasksViewModelTests
 
         var ordered = TasksViewModel.InFleetOrderForTests([olderActivity, newerActivity]).ToList();
 
-        Assert.Equal("/tasks/alpha", ordered[0].TaskDirectoryPath);
-        Assert.Equal("/tasks/zulu", ordered[1].TaskDirectoryPath);
+        Assert.Equal("/tasks/alpha", ordered[0].RoomDirectoryPath);
+        Assert.Equal("/tasks/zulu", ordered[1].RoomDirectoryPath);
     }
 
     [Fact]

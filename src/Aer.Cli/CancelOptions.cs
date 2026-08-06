@@ -4,7 +4,7 @@ namespace Aer.Cli;
 /// Parsed arguments for <c>aer cancel</c> (M12 Phase 2, §9's on-demand cancellation surface exposed
 /// on the CLI).
 /// </summary>
-/// <param name="TaskDirectoryPath">
+/// <param name="RoomDirectoryPath">
 /// An already-started task's durable state directory — <c>aer cancel</c> never binds a fresh
 /// snapshot the way <c>aer run</c> does (§11.2's "mutation commands never bind fresh" rule).
 /// </param>
@@ -14,7 +14,7 @@ namespace Aer.Cli;
 /// Defaults to the bound snapshot's <c>WorkflowTemplateId</c> when not given, same as <c>aer run</c>.
 /// </param>
 public sealed record CancelOptions(
-    string TaskDirectoryPath,
+    string RoomDirectoryPath,
     string ExecutionId,
     string BindingsFilePath,
     string? WorkflowId = null);

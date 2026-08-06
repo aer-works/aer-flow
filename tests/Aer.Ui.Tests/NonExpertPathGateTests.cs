@@ -64,7 +64,7 @@ public class NonExpertPathGateTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-nonexpert-gate-{Guid.NewGuid():N}");
         var workspacePath = Path.Combine(testRoot, "workspace");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var dialogueScriptPath = WriteDialogueStubScript(Path.Combine(testRoot, "scripts"));
@@ -106,17 +106,17 @@ public class NonExpertPathGateTests
 
             // 2. Run to the review gate over the stubs.
             await window.RunAsync(
-                taskDirectory, paths.Value.WorkflowFilePath, paths.Value.BindingsFilePath,
+                roomDirectory, paths.Value.WorkflowFilePath, paths.Value.BindingsFilePath,
                 TestContext.Current.CancellationToken);
 
-            Assert.Equal("Waiting for your review", window.ViewModel.TaskHeadlineText);
+            Assert.Equal("Waiting for your review", window.ViewModel.RoomHeadlineText);
             var pausedStep = Assert.Single(window.ViewModel.PausedSteps);
             Assert.Equal(new StepId("debate"), pausedStep.StepId);
             var sendBackTarget = Assert.Single(pausedStep.SendBackTargets);
             Assert.Equal("Send back to draft", sendBackTarget.Label);
 
             // 3. Read the conversation at the gate — the drill-in's per-step slice of M18's view.
-            var debateItem = window.ViewModel.TaskSteps.Single(step => step.StepId == "debate");
+            var debateItem = window.ViewModel.RoomSteps.Single(step => step.StepId == "debate");
             var conversation = Assert.Single(debateItem.Conversations);
             conversation.ShowCommand.Execute(null);
             var conversationPanel = window.FindViewControl<StackPanel>("ConversationPanel")!;
@@ -138,13 +138,13 @@ public class NonExpertPathGateTests
             // 5. Approve to terminal; the finished task reads plainly and its outputs exist.
             await repausedStep.ApproveCommand.ExecuteAsync(null);
 
-            Assert.Equal("Finished", window.ViewModel.TaskHeadlineText);
+            Assert.Equal("Finished", window.ViewModel.RoomHeadlineText);
             var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
             Assert.Equal(
                 ["draft: Succeeded", "debate: Succeeded"],
                 stepsPanel.Children.OfType<TextBlock>().Select(block => block.Text).ToList());
 
-            var finishedDebate = window.ViewModel.TaskSteps.Single(step => step.StepId == "debate");
+            var finishedDebate = window.ViewModel.RoomSteps.Single(step => step.StepId == "debate");
             Assert.Contains(finishedDebate.OutputFiles, file => file.Label.StartsWith("verdict.md"));
             Assert.Equal("Done", finishedDebate.PlainStatusText);
         }

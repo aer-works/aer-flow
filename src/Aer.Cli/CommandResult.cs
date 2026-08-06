@@ -25,7 +25,7 @@ public sealed record CommandResult(
     FlowState State,
     WorkflowDefinitionSnapshot Snapshot,
     bool ResumedFromSnapshot = false,
-    string? TaskDirectoryPath = null,
+    string? RoomDirectoryPath = null,
     IReadOnlyList<WorktreeTeardownResult>? WorktreeTeardowns = null)
 {
     /// <summary>Defaults to empty rather than <c>null</c> for callers that omit the argument.</summary>

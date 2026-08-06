@@ -49,10 +49,10 @@ public class TaskDrillInTests
     private static async Task<string> CreateTaskDirectoryAsync(
         WorkflowDefinitionSnapshot snapshot, IEnumerable<FlowEvent> events, CancellationToken cancellationToken)
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-drillin-{Guid.NewGuid():N}");
-        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), cancellationToken);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-drillin-{Guid.NewGuid():N}");
+        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), cancellationToken);
 
-        await using (var writer = new FlowEventLogWriter(Path.Combine(taskDirectory, "flow.jsonl")))
+        await using (var writer = new FlowEventLogWriter(Path.Combine(roomDirectory, "flow.jsonl")))
         {
             foreach (var flowEvent in events)
             {
@@ -60,13 +60,13 @@ public class TaskDrillInTests
             }
         }
 
-        return taskDirectory;
+        return roomDirectory;
     }
 
     /// <summary>Paused at critic after one architect failure + success; a-2 and c-1 each have a durable output file.</summary>
     private static async Task<string> CreatePausedTaskDirectoryAsync(CancellationToken cancellationToken)
     {
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateTaskDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -82,29 +82,29 @@ public class TaskDrillInTests
             ],
             cancellationToken);
 
-        var architectOutputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_a-2");
+        var architectOutputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_a-2");
         Directory.CreateDirectory(architectOutputDirectory);
         await File.WriteAllTextAsync(Path.Combine(architectOutputDirectory, "plan"), "The plan.", cancellationToken);
 
-        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         Directory.CreateDirectory(outputDirectory);
         await File.WriteAllTextAsync(Path.Combine(outputDirectory, "review.md"), "The critique.", cancellationToken);
-        return taskDirectory;
+        return roomDirectory;
     }
 
     [AvaloniaFact]
     public async Task LoadAsync_builds_plain_language_step_items_and_auto_selects_the_paused_step()
     {
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            Assert.Equal("Waiting for your review", window.ViewModel.TaskHeadlineText);
+            Assert.Equal("Waiting for your review", window.ViewModel.RoomHeadlineText);
 
             Assert.Collection(
-                window.ViewModel.TaskSteps,
+                window.ViewModel.RoomSteps,
                 architect =>
                 {
                     Assert.Equal("architect", architect.StepId);
@@ -136,20 +136,20 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task Output_file_preview_command_renders_into_the_preview_box()
     {
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+            var critic = window.ViewModel.RoomSteps.Single(step => step.StepId == "critic");
             var file = Assert.Single(critic.OutputFiles);
             Assert.Equal("review.md (c-1)", file.Label);
 
@@ -160,7 +160,7 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -174,17 +174,17 @@ public class TaskDrillInTests
     [AvaloniaFact]
     public async Task Switching_the_selected_step_clears_and_reloads_the_output_preview()
     {
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             // Needs-you-first auto-selects critic; its own single output auto-loads too.
             var previewBox = window.FindViewControl<TextBox>("ArtifactPreviewBox")!;
             await PollUntilAsync(() => previewBox.Text == "The critique.", TestContext.Current.CancellationToken);
 
-            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+            var critic = window.ViewModel.RoomSteps.Single(step => step.StepId == "critic");
             Assert.True(Assert.Single(critic.OutputFiles).IsSelected);
 
             // Switching to architect must not keep showing critic's content — it clears, then
@@ -192,12 +192,12 @@ public class TaskDrillInTests
             window.ViewModel.SelectStepById("architect");
             await PollUntilAsync(() => previewBox.Text == "The plan.", TestContext.Current.CancellationToken);
 
-            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            var architect = window.ViewModel.RoomSteps.Single(step => step.StepId == "architect");
             Assert.True(Assert.Single(architect.OutputFiles).IsSelected);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -221,16 +221,16 @@ public class TaskDrillInTests
     [AvaloniaFact]
     public async Task A_captured_prompt_file_surfaces_as_PromptFiles_and_is_excluded_from_OutputFiles()
     {
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
-        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         await File.WriteAllTextAsync(
             Path.Combine(outputDirectory, "prompt.txt"), "Review the plan.", TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+            var critic = window.ViewModel.RoomSteps.Single(step => step.StepId == "critic");
 
             // Still just the one real output -- prompt.txt never leaks into the output-files chips.
             var outputFile = Assert.Single(critic.OutputFiles);
@@ -247,7 +247,7 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -267,8 +267,8 @@ public class TaskDrillInTests
     [AvaloniaFact]
     public async Task Explicit_preview_of_a_different_file_survives_a_slower_in_flight_auto_preview()
     {
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
-        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         await File.WriteAllTextAsync(
             Path.Combine(outputDirectory, "prompt.txt"), "Review the plan.", TestContext.Current.CancellationToken);
         try
@@ -288,9 +288,9 @@ public class TaskDrillInTests
 
             // Needs-you-first auto-selects critic, firing the unawaited auto-preview of review.md
             // off the SelectedStep handler -- which the seam above parks mid-read.
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+            var critic = window.ViewModel.RoomSteps.Single(step => step.StepId == "critic");
             var promptFile = Assert.Single(critic.PromptFiles);
             var autoPreviewed = critic.OutputFiles.First();
             var previewBox = window.FindViewControl<TextBox>("ArtifactPreviewBox")!;
@@ -307,7 +307,7 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -322,8 +322,8 @@ public class TaskDrillInTests
     [AvaloniaFact]
     public async Task A_newer_preview_request_still_wins_even_when_issued_immediately_after_an_older_one()
     {
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
-        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         var olderFilePath = Path.Combine(outputDirectory, "older.txt");
         var newerFilePath = Path.Combine(outputDirectory, "newer.txt");
         await File.WriteAllTextAsync(olderFilePath, "Older content.", TestContext.Current.CancellationToken);
@@ -331,7 +331,7 @@ public class TaskDrillInTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var releaseOlder = new TaskCompletionSource();
             window.ReadArtifactTextAsync = async (filePath, token) =>
@@ -361,7 +361,7 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -372,12 +372,12 @@ public class TaskDrillInTests
     [AvaloniaFact]
     public async Task A_cancelled_preview_neither_throws_nor_writes_the_box()
     {
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
-        var filePath = Path.Combine(taskDirectory, "artifacts", "execution_c-1", "review.md");
+        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var filePath = Path.Combine(roomDirectory, "artifacts", "execution_c-1", "review.md");
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var previewBox = window.FindViewControl<TextBox>("ArtifactPreviewBox")!;
             var before = previewBox.Text;
@@ -393,38 +393,38 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task A_step_with_no_captured_prompt_reports_no_prompt_files()
     {
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+            var critic = window.ViewModel.RoomSteps.Single(step => step.StepId == "critic");
 
             Assert.False(critic.HasPromptFiles);
             Assert.Empty(critic.PromptFiles);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task Selection_follows_step_id_across_refresh_and_the_dag_click_entry_point()
     {
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             window.ViewModel.SelectStepById("architect");
             Assert.Equal("architect", window.ViewModel.SelectedStep!.StepId);
@@ -440,14 +440,14 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task Decision_lines_render_in_plain_language_on_the_decided_step()
     {
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateTaskDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -462,30 +462,30 @@ public class TaskDrillInTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+            var critic = window.ViewModel.RoomSteps.Single(step => step.StepId == "critic");
             Assert.Equal(
                 ["Sent back to architect (decision on c-1) — not carried out yet"],
                 critic.DecisionLines);
 
             // The send-back's target step carries the same decision — it is about that step too.
-            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            var architect = window.ViewModel.RoomSteps.Single(step => step.StepId == "architect");
             Assert.Equal(
                 ["Sent back to architect (decision on c-1) — not carried out yet"],
                 architect.DecisionLines);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task A_recorded_transcript_surfaces_as_the_steps_conversation_and_renders_on_show()
     {
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
-        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         var turn = JsonSerializer.Serialize(
             new { Sequence = 1, Role = "initiator", Vendor = "claude", Prompt = "p", Text = "hello" });
         await File.WriteAllTextAsync(
@@ -493,9 +493,9 @@ public class TaskDrillInTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var critic = window.ViewModel.TaskSteps.Single(step => step.StepId == "critic");
+            var critic = window.ViewModel.RoomSteps.Single(step => step.StepId == "critic");
             var conversation = Assert.Single(critic.Conversations);
             Assert.Equal("critic — c-1 (worker)", conversation.Label);
 
@@ -506,14 +506,14 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task Failed_step_renders_failed_banner_with_reason_and_stderr_excerpt()
     {
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateTaskDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -526,9 +526,9 @@ public class TaskDrillInTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            var architect = window.ViewModel.RoomSteps.Single(step => step.StepId == "architect");
             Assert.True(architect.HasFailedBanner);
             var banner = architect.FailedBanner;
             Assert.NotNull(banner);
@@ -546,7 +546,7 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -557,7 +557,7 @@ public class TaskDrillInTests
         // the switch to the empty default — a denied-tool failure reading as a bare "Failed" is exactly
         // the #597 defect the suffix exists to prevent. Reds against the pre-fix switch, which had no
         // ToolDenied arm.
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateTaskDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -570,16 +570,16 @@ public class TaskDrillInTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            var architect = window.ViewModel.RoomSteps.Single(step => step.StepId == "architect");
             Assert.Contains(
                 architect.AttemptLines,
                 line => line.Contains("Failed — not retryable (a required tool was denied)"));
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -589,7 +589,7 @@ public class TaskDrillInTests
         // Two attempts, both with transcripts: the banner's reason comes from the newest reasoned
         // attempt (a-2), so its "Show full output" must open a-2's conversation. Index 0 of the
         // chronological collections is a-1 — a different run than the headline describes.
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateTaskDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -604,7 +604,7 @@ public class TaskDrillInTests
             new { Sequence = 1, Role = "initiator", Vendor = "claude", Prompt = "p", Text = "hello" });
         foreach (var executionDirectoryName in new[] { "execution_a-1", "execution_a-2" })
         {
-            var executionDirectory = Path.Combine(taskDirectory, "artifacts", executionDirectoryName);
+            var executionDirectory = Path.Combine(roomDirectory, "artifacts", executionDirectoryName);
             Directory.CreateDirectory(executionDirectory);
             await File.WriteAllTextAsync(
                 Path.Combine(executionDirectory, "transcript.jsonl"), turn + "\n", TestContext.Current.CancellationToken);
@@ -613,9 +613,9 @@ public class TaskDrillInTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            var architect = window.ViewModel.RoomSteps.Single(step => step.StepId == "architect");
             Assert.NotNull(architect.FailedBanner);
             Assert.Equal("Second failure.", architect.FailedBanner.ReasonSentence);
 
@@ -627,7 +627,7 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -650,7 +650,7 @@ public class TaskDrillInTests
                     Critic, "critic", ["brief"], ["review"], DependsOn: [], RetryPolicy: new RetryPolicy(1),
                     PausePoint: new PausePoint(SupersedeTargets: [Critic])),
             ]));
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateTaskDirectoryAsync(
             independentSnapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("c-1"), Critic)),
@@ -664,22 +664,22 @@ public class TaskDrillInTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            var architect = window.ViewModel.RoomSteps.Single(step => step.StepId == "architect");
             Assert.NotNull(architect.FailedBanner);
             Assert.False(architect.FailedBanner.CanTryAgain);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task Succeeded_step_shows_no_failed_banner_polarity()
     {
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateTaskDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -689,22 +689,22 @@ public class TaskDrillInTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            var architect = window.ViewModel.RoomSteps.Single(step => step.StepId == "architect");
             Assert.False(architect.HasFailedBanner);
             Assert.Null(architect.FailedBanner);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task Ask_worker_to_fix_prefills_chat_input_and_navigates_to_chat()
     {
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateTaskDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -717,9 +717,9 @@ public class TaskDrillInTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            var architect = window.ViewModel.RoomSteps.Single(step => step.StepId == "architect");
             Assert.NotNull(architect.FailedBanner);
 
             architect.FailedBanner.AskWorkerToFixCommand.Execute(null);
@@ -732,18 +732,18 @@ public class TaskDrillInTests
             // property behind "No room open." — AskWorkerToFix's own doc comment carries the story;
             // these two pins are what turn its no-session promise into a red test.
             Assert.False(window.ViewModel.Chat.IsSessionOpen);
-            Assert.Equal(taskDirectory, window.ViewModel.Chat.NewChatWorkingDirectory);
+            Assert.Equal(roomDirectory, window.ViewModel.Chat.NewChatWorkingDirectory);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task Ask_worker_to_fix_appends_to_a_half_typed_message_instead_of_replacing_it()
     {
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateTaskDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -756,14 +756,14 @@ public class TaskDrillInTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             // The input box can already hold the user's own words (most plausibly in an open
             // session, but the box is one control either way) — the affordance must add its draft,
             // never destroy what was typed.
             window.ViewModel.Chat.InputText = "half-typed note";
 
-            var architect = window.ViewModel.TaskSteps.Single(step => step.StepId == "architect");
+            var architect = window.ViewModel.RoomSteps.Single(step => step.StepId == "architect");
             architect.FailedBanner!.AskWorkerToFixCommand.Execute(null);
 
             Assert.StartsWith("half-typed note", window.ViewModel.Chat.InputText);
@@ -771,7 +771,7 @@ public class TaskDrillInTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 }

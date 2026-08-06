@@ -60,14 +60,14 @@ public static class DecideCommand
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(adapters);
 
-        var snapshotPath = Path.Combine(options.TaskDirectoryPath, SnapshotFileName);
-        var logPath = Path.Combine(options.TaskDirectoryPath, LogFileName);
-        var artifactsRootPath = Path.Combine(options.TaskDirectoryPath, ArtifactsDirectoryName);
+        var snapshotPath = Path.Combine(options.RoomDirectoryPath, SnapshotFileName);
+        var logPath = Path.Combine(options.RoomDirectoryPath, LogFileName);
+        var artifactsRootPath = Path.Combine(options.RoomDirectoryPath, ArtifactsDirectoryName);
 
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.TaskDirectoryPath}' has no bound snapshot — 'aer decide' " +
+                $"Task directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer decide' " +
                 "targets a task 'aer run' has already started, and never binds one fresh.");
         }
 
@@ -76,7 +76,7 @@ public static class DecideCommand
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
         var (provisionedConfig, provisionedWorktrees) =
-            WorktreeWorkspaces.Provision(bindingConfig, options.TaskDirectoryPath);
+            WorktreeWorkspaces.Provision(bindingConfig, options.RoomDirectoryPath);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         var workerBindings = WorkerBindingResolver.Resolve(
             provisionedConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath), onWorkerStdoutLine);
@@ -91,7 +91,7 @@ public static class DecideCommand
 
         var state = await MutationInterface.RecordDecisionAsync(
                 workflowId,
-                options.TaskDirectoryPath,
+                options.RoomDirectoryPath,
                 snapshot,
                 workerBindings,
                 artifactsRootPath,
@@ -108,6 +108,6 @@ public static class DecideCommand
 
         var worktreeTeardowns = WorktreeProvisioner.TeardownIfTerminal(state.Status, provisionedWorktrees);
 
-        return new CommandResult(state, snapshot, TaskDirectoryPath: options.TaskDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
+        return new CommandResult(state, snapshot, RoomDirectoryPath: options.RoomDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
     }
 }

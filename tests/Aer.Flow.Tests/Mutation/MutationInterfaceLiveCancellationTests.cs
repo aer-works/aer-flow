@@ -40,7 +40,7 @@ public class MutationInterfaceLiveCancellationTests
             Step(C, dependsOn: []),
             Step(D, dependsOn: [B]));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var stub = new StubCoreDispatcher();
@@ -53,7 +53,7 @@ public class MutationInterfaceLiveCancellationTests
             var registry = new InFlightExecutionRegistry();
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
+                new WorkflowId("wf"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
                 inFlightExecutions: registry, cancellationToken: TestContext.Current.CancellationToken);
 
             var firstRound = new[] { await ReadNextDispatchAsync(stub), await ReadNextDispatchAsync(stub) };
@@ -89,7 +89,7 @@ public class MutationInterfaceLiveCancellationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -98,7 +98,7 @@ public class MutationInterfaceLiveCancellationTests
     {
         var snapshot = MakeSnapshot(Step(B, dependsOn: []), Step(C, dependsOn: []));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var stub = new StubCoreDispatcher();
@@ -111,7 +111,7 @@ public class MutationInterfaceLiveCancellationTests
 
             using var hostStop = new CancellationTokenSource();
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
+                new WorkflowId("wf"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
                 cancellationToken: hostStop.Token);
 
             await ReadNextDispatchAsync(stub);
@@ -138,7 +138,7 @@ public class MutationInterfaceLiveCancellationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -147,7 +147,7 @@ public class MutationInterfaceLiveCancellationTests
     {
         var snapshot = MakeSnapshot(Step(H, dependsOn: [], pausePoint: new PausePoint([])));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             var stub = new StubCoreDispatcher();
@@ -159,7 +159,7 @@ public class MutationInterfaceLiveCancellationTests
             var registry = new InFlightExecutionRegistry();
 
             var workflowTask = MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
+                new WorkflowId("wf"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub,
                 inFlightExecutions: registry, cancellationToken: TestContext.Current.CancellationToken);
 
             await ReadNextDispatchAsync(stub);
@@ -175,7 +175,7 @@ public class MutationInterfaceLiveCancellationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -184,7 +184,7 @@ public class MutationInterfaceLiveCancellationTests
     {
         var snapshot = MakeSnapshot(Step(B, dependsOn: []));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -200,7 +200,7 @@ public class MutationInterfaceLiveCancellationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -222,8 +222,8 @@ public class MutationInterfaceLiveCancellationTests
 
     private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        return (taskDirectory, Path.Combine(taskDirectory, "artifacts"), Path.Combine(taskDirectory, "flow.jsonl"));
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        return (roomDirectory, Path.Combine(roomDirectory, "artifacts"), Path.Combine(roomDirectory, "flow.jsonl"));
     }
 
     private static async Task<StepId> ReadNextDispatchAsync(StubCoreDispatcher stub)

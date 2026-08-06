@@ -127,7 +127,7 @@
       <!-- #219: hidden by default — the raw template/bindings editors used to sit permanently
            visible below the guided flow, one long scrollable list mixing a beginner path with an
            expert one with no signal about which to use. Collapsed here (Padding="0": Expander
-           already pads its content, see the same reasoning on TaskView's Details expander), the
+           already pads its content, see the same reasoning on RoomView's Details expander), the
            guided card above is unambiguously the primary, default path. -->
       <Border Classes="card" Padding="0">
       <Expander Header="Advanced — edit the files directly" IsExpanded="False">

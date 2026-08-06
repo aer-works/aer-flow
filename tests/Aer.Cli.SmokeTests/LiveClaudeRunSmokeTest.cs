@@ -32,10 +32,10 @@ public class LiveClaudeRunSmokeTest
         var bindingsFilePath = Path.Combine(fixturesDirectory, "draft-review-bindings.json");
 
         var testRoot = Path.Combine(Path.GetTempPath(), $"claude-smoke-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(options, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken)).State;
 
@@ -43,7 +43,7 @@ public class LiveClaudeRunSmokeTest
             Assert.Equal(2, finalState.Steps.Count);
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
-            var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+            var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
             var stepStateById = finalState.Steps.ToDictionary(s => s.StepId);
 
             await AssertRealOutputAsync(artifactsRoot, stepStateById[new StepId("draft")], "draft");

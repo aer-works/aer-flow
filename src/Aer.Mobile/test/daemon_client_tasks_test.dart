@@ -9,12 +9,12 @@ void main() {
   group('DaemonClient M24 Phase 5 Task Lifecycle Endpoints', () {
     test('listTasks returns the fleet list and defaults includeArchived to false', () async {
       final mockClient = MockClient((request) async {
-        expect(request.url.path, '/api/tasks');
+        expect(request.url.path, '/api/rooms');
         expect(request.url.queryParameters['includeArchived'], 'false');
         return http.Response(
           jsonEncode([
             {
-              'taskDirectoryPath': 'C:/Users/pbree/.aer/tasks/foo',
+              'roomDirectoryPath': 'C:/Users/pbree/.aer/tasks/foo',
               'friendlyName': 'foo',
               'typeLabel': 'solo-run-template',
               'statusText': 'Running',
@@ -47,7 +47,7 @@ void main() {
 
     test('archiveTask posts the directory path', () async {
       final mockClient = MockClient((request) async {
-        expect(request.url.path, '/api/tasks/archive');
+        expect(request.url.path, '/api/rooms/archive');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body['directoryPath'], 'C:/Users/pbree/.aer/tasks/foo');
         return http.Response('', 200);
@@ -60,7 +60,7 @@ void main() {
 
     test('unarchiveTask posts the directory path', () async {
       final mockClient = MockClient((request) async {
-        expect(request.url.path, '/api/tasks/unarchive');
+        expect(request.url.path, '/api/rooms/unarchive');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body['directoryPath'], 'C:/Users/pbree/.aer/tasks/foo');
         return http.Response('', 200);
@@ -73,7 +73,7 @@ void main() {
 
     test('deleteTask posts the directory path', () async {
       final mockClient = MockClient((request) async {
-        expect(request.url.path, '/api/tasks/delete');
+        expect(request.url.path, '/api/rooms/delete');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body['directoryPath'], 'C:/Users/pbree/.aer/tasks/foo');
         return http.Response('', 200);

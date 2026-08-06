@@ -6,20 +6,20 @@ namespace Aer.Adapters;
 /// <c>.aer/bindings-path</c> (plain file, existence/content-checked, never a schema field) — applies
 /// uniformly to DAG tasks and interactive sessions without either type needing a metadata record.
 /// Archiving never touches <c>workflow.json</c>, so the existing collision guard
-/// (<see cref="TaskDirectoryAlreadyExistsException"/>) already blocks re-materializing an archived
+/// (<see cref="RoomDirectoryAlreadyExistsException"/>) already blocks re-materializing an archived
 /// name — only <see cref="Directory.Delete(string, bool)"/> actually frees a name.
 /// </summary>
-public static class TaskLifecycle
+public static class RoomLifecycle
 {
     private const string ArchivedMarkerFileName = "archived";
 
-    private static string MarkerFilePath(string taskDirectoryPath) => Path.Combine(taskDirectoryPath, ".aer", ArchivedMarkerFileName);
+    private static string MarkerFilePath(string roomDirectoryPath) => Path.Combine(roomDirectoryPath, ".aer", ArchivedMarkerFileName);
 
-    public static bool IsArchived(string taskDirectoryPath) => File.Exists(MarkerFilePath(taskDirectoryPath));
+    public static bool IsArchived(string roomDirectoryPath) => File.Exists(MarkerFilePath(roomDirectoryPath));
 
-    public static async Task ArchiveAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public static async Task ArchiveAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
-        var markerPath = MarkerFilePath(taskDirectoryPath);
+        var markerPath = MarkerFilePath(roomDirectoryPath);
         var dir = Path.GetDirectoryName(markerPath);
         if (!string.IsNullOrEmpty(dir))
         {
@@ -29,9 +29,9 @@ public static class TaskLifecycle
         await File.WriteAllTextAsync(markerPath, DateTimeOffset.UtcNow.ToString("O"), cancellationToken).ConfigureAwait(false);
     }
 
-    public static Task UnarchiveAsync(string taskDirectoryPath)
+    public static Task UnarchiveAsync(string roomDirectoryPath)
     {
-        var markerPath = MarkerFilePath(taskDirectoryPath);
+        var markerPath = MarkerFilePath(roomDirectoryPath);
         if (File.Exists(markerPath))
         {
             File.Delete(markerPath);

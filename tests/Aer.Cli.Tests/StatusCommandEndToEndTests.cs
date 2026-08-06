@@ -17,12 +17,12 @@ public class StatusCommandEndToEndTests
     public async Task Status_of_a_terminal_workflow_reports_one_line_per_step_with_status_and_execution_id()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
@@ -30,7 +30,7 @@ public class StatusCommandEndToEndTests
             var architectExecutionId = finalState.Steps.First(s => s.StepId.Value == "architect").LatestExecutionId!.Value.Value;
 
             var output = new StringWriter();
-            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
+            await StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory), output, TestContext.Current.CancellationToken);
 
             var text = output.ToString();
             Assert.Contains("Workflow status: Terminal", text);
@@ -50,15 +50,15 @@ public class StatusCommandEndToEndTests
     public async Task Status_against_a_nonexistent_task_directory_throws_a_typed_error_and_creates_nothing()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
 
             await Assert.ThrowsAsync<SnapshotLoadException>(
-                () => StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), TextWriter.Null, TestContext.Current.CancellationToken));
+                () => StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory), TextWriter.Null, TestContext.Current.CancellationToken));
 
-            Assert.False(Directory.Exists(taskDirectory));
+            Assert.False(Directory.Exists(roomDirectory));
         }
         finally
         {
@@ -70,13 +70,13 @@ public class StatusCommandEndToEndTests
     public async Task Status_against_an_existing_directory_with_no_snapshot_throws_the_same_typed_error()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
-            Directory.CreateDirectory(taskDirectory);
+            Directory.CreateDirectory(roomDirectory);
 
             await Assert.ThrowsAsync<SnapshotLoadException>(
-                () => StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), TextWriter.Null, TestContext.Current.CancellationToken));
+                () => StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory), TextWriter.Null, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -92,21 +92,21 @@ public class StatusCommandEndToEndTests
         // another holder (simulated here) already has it -- exactly the failure a live `aer run`
         // pump would trigger for a real operator running `aer status` alongside it.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
-            using var guard = ConcurrencyGuard.Acquire(taskDirectory);
-            var filesBefore = Directory.GetFiles(taskDirectory).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal).ToList();
+            using var guard = ConcurrencyGuard.Acquire(roomDirectory);
+            var filesBefore = Directory.GetFiles(roomDirectory).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal).ToList();
 
             var output = new StringWriter();
-            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
+            await StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory), output, TestContext.Current.CancellationToken);
 
-            var filesAfter = Directory.GetFiles(taskDirectory).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal).ToList();
+            var filesAfter = Directory.GetFiles(roomDirectory).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal).ToList();
             Assert.Equal(filesBefore, filesAfter);
             Assert.Contains("Workflow status: Terminal", output.ToString());
         }
@@ -120,17 +120,17 @@ public class StatusCommandEndToEndTests
     public async Task Follow_on_an_already_terminal_workflow_prints_state_and_exits_without_hanging()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var output = new StringWriter();
             var statusTask = StatusCommand.ExecuteAsync(
-                new StatusOptions(taskDirectory, Follow: true), output, TestContext.Current.CancellationToken);
+                new StatusOptions(roomDirectory, Follow: true), output, TestContext.Current.CancellationToken);
 
             var completedFirst = await Task.WhenAny(
                 statusTask, Task.Delay(TimeSpan.FromSeconds(60), TestContext.Current.CancellationToken));
@@ -163,19 +163,19 @@ public class StatusCommandEndToEndTests
     public async Task Follow_does_not_hang_when_the_workflow_finishes_while_the_initial_print_is_still_blocked_on_a_slow_consumer()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
-            Directory.CreateDirectory(taskDirectory);
+            Directory.CreateDirectory(roomDirectory);
             var definition = new WorkflowDefinition(
                 new WorkflowTemplateId("race-probe"),
                 1,
                 [new WorkflowStepDefinition(new StepId("step-one"), "step-one", [], ["out"], [], new RetryPolicy(1))]);
             var snapshot = SnapshotBinder.Bind(definition);
-            var snapshotPath = Path.Combine(taskDirectory, "snapshot.json");
+            var snapshotPath = Path.Combine(roomDirectory, "snapshot.json");
             await SnapshotBinder.PersistAsync(snapshot, snapshotPath, TestContext.Current.CancellationToken);
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             var executionId = new ExecutionId("exec-race-1");
             var request = new ExecutionRequest(
                 executionId,
@@ -202,7 +202,7 @@ public class StatusCommandEndToEndTests
             // than this test's -- otherwise the block below would deadlock against itself.
             var statusTask = Task.Run(
                 () => StatusCommand.ExecuteAsync(
-                    new StatusOptions(taskDirectory, Follow: true), blockingWriter, TestContext.Current.CancellationToken),
+                    new StatusOptions(roomDirectory, Follow: true), blockingWriter, TestContext.Current.CancellationToken),
                 TestContext.Current.CancellationToken);
 
             Assert.True(
@@ -308,17 +308,17 @@ public class StatusCommandEndToEndTests
     public async Task Following_a_running_workflow_prints_new_events_as_they_land_and_exits_at_terminal()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         var signalFilePath = Path.Combine(testRoot, "status-started.flag");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepGatedBindingsAsync(testRoot, signalFilePath);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var runTask = RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             while (!File.Exists(logPath) || new FileInfo(logPath).Length == 0)
             {
                 await Task.Delay(25, TestContext.Current.CancellationToken);
@@ -326,7 +326,7 @@ public class StatusCommandEndToEndTests
 
             var output = new SignalingTextWriter(signalFilePath);
             var statusTask = StatusCommand.ExecuteAsync(
-                new StatusOptions(taskDirectory, Follow: true), output, TestContext.Current.CancellationToken);
+                new StatusOptions(roomDirectory, Follow: true), output, TestContext.Current.CancellationToken);
 
             var runResult = await runTask.WaitAsync(TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Terminal, runResult.State.Status);
@@ -348,17 +348,17 @@ public class StatusCommandEndToEndTests
     public async Task Cancelling_a_follow_on_a_still_running_workflow_returns_cleanly_instead_of_throwing()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         var signalFilePath = Path.Combine(testRoot, "status-started.flag");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepGatedBindingsAsync(testRoot, signalFilePath);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var runTask = RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             while (!File.Exists(logPath) || new FileInfo(logPath).Length == 0)
             {
                 await Task.Delay(25, TestContext.Current.CancellationToken);
@@ -368,7 +368,7 @@ public class StatusCommandEndToEndTests
             followCancellation.CancelAfter(TimeSpan.FromMilliseconds(300));
 
             var output = new SignalingTextWriter(signalFilePath);
-            var statusTask = StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory, Follow: true), output, followCancellation.Token);
+            var statusTask = StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory, Follow: true), output, followCancellation.Token);
 
             await statusTask.WaitAsync(TimeSpan.FromMinutes(2), TestContext.Current.CancellationToken);
 
@@ -400,19 +400,19 @@ public class StatusCommandEndToEndTests
         // Red arm: with the follow-mode OperationCanceledException filter removed from
         // StatusCommand.ExecuteAsync, this throws.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             using var cancelled = new CancellationTokenSource();
             cancelled.Cancel();
 
             var exception = await Record.ExceptionAsync(() => StatusCommand.ExecuteAsync(
-                new StatusOptions(taskDirectory, Follow: true), TextWriter.Null, cancelled.Token));
+                new StatusOptions(roomDirectory, Follow: true), TextWriter.Null, cancelled.Token));
             Assert.Null(exception);
         }
         finally
@@ -428,19 +428,19 @@ public class StatusCommandEndToEndTests
         // cancelled probe returned nothing, and returning cleanly would report silence as
         // success (fail-open).
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             using var cancelled = new CancellationTokenSource();
             cancelled.Cancel();
 
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => StatusCommand.ExecuteAsync(
-                new StatusOptions(taskDirectory, Follow: false), TextWriter.Null, cancelled.Token));
+                new StatusOptions(roomDirectory, Follow: false), TextWriter.Null, cancelled.Token));
         }
         finally
         {
@@ -452,18 +452,18 @@ public class StatusCommandEndToEndTests
     public async Task Status_output_includes_per_step_timestamp_for_events_with_writer_timestamp()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
 
             var output = new StringWriter();
-            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
+            await StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory), output, TestContext.Current.CancellationToken);
 
             var text = output.ToString();
             // Timestamp format is ISO 8601 (O format), which looks like "2026-01-15T12:34:56.1234567Z"
@@ -480,13 +480,13 @@ public class StatusCommandEndToEndTests
     public async Task Status_of_a_quota_parked_step_renders_its_classification_and_local_retry_time()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
-            var (_, _, _, retryNotBefore) = await WriteParkedStepFixtureAsync(testRoot, taskDirectory);
+            var (_, _, _, retryNotBefore) = await WriteParkedStepFixtureAsync(testRoot, roomDirectory);
 
             var output = new StringWriter();
-            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
+            await StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory), output, TestContext.Current.CancellationToken);
 
             var text = output.ToString();
             var expectedLocalTime = retryNotBefore.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
@@ -502,17 +502,17 @@ public class StatusCommandEndToEndTests
     public async Task Status_of_an_ordinary_backoff_park_days_away_renders_retryable_with_the_full_date()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var (_, _, _, retryNotBefore) = await WriteParkedStepFixtureAsync(
                 testRoot,
-                taskDirectory,
+                roomDirectory,
                 FailureClassification.Retryable,
                 retryIn: TimeSpan.FromDays(3));
 
             var output = new StringWriter();
-            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
+            await StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory), output, TestContext.Current.CancellationToken);
 
             var text = output.ToString();
             var expectedLocalTime = retryNotBefore.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
@@ -529,10 +529,10 @@ public class StatusCommandEndToEndTests
     public async Task Status_of_a_step_that_retried_after_being_parked_no_longer_renders_parked()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
-            var (_, logPath, _, _) = await WriteParkedStepFixtureAsync(testRoot, taskDirectory);
+            var (_, logPath, _, _) = await WriteParkedStepFixtureAsync(testRoot, roomDirectory);
 
             var retriedExecutionId = new ExecutionId("exec-parked-2");
             var retriedRequest = new ExecutionRequest(
@@ -553,7 +553,7 @@ public class StatusCommandEndToEndTests
             }
 
             var output = new StringWriter();
-            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory), output, TestContext.Current.CancellationToken);
+            await StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory), output, TestContext.Current.CancellationToken);
 
             var text = output.ToString();
             Assert.DoesNotContain("implement: parked", text);
@@ -575,20 +575,20 @@ public class StatusCommandEndToEndTests
     private static async Task<(string SnapshotPath, string LogPath, ExecutionId ExecutionId, DateTimeOffset RetryNotBefore)>
         WriteParkedStepFixtureAsync(
             string testRoot,
-            string taskDirectory,
+            string roomDirectory,
             FailureClassification classification = FailureClassification.ExhaustedUntil,
             TimeSpan? retryIn = null)
     {
-        Directory.CreateDirectory(taskDirectory);
+        Directory.CreateDirectory(roomDirectory);
         var definition = new WorkflowDefinition(
             new WorkflowTemplateId("parked-probe"),
             1,
             [new WorkflowStepDefinition(new StepId("implement"), "implement", [], ["out"], [], new RetryPolicy(3))]);
         var snapshot = SnapshotBinder.Bind(definition);
-        var snapshotPath = Path.Combine(taskDirectory, "snapshot.json");
+        var snapshotPath = Path.Combine(roomDirectory, "snapshot.json");
         await SnapshotBinder.PersistAsync(snapshot, snapshotPath, TestContext.Current.CancellationToken);
 
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var executionId = new ExecutionId("exec-parked-1");
         var request = new ExecutionRequest(
             executionId,

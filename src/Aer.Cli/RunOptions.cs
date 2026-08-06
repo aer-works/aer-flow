@@ -5,7 +5,7 @@ namespace Aer.Cli;
 /// </summary>
 /// <param name="WorkflowFilePath">
 /// The <c>WorkflowDefinition</c> template file (spec §11.1). <b>Bound</b> from only when
-/// <paramref name="TaskDirectoryPath"/> has no persisted snapshot yet — a fresh start. So
+/// <paramref name="RoomDirectoryPath"/> has no persisted snapshot yet — a fresh start. So
 /// <c>null</c> is valid for a resume-only call (M15 Phase 1, issue #137): the CLI still requires it
 /// positionally (a terminal invocation names a workflow file whether fresh or resumed), but an
 /// in-process caller resuming a known task directory has no reason to ask the user for one.
@@ -18,7 +18,7 @@ namespace Aer.Cli;
 /// </para>
 /// </param>
 /// <param name="BindingsFilePath">The worker-binding config file (M11 Phase 1's sidecar shape).</param>
-/// <param name="TaskDirectoryPath">
+/// <param name="RoomDirectoryPath">
 /// Where this task's durable state lives — <c>snapshot.json</c>, <c>flow.jsonl</c>, <c>artifacts/</c>,
 /// <c>flow.lock</c>. Running <c>aer run</c> again against the same directory resumes it from the
 /// log rather than starting over (§7, §21): a second invocation is how a laptop sleep or a closed
@@ -35,6 +35,6 @@ namespace Aer.Cli;
 public sealed record RunOptions(
     string? WorkflowFilePath,
     string BindingsFilePath,
-    string TaskDirectoryPath,
+    string RoomDirectoryPath,
     string? WorkflowId = null,
     bool EchoWorker = false);

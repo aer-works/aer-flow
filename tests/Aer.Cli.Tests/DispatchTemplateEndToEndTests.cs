@@ -74,8 +74,8 @@ public sealed class DispatchTemplateEndToEndTests : IDisposable
                     outputFixtures: new Dictionary<string, string> { ["verdict.json"] = verdictFixture }),
                 [WorkflowTemplateComposer.CaptureAdapter] = capture,
             };
-            var taskDirectory = Path.Combine(testRoot, "task");
-            var options = new DispatchOptions("implement-review", SpecFilePath: null, taskDirectory, Adapter: "fake");
+            var roomDirectory = Path.Combine(testRoot, "task");
+            var options = new DispatchOptions("implement-review", SpecFilePath: null, roomDirectory, Adapter: "fake");
 
             var state = (await DispatchCommand.ExecuteAsync(
                 options, adapters, TestContext.Current.CancellationToken, workspaceDirectory: workspace)).State;
@@ -103,13 +103,13 @@ public sealed class DispatchTemplateEndToEndTests : IDisposable
             // contract does not require the input file to be present to succeed.
             var captureStep = state.Steps.Single(s => s.StepId.Value == "review-capture");
             var artifactPath = Path.Combine(
-                taskDirectory, "artifacts", $"execution_{captureStep.LatestExecutionId}",
+                roomDirectory, "artifacts", $"execution_{captureStep.LatestExecutionId}",
                 WorkflowTemplateComposer.CaptureOutputName);
             Assert.True(File.Exists(artifactPath), $"capture artifact missing at {artifactPath}");
 
             // Persisted like any run, so the task is resumable.
-            Assert.True(File.Exists(Path.Combine(taskDirectory, "workflow.json")));
-            Assert.True(File.Exists(Path.Combine(taskDirectory, "bindings.json")));
+            Assert.True(File.Exists(Path.Combine(roomDirectory, "workflow.json")));
+            Assert.True(File.Exists(Path.Combine(roomDirectory, "bindings.json")));
         }
         finally
         {

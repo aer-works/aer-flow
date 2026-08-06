@@ -72,7 +72,7 @@ public static class TokenGenerator
     /// <summary>
     /// The five states as a C# type (#458). Flutter has had a generated <c>AerStatus</c> enum since
     /// #345 while the desktop side had nothing — its converters still keyed on the pre-#334
-    /// <c>StepStatus</c>/<c>TaskCardStatus</c> vocabularies, which is how <c>readyForReview</c> ended
+    /// <c>StepStatus</c>/<c>RoomCardStatus</c> vocabularies, which is how <c>readyForReview</c> ended
     /// up with no mark at all and <c>needsInput</c> ended up drawing the same dot as idle. Generating
     /// it means the two toolkits cannot disagree about what the states even are.
     /// </summary>

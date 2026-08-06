@@ -31,12 +31,12 @@ public class RunCommandEndToEndTests
     public async Task A_three_step_linear_workflow_runs_to_completion_through_RunCommand()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
 
@@ -44,14 +44,14 @@ public class RunCommandEndToEndTests
             Assert.Equal(3, finalState.Steps.Count);
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
-            var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+            var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
             var stepStateById = finalState.Steps.ToDictionary(s => s.StepId);
             await AssertOutputAsync(artifactsRoot, stepStateById[new StepId("architect")], "plan", "the-plan");
             await AssertOutputAsync(artifactsRoot, stepStateById[new StepId("critic")], "review", "the-plan");
             await AssertOutputAsync(artifactsRoot, stepStateById[new StepId("publisher")], "summary", "the-plan");
 
             // WorkflowId defaults to the bound snapshot's WorkflowTemplateId when not given.
-            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var reader = new FlowEventLogReader(Path.Combine(roomDirectory, "flow.jsonl"));
             var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var requests = events.OfType<FlowEvent.ExecutionRequestAccepted>().Select(e => e.Request).ToList();
             Assert.Equal(3, requests.Count);
@@ -67,17 +67,17 @@ public class RunCommandEndToEndTests
     public async Task Running_again_against_the_same_task_directory_resumes_without_redispatching()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var firstRun = (await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.All(firstRun.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             var eventCountAfterFirstRun = (await new FlowEventLogReader(logPath).ReadAllAsync(TestContext.Current.CancellationToken)).Count;
 
             var secondRun = (await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
@@ -170,13 +170,13 @@ public class RunCommandEndToEndTests
     public async Task Resuming_a_task_directory_bound_to_a_different_template_is_refused()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var boundWorkflowPath = await WriteThreeStepWorkflowAsync(testRoot);
             await RunCommand.ExecuteAsync(
-                new RunOptions(boundWorkflowPath, bindingsFilePath, taskDirectory),
+                new RunOptions(boundWorkflowPath, bindingsFilePath, roomDirectory),
                 Adapters,
                 cancellationToken: TestContext.Current.CancellationToken);
 
@@ -185,13 +185,13 @@ public class RunCommandEndToEndTests
 
             var thrown = await Assert.ThrowsAsync<ResumedTemplateMismatchException>(
                 () => RunCommand.ExecuteAsync(
-                    new RunOptions(otherWorkflowPath, bindingsFilePath, taskDirectory),
+                    new RunOptions(otherWorkflowPath, bindingsFilePath, roomDirectory),
                     Adapters,
                     cancellationToken: TestContext.Current.CancellationToken));
 
             Assert.Equal("three-step-linear", thrown.BoundTemplateId);
             Assert.Equal("some-other-task", thrown.NamedTemplateId);
-            Assert.Equal(taskDirectory, thrown.TaskDirectoryPath);
+            Assert.Equal(roomDirectory, thrown.RoomDirectoryPath);
         }
         finally
         {
@@ -210,15 +210,15 @@ public class RunCommandEndToEndTests
         // the obvious way to write this, cannot tell the two placements apart — a terminal flow
         // dispatches nothing wherever the check sits.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            Directory.CreateDirectory(taskDirectory);
+            Directory.CreateDirectory(roomDirectory);
             var bound = SnapshotBinder.Bind(
                 await WorkflowDefinitionParser.LoadFromFileAsync(
                     await WriteThreeStepWorkflowAsync(testRoot), TestContext.Current.CancellationToken));
-            var snapshotPath = Path.Combine(taskDirectory, "snapshot.json");
+            var snapshotPath = Path.Combine(roomDirectory, "snapshot.json");
             await SnapshotBinder.PersistAsync(bound, snapshotPath, TestContext.Current.CancellationToken);
             var snapshotBefore = await File.ReadAllTextAsync(snapshotPath, TestContext.Current.CancellationToken);
 
@@ -226,11 +226,11 @@ public class RunCommandEndToEndTests
                 Path.Combine(testRoot, "other"), templateId: "some-other-task");
             await Assert.ThrowsAsync<ResumedTemplateMismatchException>(
                 () => RunCommand.ExecuteAsync(
-                    new RunOptions(otherWorkflowPath, bindingsFilePath, taskDirectory),
+                    new RunOptions(otherWorkflowPath, bindingsFilePath, roomDirectory),
                     Adapters,
                     cancellationToken: TestContext.Current.CancellationToken));
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             Assert.True(
                 !File.Exists(logPath)
                     || (await new FlowEventLogReader(logPath).ReadAllAsync(TestContext.Current.CancellationToken)).Count == 0,
@@ -252,19 +252,19 @@ public class RunCommandEndToEndTests
         // A resume supplying a WorkflowFilePath to a file that does not exist throws WorkflowDefinitionValidationException
         // (an AerFlowException) rather than silently skipping the template mismatch check.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var boundWorkflowPath = await WriteThreeStepWorkflowAsync(testRoot);
             await RunCommand.ExecuteAsync(
-                new RunOptions(boundWorkflowPath, bindingsFilePath, taskDirectory),
+                new RunOptions(boundWorkflowPath, bindingsFilePath, roomDirectory),
                 Adapters,
                 cancellationToken: TestContext.Current.CancellationToken);
 
             await Assert.ThrowsAsync<WorkflowDefinitionValidationException>(
                 () => RunCommand.ExecuteAsync(
-                    new RunOptions("three-step-linear", bindingsFilePath, taskDirectory),
+                    new RunOptions("three-step-linear", bindingsFilePath, roomDirectory),
                     Adapters,
                     cancellationToken: TestContext.Current.CancellationToken));
         }
@@ -282,20 +282,20 @@ public class RunCommandEndToEndTests
         // on a check keyed to the file path, which would break every legitimate resume from a copied
         // or regenerated workflow file.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var boundWorkflowPath = await WriteThreeStepWorkflowAsync(testRoot);
             await RunCommand.ExecuteAsync(
-                new RunOptions(boundWorkflowPath, bindingsFilePath, taskDirectory),
+                new RunOptions(boundWorkflowPath, bindingsFilePath, roomDirectory),
                 Adapters,
                 cancellationToken: TestContext.Current.CancellationToken);
 
             var samePath = await WriteThreeStepWorkflowAsync(Path.Combine(testRoot, "elsewhere"));
 
             var result = await RunCommand.ExecuteAsync(
-                new RunOptions(samePath, bindingsFilePath, taskDirectory),
+                new RunOptions(samePath, bindingsFilePath, roomDirectory),
                 Adapters,
                 cancellationToken: TestContext.Current.CancellationToken);
 
@@ -315,18 +315,18 @@ public class RunCommandEndToEndTests
         // caller resuming a known task directory need not produce one (M15 Phase 1, #137) — nothing
         // was named, so there is no disagreement to refuse.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var boundWorkflowPath = await WriteThreeStepWorkflowAsync(testRoot);
             await RunCommand.ExecuteAsync(
-                new RunOptions(boundWorkflowPath, bindingsFilePath, taskDirectory),
+                new RunOptions(boundWorkflowPath, bindingsFilePath, roomDirectory),
                 Adapters,
                 cancellationToken: TestContext.Current.CancellationToken);
 
             var result = await RunCommand.ExecuteAsync(
-                new RunOptions(WorkflowFilePath: null, bindingsFilePath, taskDirectory),
+                new RunOptions(WorkflowFilePath: null, bindingsFilePath, roomDirectory),
                 Adapters,
                 cancellationToken: TestContext.Current.CancellationToken);
 
@@ -346,12 +346,12 @@ public class RunCommandEndToEndTests
         // one: same status line, same exit code, no new events. This flag is what FlowStateReporter
         // says it with.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var fresh = await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.False(fresh.ResumedFromSnapshot);
@@ -429,7 +429,7 @@ public class RunCommandEndToEndTests
     public async Task RunCommand_reporting_prints_output_artifact_paths_for_succeeded_runs_and_omits_failed_steps()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
@@ -461,7 +461,7 @@ public class RunCommandEndToEndTests
             var bindingsFilePath = Path.Combine(testRoot, "bindings.json");
             await File.WriteAllTextAsync(bindingsFilePath, JsonSerializer.Serialize(config), TestContext.Current.CancellationToken);
 
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var result = await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -475,8 +475,8 @@ public class RunCommandEndToEndTests
             Assert.Equal(StepStatus.Succeeded, succStepState.Status);
             Assert.Equal(StepStatus.Failed, failStepState.Status);
 
-            var expectedPlanPath = Path.GetFullPath(Path.Combine(taskDirectory, "artifacts", $"execution_{succStepState.LatestExecutionId}", "plan"));
-            var unexpectedFailPath = Path.GetFullPath(Path.Combine(taskDirectory, "artifacts", $"execution_{failStepState.LatestExecutionId}", "fail_out"));
+            var expectedPlanPath = Path.GetFullPath(Path.Combine(roomDirectory, "artifacts", $"execution_{succStepState.LatestExecutionId}", "plan"));
+            var unexpectedFailPath = Path.GetFullPath(Path.Combine(roomDirectory, "artifacts", $"execution_{failStepState.LatestExecutionId}", "fail_out"));
 
             Assert.Contains($"plan -> {expectedPlanPath}", reportOutput);
             Assert.True(File.Exists(expectedPlanPath));
@@ -494,14 +494,14 @@ public class RunCommandEndToEndTests
     public async Task When_echo_worker_flag_is_set_worker_stdout_is_written_to_console()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-echo-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         var originalOut = Console.Out;
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteEchoBindingsAsync(testRoot, "hello-live-worker-stdout");
             var options = RunOptionsParser.Parse(
-                [workflowFilePath, "--bindings", bindingsFilePath, "--task-dir", taskDirectory, "--echo-worker"]);
+                [workflowFilePath, "--bindings", bindingsFilePath, "--task-dir", roomDirectory, "--echo-worker"]);
 
             using var consoleOutput = new StringWriter();
             Console.SetOut(consoleOutput);
@@ -523,14 +523,14 @@ public class RunCommandEndToEndTests
     public async Task When_echo_worker_flag_is_not_set_worker_stdout_is_not_written_to_console()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-noecho-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         var originalOut = Console.Out;
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteEchoBindingsAsync(testRoot, "hello-live-worker-stdout");
             var options = RunOptionsParser.Parse(
-                [workflowFilePath, "--bindings", bindingsFilePath, "--task-dir", taskDirectory]);
+                [workflowFilePath, "--bindings", bindingsFilePath, "--task-dir", roomDirectory]);
 
             using var consoleOutput = new StringWriter();
             Console.SetOut(consoleOutput);

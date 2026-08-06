@@ -45,7 +45,7 @@ public class SessionMetadataSchemaToleranceTests
             await File.WriteAllTextAsync(path, """
                 {
                   "SessionId": "sess-legacy-001",
-                  "TaskDirectoryPath": "C:\\tmp\\legacy-room",
+                  "RoomDirectoryPath": "C:\\tmp\\legacy-room",
                   "CurrentAdapter": "claude",
                   "CurrentVendorSessionId": "vendor-abc",
                   "Model": "claude-haiku-4-5-20251001",

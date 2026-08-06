@@ -82,7 +82,7 @@ and reached `Paused` (its own execution incidentally also failed transiently —
 phase, see below — which is itself a valid pause-worthy outcome per the engine's contract). The
 paused card appeared in the phone's inbox with no manual refresh, live over the WS connection
 established at pairing. Reject from the phone resolved it; the daemon's own projection (queried via
-`/api/tasks/open`) confirmed `Terminal`/`Rejected` and a decision record, matching the second-WS-
+`/api/rooms/open`) confirmed `Terminal`/`Rejected` and a decision record, matching the second-WS-
 broadcast confirmation Phase 2 already proved over LAN.
 
 Windows Firewall had a pre-existing `aer.daemon.exe` allow rule for the Private/Public profiles, and

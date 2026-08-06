@@ -54,7 +54,7 @@
 
       <ItemsControl x:Name="TasksList" ItemsSource="{Binding Tasks.Items}">
         <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:TaskFleetItemViewModel">
+          <DataTemplate x:DataType="vm:RoomFleetItemViewModel">
             <Border Classes="card" Margin="0,0,0,8">
               <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
                 <CheckBox IsChecked="{Binding IsSelected}" VerticalAlignment="Top" Margin="0,2,0,0" />
@@ -68,7 +68,7 @@
                   <TextBlock Classes="secondary" Text="{Binding StatusText}" />
                   <TextBlock Classes="caption" Text="{Binding PausedStepCount, StringFormat='{}{0} step(s) awaiting a decision'}"
                              IsVisible="{Binding HasPausedSteps}" />
-                  <TextBlock Classes="caption" Text="{Binding TaskDirectoryPath}" />
+                  <TextBlock Classes="caption" Text="{Binding RoomDirectoryPath}" />
                   <TextBlock Classes="caption secondary" Foreground="{DynamicResource Status.Failed}"
                              TextWrapping="Wrap" Text="{Binding RowErrorText}"
                              IsVisible="{Binding HasRowErrorText}" />

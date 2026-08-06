@@ -31,7 +31,7 @@ public class MutationInterfaceCrashRecoveryTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: []));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -47,7 +47,7 @@ public class MutationInterfaceCrashRecoveryTests
             var aResult = stub.EnqueueResult(A);
 
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             aResult.SetResult(Succeeded);
             var state = await runTask;
@@ -62,7 +62,7 @@ public class MutationInterfaceCrashRecoveryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -71,7 +71,7 @@ public class MutationInterfaceCrashRecoveryTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: []), Step(C, dependsOn: [A]));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -87,14 +87,14 @@ public class MutationInterfaceCrashRecoveryTests
             var stub = new StubCoreDispatcher();
 
             var state = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Cancelled, state.Steps.Single(s => s.StepId == A).Status);
             Assert.Equal(StepStatus.Pending, state.Steps.Single(s => s.StepId == C).Status);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -103,7 +103,7 @@ public class MutationInterfaceCrashRecoveryTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: []), Step(C, dependsOn: [A]));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -123,7 +123,7 @@ public class MutationInterfaceCrashRecoveryTests
 
             // Nothing enqueued for A: it must be classified from the recorded exit, never dispatched.
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(C, await ReadNextDispatchAsync(stub));
             cResult.SetResult(Succeeded);
             var state = await runTask;
@@ -136,7 +136,7 @@ public class MutationInterfaceCrashRecoveryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -145,7 +145,7 @@ public class MutationInterfaceCrashRecoveryTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: [], maxAttempts: 2));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -161,7 +161,7 @@ public class MutationInterfaceCrashRecoveryTests
             var retryResult = stub.EnqueueResult(A);
 
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             retryResult.SetResult(Succeeded);
             var state = await runTask;
@@ -175,7 +175,7 @@ public class MutationInterfaceCrashRecoveryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -184,7 +184,7 @@ public class MutationInterfaceCrashRecoveryTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: [], maxAttempts: 2));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -200,7 +200,7 @@ public class MutationInterfaceCrashRecoveryTests
             var retryResult = stub.EnqueueResult(A);
 
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             retryResult.SetResult(Succeeded);
             var state = await runTask;
@@ -215,7 +215,7 @@ public class MutationInterfaceCrashRecoveryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -224,7 +224,7 @@ public class MutationInterfaceCrashRecoveryTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: [], maxAttempts: 2));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -243,7 +243,7 @@ public class MutationInterfaceCrashRecoveryTests
 
             // Nothing enqueued for the orphan's own ExecutionId: it must never be dispatched again.
             var runTask = MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(A, await ReadNextDispatchAsync(stub));
             retryResult.SetResult(Succeeded);
             var state = await runTask;
@@ -262,7 +262,7 @@ public class MutationInterfaceCrashRecoveryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -271,7 +271,7 @@ public class MutationInterfaceCrashRecoveryTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: [], maxAttempts: 1));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -287,14 +287,14 @@ public class MutationInterfaceCrashRecoveryTests
             var stub = new StubCoreDispatcher();
 
             var state = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Failed, state.Steps.Single().Status);
             Assert.Equal(orphanExecutionId, state.Steps.Single().LatestExecutionId);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -307,7 +307,7 @@ public class MutationInterfaceCrashRecoveryTests
         // request-derived fallback (names only, no conditions) is NOT what runs when the live
         // contract is available.
         var snapshot = MakeSnapshot(Step(A, dependsOn: [], worker: "conditioned-worker"));
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -337,7 +337,7 @@ public class MutationInterfaceCrashRecoveryTests
             };
 
             var state = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer,
+                workflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer,
                 new StubCoreDispatcher(), cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Failed, state.Steps.Single(s => s.StepId == A).Status);
@@ -347,7 +347,7 @@ public class MutationInterfaceCrashRecoveryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -358,7 +358,7 @@ public class MutationInterfaceCrashRecoveryTests
         // REFUSING (see RefusingBindings) — the classify path must fall back to the recorded
         // request's contract, not surface the refusal.
         var snapshot = MakeSnapshot(Step(A, dependsOn: [], worker: "unresolvable-worker"));
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -376,7 +376,7 @@ public class MutationInterfaceCrashRecoveryTests
             await writer.AppendAsync(new CoreEvent.ExecutionExited(executionId, ExitCode: 0, CoreExitReason.Natural), TestContext.Current.CancellationToken);
 
             var state = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, new RefusingBindings(), artifactsRoot, reader, writer,
+                workflowId, roomDirectory, snapshot, new RefusingBindings(), artifactsRoot, reader, writer,
                 new StubCoreDispatcher(), cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Succeeded, state.Steps.Single(s => s.StepId == A).Status);
@@ -385,7 +385,7 @@ public class MutationInterfaceCrashRecoveryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -394,7 +394,7 @@ public class MutationInterfaceCrashRecoveryTests
     {
         var snapshot = MakeSnapshot(Step(A, dependsOn: [], worker: "unresolvable-worker"));
 
-        var (taskDirectory, artifactsRoot, logPath) = MakeTaskPaths();
+        var (roomDirectory, artifactsRoot, logPath) = MakeTaskPaths();
         try
         {
             await using var writer = new FlowEventLogWriter(logPath);
@@ -422,7 +422,7 @@ public class MutationInterfaceCrashRecoveryTests
             var stub = new StubCoreDispatcher();
 
             var state = await MutationInterface.StartWorkflowAsync(
-                workflowId, taskDirectory, snapshot, emptyBindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
+                workflowId, roomDirectory, snapshot, emptyBindings, artifactsRoot, reader, writer, stub, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(StepStatus.Succeeded, state.Steps.Single(s => s.StepId == A).Status);
 
@@ -431,7 +431,7 @@ public class MutationInterfaceCrashRecoveryTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -494,8 +494,8 @@ public class MutationInterfaceCrashRecoveryTests
 
     private static (string TaskDirectory, string ArtifactsRoot, string LogPath) MakeTaskPaths()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        return (taskDirectory, Path.Combine(taskDirectory, "artifacts"), Path.Combine(taskDirectory, "flow.jsonl"));
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        return (roomDirectory, Path.Combine(roomDirectory, "artifacts"), Path.Combine(roomDirectory, "flow.jsonl"));
     }
 
     private static async Task<StepId> ReadNextDispatchAsync(StubCoreDispatcher stub)

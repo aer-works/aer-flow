@@ -173,7 +173,7 @@
                  SelectedItem="{Binding Tasks.CurrentItem}"
                  Background="Transparent" BorderThickness="0">
           <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="vm:TaskFleetItemViewModel">
+            <DataTemplate x:DataType="vm:RoomFleetItemViewModel">
               <StackPanel Spacing="2" Margin="0,2">
                 <TextBlock Classes="body-strong" Text="{Binding FriendlyName}"
                            TextTrimming="CharacterEllipsis" />
@@ -202,7 +202,7 @@
     </Border>
     <Panel>
       <views:HomeView x:Name="HomeViewControl" IsVisible="{Binding IsHomeVisible}" />
-      <views:TaskView x:Name="TaskViewControl" IsVisible="{Binding IsTaskVisible}" />
+      <views:RoomView x:Name="RoomViewControl" IsVisible="{Binding IsTaskVisible}" />
       <views:AuthorView x:Name="AuthorViewControl" IsVisible="{Binding IsAuthorVisible}" />
       <views:RemoteView x:Name="RemoteViewControl" IsVisible="{Binding IsRemoteVisible}" />
       <views:ChatView x:Name="ChatViewControl" IsVisible="{Binding IsChatVisible}" />

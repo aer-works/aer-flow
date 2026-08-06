@@ -75,13 +75,13 @@ The durable decisions each milestone left behind, newest first — each entry ci
 - **Daemon template materialization & execution endpoints (Phase 2)** — `GET /api/templates` lists available built-in templates and installed vendor CLIs. `POST /api/templates/run` materializes template files (`workflow.json`, `bindings.json`) into a daemon-managed directory (`~/.aer/tasks/task-{timestamp}`) and dispatches execution via `TaskSession.RunAsync` with zero caller-supplied path arguments, allowing clients with no host filesystem access to initiate tasks.
 - **Desktop template picker (Phase 3)** — `TemplatePickerWindow` in `Aer.Ui` provides a visual dialog for picking built-in templates, selecting available vendor CLIs, specifying optional task names or initial prompts, and launching execution directly into the desktop Task view.
 - **Mobile template picker (Phase 4)** — `DaemonClient` gains `listTemplates()` and `runTemplate(...)`. `Aer.Mobile` (`inbox_screen.dart`) surfaces a "Start from template" dialog in empty and active inbox states, giving the mobile app its first capability to start a new task from scratch over REST and observe live updates over WebSockets.
-- **Artifact-referenced supply & mobile send-back (Phase 5)** — `POST /api/tasks/decide` accepts an optional `ArtifactReference` (`{ executionId, fileName }`). The daemon resolves the artifact path server-side using `ArtifactManager.ResolveOutputDirectory`, eliminating the need for remote clients to have host filesystem access. `Aer.Mobile` surfaces a "Send back to `<target>`" button on paused review steps, triggering Supersede with artifact-referenced feedback.
+- **Artifact-referenced supply & mobile send-back (Phase 5)** — `POST /api/rooms/decide` accepts an optional `ArtifactReference` (`{ executionId, fileName }`). The daemon resolves the artifact path server-side using `ArtifactManager.ResolveOutputDirectory`, eliminating the need for remote clients to have host filesystem access. `Aer.Mobile` surfaces a "Send back to `<target>`" button on paused review steps, triggering Supersede with artifact-referenced feedback.
 
 ## M21: Zero-Config Remote Control & Permission Scopes
 
 - **Permission grants are structured and vendor-neutral (Phase 1)** — `PermissionGrant` replaces opaque adapter flag strings (`ReadFiles`, `WriteFiles`, `RunShellCommands` with wildcard glob matching, `NetworkAccess`). Each adapter translates grants into vendor-native flags inside `Resolve()` (Adapter Isolation rule).
 - **Mobile remote client is pure WebSocket + REST (Phase 2)** — `Aer.Mobile` (Flutter) pairs via QR code, listens to the daemon's WebSocket stream, and issues decisions (`Approve`, `Reject`, `Cancel`) over the daemon REST API.
-- **Remote client artifact fetching and directory discovery (Phase 2)** — `GET /api/tasks/artifact` provides safe read-only access to step outputs for remote clients with no local filesystem access. WebSocket payloads carry `DirectoryPath` as a top-level property so clients listening to WS broadcasts can issue decision requests without prior host-side path knowledge.
+- **Remote client artifact fetching and directory discovery (Phase 2)** — `GET /api/rooms/artifact` provides safe read-only access to step outputs for remote clients with no local filesystem access. WebSocket payloads carry `DirectoryPath` as a top-level property so clients listening to WS broadcasts can issue decision requests without prior host-side path knowledge.
 - **Desktop pairing UX and single-scan auth (Phases 3, 7)** — `RemoteView` in `Aer.Ui` generates 60s transient pairing codes and renders the QR code containing connection info (`host`, `token`, `tsnetRouted`, `tskey`). Scanning the QR code embeds the Tailscale auth key (`tskey`) so pairing and tailnet joining happen in a single step with zero extra setup.
 - **Zero-config Tailscale TCP splicing architecture (Phases 5, 7, 8)** — Desktop spawns `aer-sidecar.exe` (Go `tsnet`) when `--remote` is enabled, joining the tailnet as `aer-sidecar` and TCP-splicing incoming traffic directly to Kestrel loopback (`127.0.0.1`). Kestrel stays loopback-bound and protocol-agnostic. Mobile embeds `tsnet` via Go CGO (`tailscale` package), joining as `aer-mobile`. REST requests use `TailnetGateway().client` and WebSocket streams dial over `TailscaleWsSocket` (`tcp.dial`) with a pure Dart RFC 6455 codec (`ws_codec.dart`, `ws_client.dart`), requiring zero standalone Tailscale app installations on either device.
 - **Client token management and revocation (Phase 6)** — M20's deferred token management is fully closed: pairing codes expire in 60s with auto-refresh and 5-attempt lockout, and paired devices can be revoked interactively from `RemoteView` via `DELETE /api/pairing/clients/{id}`.
@@ -714,7 +714,7 @@ The durable decisions each milestone left behind, newest first — each entry ci
   (Phase 3's own precedent), even though only the decide call ever registers a process dispatch
   (Phase 4).
 - **`MainWindowViewModel.RunningExecutions` (`RunningExecutionViewModel`) is the §7 targeted-Cancel
-  surface**, rebuilt from `TaskProjection` on every load exactly like `PausedSteps` — one entry per
+  surface**, rebuilt from `RoomProjection` on every load exactly like `PausedSteps` — one entry per
   step whose latest attempt is `StepStatus.Running`, plus one per pending step-less/human execution
   (`FlowState.StepLessExecutions`), both valid `RequestCancellationAsync` targets. Two-phase
   reflection (§7) reuses `FlowState.CancellationRequestedExecutionIds` directly rather than adding a
@@ -807,7 +807,7 @@ The durable decisions each milestone left behind, newest first — each entry ci
 - **`ExecutionHistory`/`ExecutionHistoryProjector` is an `Aer.Ui`-only read-model type, not an
   addition to `FlowState`.** `StateProjector` deliberately collapses each step to its latest
   attempt (§12); full per-execution history is a presentation-layer fact re-derived from the same
-  event list, never a dispatch-affecting one. `TaskProjection` carries `Snapshot`/`State`/`History`
+  event list, never a dispatch-affecting one. `RoomProjection` carries `Snapshot`/`State`/`History`
   (Phase 2).
 - **A non-process/human execution is identified by `ExecutionRequest.Timeout is null`** — the only
   signal already durable on disk once the read side has nothing but the event log and snapshot
@@ -833,7 +833,7 @@ The durable decisions each milestone left behind, newest first — each entry ci
   status overlay branches. Layering is longest-path-from-root, columns in declaration order; all
   output order derives from walking the input lists, never `Dictionary`/`HashSet` enumeration
   order — as deterministic as §11 requires, assertable by the golden gate (Phase 3).
-- **`TemplateProjectionLoader` is a separate loader, not a branch inside `TaskProjectionLoader`**
+- **`TemplateProjectionLoader` is a separate loader, not a branch inside `RoomProjectionLoader`**
   (different durable-state shapes); `MainWindow.OpenAsync` routes on `File.Exists` vs.
   `Directory.Exists` — a template file and a task directory are never ambiguous on disk. Opening a
   template records no recents and starts no live-refresh timer (Phase 3).

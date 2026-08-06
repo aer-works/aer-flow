@@ -167,7 +167,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool HasRoomTurnHostBanner => RoomTurnHostBanner is not null;
 
     /// <summary>The open task's steps as the drill-in surface (M19 Phase 3, #188) — rebuilt wholesale on every load/refresh by <see cref="RebuildTaskSteps"/>.</summary>
-    public ObservableCollection<StepItemViewModel> TaskSteps { get; } = [];
+    public ObservableCollection<StepItemViewModel> RoomSteps { get; } = [];
 
     /// <summary>The step whose drill-in is open. Re-anchored by step id across rebuilds; defaults needs-you-first (paused, else running, else the first step).</summary>
     [ObservableProperty]
@@ -178,11 +178,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>The task-level plain-language headline (the vocabulary map's primary text) — the precise <c>Workflow status:</c> line lives in the Details disclosure.</summary>
     [ObservableProperty]
-    private string taskHeadlineText = "No task open.";
+    private string roomHeadlineText = "No task open.";
 
     partial void OnSelectedStepChanged(StepItemViewModel? value)
     {
-        foreach (var step in TaskSteps)
+        foreach (var step in RoomSteps)
         {
             step.IsSelected = ReferenceEquals(step, value);
         }
@@ -202,10 +202,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// there — <see cref="ChatViewModel.NewChatAdapter"/> is consulted only by the start-new-chat
     /// flow, never by an open session's send path, which keeps speaking to whatever vendor the
     /// session was started with. The open session is always this task's own: the window's
-    /// navigation resyncs Chat to whichever directory populates <see cref="TaskSteps"/>
+    /// navigation resyncs Chat to whichever directory populates <see cref="RoomSteps"/>
     /// (<c>MainWindow.OpenAsync</c>), and the banner test pins that invariant.
     /// </summary>
-    public void AskWorkerToFix(string adapter, string stepId, string reason, string taskDirectoryPath)
+    public void AskWorkerToFix(string adapter, string stepId, string reason, string roomDirectoryPath)
     {
         // The banner always supplies the step's own adapter; no invented fallback vendor here — if
         // that adapter is not available on this host, the picker's first available stands in and
@@ -222,7 +222,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         if (!Chat.IsSessionOpen)
         {
-            Chat.NewChatWorkingDirectory = taskDirectoryPath;
+            Chat.NewChatWorkingDirectory = roomDirectoryPath;
             Chat.RefreshNewChatAdapterSelection();
         }
 
@@ -236,20 +236,20 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Rebuilds <see cref="TaskSteps"/> from a fresh projection (M19 Phase 3, #188). The preview
+    /// Rebuilds <see cref="RoomSteps"/> from a fresh projection (M19 Phase 3, #188). The preview
     /// and conversation delegates are the skin's render targets — the same inversion
     /// <see cref="TaskSession"/> uses, keeping this assembly Avalonia-free.
     /// </summary>
     public void RebuildTaskSteps(
-        TaskProjection projection,
-        string taskDirectoryPath,
+        RoomProjection projection,
+        string roomDirectoryPath,
         Func<string, Task> previewFileAsync,
         Action<string, string> showConversation,
         IReadOnlyDictionary<string, string>? workerAdapters = null)
     {
         var previousSelectedStepId = SelectedStep?.StepId;
 
-        TaskSteps.Clear();
+        RoomSteps.Clear();
         // reRunAction only for a Terminal task: Run's re-run-as-clone flow (see IsTaskFinished)
         // exists only then. While a sibling branch still runs or waits on a decision, the same
         // click resumes the directory in place — for a Failed step with no pending obligation the
@@ -258,34 +258,34 @@ public sealed partial class MainWindowViewModel : ObservableObject
         // the IsTaskFinished property, so it cannot depend on the skin's render order.
         var reRunAvailable = projection.State.Status == Aer.Flow.Domain.WorkflowStatus.Terminal;
         foreach (var item in StepItemProjector.Build(
-            projection, taskDirectoryPath, PausedSteps, previewFileAsync, showConversation,
+            projection, roomDirectoryPath, PausedSteps, previewFileAsync, showConversation,
             select: item => SelectedStep = item,
             workerAdapters: workerAdapters,
             reRunAction: reRunAvailable ? () => ReRunRequested?.Invoke() : null,
-            askWorkerToFixAction: (adapter, stepId, reason) => AskWorkerToFix(adapter, stepId, reason, taskDirectoryPath)))
+            askWorkerToFixAction: (adapter, stepId, reason) => AskWorkerToFix(adapter, stepId, reason, roomDirectoryPath)))
         {
-            TaskSteps.Add(item);
+            RoomSteps.Add(item);
         }
 
-        TaskHeadlineText = PlainLanguage.ForWorkflow(projection);
+        RoomHeadlineText = PlainLanguage.ForWorkflow(projection);
         SelectedStep =
-            TaskSteps.FirstOrDefault(step => step.StepId == previousSelectedStepId) ??
-            TaskSteps.FirstOrDefault(step => step.IsPaused) ??
-            TaskSteps.FirstOrDefault(step => step.Status == Aer.Flow.Domain.StepStatus.Running) ??
-            TaskSteps.FirstOrDefault();
+            RoomSteps.FirstOrDefault(step => step.StepId == previousSelectedStepId) ??
+            RoomSteps.FirstOrDefault(step => step.IsPaused) ??
+            RoomSteps.FirstOrDefault(step => step.Status == Aer.Flow.Domain.StepStatus.Running) ??
+            RoomSteps.FirstOrDefault();
     }
 
     /// <summary>Clears the drill-in surface — the error-path counterpart of <see cref="RebuildTaskSteps"/>.</summary>
     public void ClearTaskSteps()
     {
-        TaskSteps.Clear();
+        RoomSteps.Clear();
         SelectedStep = null;
-        TaskHeadlineText = "No task open.";
+        RoomHeadlineText = "No task open.";
     }
 
     /// <summary>Selects a step by id — the DAG canvas's node-click entry point (the canvas stays code-behind until Phase 5 makes it a custom control).</summary>
     public void SelectStepById(string stepId)
-        => SelectedStep = TaskSteps.FirstOrDefault(step => step.StepId == stepId) ?? SelectedStep;
+        => SelectedStep = RoomSteps.FirstOrDefault(step => step.StepId == stepId) ?? SelectedStep;
 
     partial void OnCurrentSectionChanged(ShellSection value) => SectionChanged?.Invoke(value);
 

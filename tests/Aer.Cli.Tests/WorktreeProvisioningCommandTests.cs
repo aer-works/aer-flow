@@ -24,7 +24,7 @@ public class WorktreeProvisioningCommandTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-worktree-decide-{Guid.NewGuid():N}");
         var repository = Path.Combine(testRoot, "repo");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             await SetupGitRepositoryAsync(repository, "notes.txt", "from-the-decide-worktree", "review-target");
@@ -32,16 +32,16 @@ public class WorktreeProvisioningCommandTests
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteWorktreeBindingsAsync(testRoot, repository, "review-target");
 
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, pausedResult.State.Status);
 
-            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
+            var worktreePath = Path.Combine(roomDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
             Assert.True(Directory.Exists(worktreePath), "Worktree should be provisioned during run");
 
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
             var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
@@ -49,10 +49,10 @@ public class WorktreeProvisioningCommandTests
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
             Assert.Equal(StepStatus.Succeeded, finalResult.State.Steps.Single(s => s.StepId.Value == "b").Status);
 
-            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var reader = new FlowEventLogReader(Path.Combine(roomDirectory, "flow.jsonl"));
             var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var bExecutionId = events.OfType<FlowEvent.ExecutionSucceeded>().Last().ExecutionId;
-            var outputPath = Path.Combine(taskDirectory, "artifacts", $"execution_{bExecutionId}", "output_b");
+            var outputPath = Path.Combine(roomDirectory, "artifacts", $"execution_{bExecutionId}", "output_b");
             Assert.Equal(
                 "from-the-decide-worktree", (await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken)).Trim());
 
@@ -69,7 +69,7 @@ public class WorktreeProvisioningCommandTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-worktree-decide-paused-{Guid.NewGuid():N}");
         var repository = Path.Combine(testRoot, "repo");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             await SetupGitRepositoryAsync(repository, "notes.txt", "keep-worktree-on-paused", "review-target");
@@ -77,16 +77,16 @@ public class WorktreeProvisioningCommandTests
             var workflowFilePath = await WriteTwoGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteWorktreeBindingsAsyncForTwoGate(testRoot, repository, "review-target");
 
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             var pausedResult1 = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, pausedResult1.State.Status);
 
-            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
+            var worktreePath = Path.Combine(roomDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
             Assert.True(Directory.Exists(worktreePath));
 
             var pausedExecutionId = pausedResult1.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
             var pausedResult2 = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
@@ -105,7 +105,7 @@ public class WorktreeProvisioningCommandTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-worktree-supply-{Guid.NewGuid():N}");
         var repository = Path.Combine(testRoot, "repo");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             await SetupGitRepositoryAsync(repository, "notes.txt", "from-supply-repo", "review-target");
@@ -114,16 +114,16 @@ public class WorktreeProvisioningCommandTests
             var plainBindingsFilePath = await WritePlainBindingsAsync(Path.Combine(testRoot, "plain"));
             var worktreeBindingsFilePath = await WriteWorktreeBindingsAsync(Path.Combine(testRoot, "wt"), repository, "review-target");
 
-            var runOptions = new RunOptions(workflowFilePath, plainBindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, plainBindingsFilePath, roomDirectory);
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, pausedResult.State.Status);
 
-            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
+            var worktreePath = Path.Combine(roomDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
             Assert.False(Directory.Exists(worktreePath), "Worktree should not exist yet with plain bindings");
 
             var sourceFilePath = Path.Combine(testRoot, "supp.txt");
             await File.WriteAllTextAsync(sourceFilePath, "from-supply-repo", TestContext.Current.CancellationToken);
-            var supplyOptions = new SupplyOptions(taskDirectory, "human", "output_a", sourceFilePath, worktreeBindingsFilePath);
+            var supplyOptions = new SupplyOptions(roomDirectory, "human", "output_a", sourceFilePath, worktreeBindingsFilePath);
 
             var supplyResult = await SupplyCommand.ExecuteAsync(supplyOptions, Adapters, TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, supplyResult.Command.State.Status);
@@ -133,7 +133,7 @@ public class WorktreeProvisioningCommandTests
 
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: supplyResult.ExecutionId.Value, worktreeBindingsFilePath);
             var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -151,7 +151,7 @@ public class WorktreeProvisioningCommandTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-worktree-cancel-{Guid.NewGuid():N}");
         var repository = Path.Combine(testRoot, "repo");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             await SetupGitRepositoryAsync(repository, "notes.txt", "from-cancel-repo", "review-target");
@@ -160,15 +160,15 @@ public class WorktreeProvisioningCommandTests
             var plainBindingsFilePath = await WritePlainBindingsAsync(Path.Combine(testRoot, "plain"));
             var worktreeBindingsFilePath = await WriteWorktreeBindingsAsync(Path.Combine(testRoot, "wt"), repository, "review-target");
 
-            var runOptions = new RunOptions(workflowFilePath, plainBindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, plainBindingsFilePath, roomDirectory);
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, pausedResult.State.Status);
 
-            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
+            var worktreePath = Path.Combine(roomDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
             Assert.False(Directory.Exists(worktreePath), "Worktree should not exist yet with plain bindings");
 
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
-            var cancelOptions = new CancelOptions(taskDirectory, pausedExecutionId.Value, worktreeBindingsFilePath);
+            var cancelOptions = new CancelOptions(roomDirectory, pausedExecutionId.Value, worktreeBindingsFilePath);
 
             var cancelResult = await CancelCommand.ExecuteAsync(cancelOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Paused, cancelResult.State.Status);
@@ -177,7 +177,7 @@ public class WorktreeProvisioningCommandTests
             Assert.True(Directory.Exists(worktreePath), "CancelCommand must provision worktree when given worktree bindings");
 
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, worktreeBindingsFilePath);
             var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -194,24 +194,24 @@ public class WorktreeProvisioningCommandTests
     public async Task Polarity_bindings_without_worktree_are_unaffected_no_tree_created()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-worktree-polarity-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WritePlainBindingsAsync(testRoot);
 
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
             var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
 
-            var workspacesDir = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName);
+            var workspacesDir = Path.Combine(roomDirectory, WorktreeWorkspaces.WorkspacesDirectoryName);
             Assert.False(Directory.Exists(workspacesDir), "No workspaces directory created for plain bindings");
         }
         finally
@@ -225,7 +225,7 @@ public class WorktreeProvisioningCommandTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-worktree-idempotent-{Guid.NewGuid():N}");
         var repository = Path.Combine(testRoot, "repo");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             await SetupGitRepositoryAsync(repository, "notes.txt", "idempotence-test", "review-target");
@@ -233,16 +233,16 @@ public class WorktreeProvisioningCommandTests
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteWorktreeBindingsAsync(testRoot, repository, "review-target");
 
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
-            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
+            var worktreePath = Path.Combine(roomDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
             Assert.True(Directory.Exists(worktreePath));
 
             // Calling DecideCommand on existing task directory provisions again (idempotent reuse)
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
             var finalResult = await DecideCommand.ExecuteAsync(decideOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
@@ -259,21 +259,21 @@ public class WorktreeProvisioningCommandTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-worktree-locked-{Guid.NewGuid():N}");
         var repository = Path.Combine(testRoot, "repo");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             await SetupGitRepositoryAsync(repository, "notes.txt", "locked-test-content", "main");
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteWorktreeBindingsAsync(testRoot, repository, "main");
 
-            Directory.CreateDirectory(taskDirectory);
-            using var heldByAnotherInstance = Aer.Flow.Concurrency.ConcurrencyGuard.Acquire(taskDirectory);
+            Directory.CreateDirectory(roomDirectory);
+            using var heldByAnotherInstance = Aer.Flow.Concurrency.ConcurrencyGuard.Acquire(roomDirectory);
 
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
             await Assert.ThrowsAsync<Aer.Flow.Concurrency.WorkflowLockedException>(() =>
                 RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken));
 
-            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
+            var worktreePath = Path.Combine(roomDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
             Assert.False(Directory.Exists(worktreePath), "Worktree should NOT be created when ConcurrencyGuard is held");
         }
         finally

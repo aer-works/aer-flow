@@ -27,22 +27,22 @@ public class CancelCommandEndToEndTests
         // must surface the typed refusal too, not just DecideCommand.
         Assert.SkipUnless(OperatingSystem.IsWindows(), "FileShare contention is OS-enforced only on Windows; see DecideCommandEndToEndTests' Unix arm");
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
             var architectExecutionId = finalState.Steps.First(s => s.StepId.Value == "architect").LatestExecutionId;
             Assert.NotNull(architectExecutionId);
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             using var liveEngineHolder = new FileStream(
                 logPath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 1, useAsync: true);
 
-            var cancelOptions = new CancelOptions(taskDirectory, architectExecutionId.Value.Value, bindingsFilePath);
+            var cancelOptions = new CancelOptions(roomDirectory, architectExecutionId.Value.Value, bindingsFilePath);
 
             await Assert.ThrowsAsync<FlowJournalHeldException>(
                 () => CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken));
@@ -61,12 +61,12 @@ public class CancelCommandEndToEndTests
         // and grant became unsatisfiable after this run started, and the cancel must proceed
         // regardless.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
@@ -75,7 +75,7 @@ public class CancelCommandEndToEndTests
             Assert.NotNull(architectExecutionId);
 
             var unresolvableBindingsFilePath = await WriteThreeStepBindingsWithAnUnresolvableEntryAsync(testRoot);
-            var cancelOptions = new CancelOptions(taskDirectory, architectExecutionId.Value.Value, unresolvableBindingsFilePath);
+            var cancelOptions = new CancelOptions(roomDirectory, architectExecutionId.Value.Value, unresolvableBindingsFilePath);
             var canceledState = (await CancelCommand.ExecuteAsync(cancelOptions, AdaptersWithUnsatisfiable, TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, canceledState.Status);
@@ -92,12 +92,12 @@ public class CancelCommandEndToEndTests
         // #1012: lazy worktree provisioning in aer cancel ensures an unprovisionable worktree spec
         // on an unrelated worker does not block cancelling an execution.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
@@ -106,7 +106,7 @@ public class CancelCommandEndToEndTests
             Assert.NotNull(architectExecutionId);
 
             var unprovisionableBindingsFilePath = await WriteThreeStepBindingsWithAnUnprovisionableWorktreeEntryAsync(testRoot);
-            var cancelOptions = new CancelOptions(taskDirectory, architectExecutionId.Value.Value, unprovisionableBindingsFilePath);
+            var cancelOptions = new CancelOptions(roomDirectory, architectExecutionId.Value.Value, unprovisionableBindingsFilePath);
             var canceledState = (await CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, canceledState.Status);
@@ -121,12 +121,12 @@ public class CancelCommandEndToEndTests
     public async Task Cancelling_an_already_succeeded_execution_is_a_too_late_no_op_reported_as_success()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState = (await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
@@ -134,13 +134,13 @@ public class CancelCommandEndToEndTests
             var architectExecutionId = finalState.Steps.First(s => s.StepId.Value == "architect").LatestExecutionId;
             Assert.NotNull(architectExecutionId);
 
-            var cancelOptions = new CancelOptions(taskDirectory, architectExecutionId.Value.Value, bindingsFilePath);
+            var cancelOptions = new CancelOptions(roomDirectory, architectExecutionId.Value.Value, bindingsFilePath);
             var canceledState = (await CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, canceledState.Status);
             Assert.All(canceledState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
-            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var reader = new FlowEventLogReader(Path.Combine(roomDirectory, "flow.jsonl"));
             var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var cancellationEvents = events.OfType<FlowEvent.CancellationRequested>().ToList();
             Assert.Single(cancellationEvents);
@@ -156,12 +156,12 @@ public class CancelCommandEndToEndTests
     public async Task Cancelling_against_a_task_directory_with_no_snapshot_throws_a_typed_error()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var cancelOptions = new CancelOptions(taskDirectory, "exec-1", bindingsFilePath);
+            var cancelOptions = new CancelOptions(roomDirectory, "exec-1", bindingsFilePath);
 
             await Assert.ThrowsAsync<SnapshotLoadException>(
                 () => CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken));
@@ -176,16 +176,16 @@ public class CancelCommandEndToEndTests
     public async Task Cancelling_an_unknown_execution_id_throws_a_typed_error()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
-            var cancelOptions = new CancelOptions(taskDirectory, "not-a-real-execution-id", bindingsFilePath);
+            var cancelOptions = new CancelOptions(roomDirectory, "not-a-real-execution-id", bindingsFilePath);
             await Assert.ThrowsAsync<UnknownExecutionIdException>(
                 () => CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken));
         }
@@ -199,18 +199,18 @@ public class CancelCommandEndToEndTests
     public async Task A_malformed_bindings_file_throws_a_typed_config_exception()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             var malformedBindingsPath = Path.Combine(testRoot, "malformed.json");
             await File.WriteAllTextAsync(malformedBindingsPath, "{ not valid json", TestContext.Current.CancellationToken);
-            var cancelOptions = new CancelOptions(taskDirectory, "whatever", malformedBindingsPath);
+            var cancelOptions = new CancelOptions(roomDirectory, "whatever", malformedBindingsPath);
 
             await Assert.ThrowsAsync<WorkerBindingConfigException>(
                 () => CancelCommand.ExecuteAsync(cancelOptions, Adapters, TestContext.Current.CancellationToken));

@@ -48,8 +48,8 @@ public static class PlainLanguage
     /// alive on a second surface) and hard-coded the review wording for every pause, missing
     /// #334's reply/review split. Delegating is what makes "can never drift" true.
     /// </summary>
-    public static string ForWorkflow(TaskProjection projection)
-        => TaskCardViewModel.DeriveStatus(projection).StatusText;
+    public static string ForWorkflow(RoomProjection projection)
+        => RoomCardViewModel.DeriveStatus(projection).StatusText;
 
     /// <summary>
     /// #215: real execution/decision ids are 32-char generated Guids — pure visual noise to a
@@ -370,15 +370,15 @@ public sealed partial class ConversationRefViewModel(string label, string output
 }
 
 /// <summary>
-/// Builds the per-step drill-in items from one <see cref="TaskProjection"/> — pure projection
+/// Builds the per-step drill-in items from one <see cref="RoomProjection"/> — pure projection
 /// re-slicing (§11): every fact here already renders in the Details section's task-level panels;
 /// this groups it by step, in plain language, nothing new asserted.
 /// </summary>
 public static class StepItemProjector
 {
     public static IReadOnlyList<StepItemViewModel> Build(
-        TaskProjection projection,
-        string taskDirectoryPath,
+        RoomProjection projection,
+        string roomDirectoryPath,
         IReadOnlyList<PausedStepViewModel> pausedSteps,
         Func<string, Task> previewFileAsync,
         Action<string, string> showConversation,
@@ -387,7 +387,7 @@ public static class StepItemProjector
         Action? reRunAction = null,
         Action<string, string, string>? askWorkerToFixAction = null)
     {
-        var artifactsRootPath = Path.Combine(taskDirectoryPath, ArtifactManager.ArtifactsDirectoryName);
+        var artifactsRootPath = Path.Combine(roomDirectoryPath, ArtifactManager.ArtifactsDirectoryName);
         var pausedByStepId = pausedSteps.ToDictionary(paused => paused.StepId);
         var executionsByStepId = projection.Lineage.Executions
             .Where(execution => execution.StepId is not null)

@@ -1,5 +1,5 @@
 {
-  "TaskDirectoryPath": "C:/Users/pbree/.aer/tasks/foo",
+  "RoomDirectoryPath": "C:/Users/pbree/.aer/tasks/foo",
   "FriendlyName": "foo",
   "TypeLabel": "solo-run-template",
   "StatusText": "Running",

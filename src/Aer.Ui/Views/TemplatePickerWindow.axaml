@@ -40,7 +40,7 @@
 
         <StackPanel Spacing="8">
           <TextBlock Classes="body-strong" Text="Room / Task Name (Optional):" />
-          <TextBox x:Name="TaskNameBox" PlaceholderText="e.g. my-room" />
+          <TextBox x:Name="RoomNameBox" PlaceholderText="e.g. my-room" />
         </StackPanel>
 
         <StackPanel Spacing="8">

@@ -163,7 +163,7 @@ public class RoomTurnHostBannerTests
     [AvaloniaFact]
     public void View_DormantStatus_ShowsDormantBanner()
     {
-        // Red arm note: If TaskView's dormant card is hidden or HasRoomTurnHostBanner is false when ViewModel carries a dormant RoomTurnHostBanner, this assertion fails.
+        // Red arm note: If RoomView's dormant card is hidden or HasRoomTurnHostBanner is false when ViewModel carries a dormant RoomTurnHostBanner, this assertion fails.
         var window = NewWindow();
         var status = CreateStatus(isDormant: true, failures: 3);
         window.ViewModel.RoomTurnHostBanner = new RoomTurnHostBannerViewModel(status);
@@ -178,7 +178,7 @@ public class RoomTurnHostBannerTests
     public void View_LoadError_TextBlockVisibility_FollowsLoadErrorText()
     {
         // Red arm note (second-reader finding): if the LoadErrorText IsVisible binding in
-        // TaskView.axaml is broken (wrong path/converter), the error TextBlock either never
+        // RoomView.axaml is broken (wrong path/converter), the error TextBlock either never
         // shows for a malformed turn-throttles.json or always shows an empty line — one of the
         // two polarity assertions below fails.
         var window = NewWindow();
@@ -197,7 +197,7 @@ public class RoomTurnHostBannerTests
     [AvaloniaFact]
     public void View_NonDormantStatus_ShowsMeter_HidesWake()
     {
-        // Red arm note: If TaskView's non-dormant status card sets IsDormant to true or hides MeterText when ViewModel carries a non-dormant status, this assertion fails.
+        // Red arm note: If RoomView's non-dormant status card sets IsDormant to true or hides MeterText when ViewModel carries a non-dormant status, this assertion fails.
         var window = NewWindow();
         var status = CreateStatus(count: 3, cap: 10, isDormant: false);
         window.ViewModel.RoomTurnHostBanner = new RoomTurnHostBannerViewModel(status);

@@ -18,10 +18,10 @@ public sealed record ChatCapabilityItemViewModel(string Name, string Kind, strin
 
 /// <summary>
 /// The dedicated Chat view's state (M24 Phase 1 desktop wiring, issue #262) — a chat/codebase
-/// session renders here instead of <see cref="MainWindowViewModel.TaskSteps"/>'s generic DAG
+/// session renders here instead of <see cref="MainWindowViewModel.RoomSteps"/>'s generic DAG
 /// drill-in, since a single repeatedly-superseded "chat" step has no dependency graph worth
 /// showing and the real content (<see cref="SessionMetadata.Turns"/>) lives outside
-/// <c>TaskProjection</c> entirely.
+/// <c>RoomProjection</c> entirely.
 /// <para>
 /// <c>POST /api/sessions/send</c> only confirms a turn was dispatched — the daemon runs it on a
 /// fire-and-forget background task and the response carries no updated metadata at all
@@ -73,7 +73,7 @@ public sealed partial class ChatViewModel : ObservableObject
     public bool HasCurrentMode => !string.IsNullOrEmpty(CurrentMode);
 
     public string? SessionId { get; private set; }
-    public string? TaskDirectoryPath { get; private set; }
+    public string? RoomDirectoryPath { get; private set; }
     public string? CurrentAdapter { get; private set; }
 
     /// <summary>
@@ -82,7 +82,7 @@ public sealed partial class ChatViewModel : ObservableObject
     /// message box was previously the *only* Chat page control, silently doing nothing on Send when
     /// this was false.
     /// </summary>
-    public bool IsSessionOpen => TaskDirectoryPath != null;
+    public bool IsSessionOpen => RoomDirectoryPath != null;
 
     /// <summary>Adapters offered by the "start new chat" picker (#290) — populated from <see cref="Aer.Adapters.VendorCliPresence.Probe"/>, same source and same all-unavailable fallback ["claude","agy"] the existing template picker already uses, so the two entry points never disagree about what's offered.</summary>
     public ObservableCollection<string> AvailableAdapters { get; } = [];
@@ -100,10 +100,10 @@ public sealed partial class ChatViewModel : ObservableObject
     private string? _pendingUserMessage;
 
     /// <summary>Rebuilds <see cref="Messages"/> from a freshly loaded/polled <see cref="SessionMetadata"/> — the chat view's counterpart of <see cref="MainWindowViewModel.RebuildTaskSteps"/>.</summary>
-    public void LoadFromMetadata(SessionMetadata metadata, string taskDirectoryPath)
+    public void LoadFromMetadata(SessionMetadata metadata, string roomDirectoryPath)
     {
         SessionId = metadata.SessionId;
-        TaskDirectoryPath = taskDirectoryPath;
+        RoomDirectoryPath = roomDirectoryPath;
         CurrentAdapter = metadata.CurrentAdapter;
         HeadlineText = $"{metadata.CurrentAdapter} — turn {metadata.Turns.Count}";
         OnPropertyChanged(nameof(IsSessionOpen));
@@ -184,7 +184,7 @@ public sealed partial class ChatViewModel : ObservableObject
     public void Clear()
     {
         SessionId = null;
-        TaskDirectoryPath = null;
+        RoomDirectoryPath = null;
         CurrentAdapter = null;
         HeadlineText = "No room open.";
         StatusText = string.Empty;

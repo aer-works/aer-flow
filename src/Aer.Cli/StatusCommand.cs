@@ -10,7 +10,7 @@ namespace Aer.Cli;
 /// "this session's workaround was hand-rolled monitors polling PIDs and tailing <c>flow.jsonl</c>
 /// by path", which this replaces with the product's own register. Every field printed comes from
 /// <see cref="StateProjector.Project"/> — the same projection <see cref="RunCommand"/>,
-/// <see cref="CancelCommand"/> and <see cref="Aer.Ui.Core.TaskProjectionLoader"/> already call — so
+/// <see cref="CancelCommand"/> and <see cref="Aer.Ui.Core.RoomProjectionLoader"/> already call — so
 /// there is exactly one place "what does this event log mean" is computed, never a second reader of
 /// the format here.
 /// <para>
@@ -52,8 +52,8 @@ public static class StatusCommand
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(output);
 
-        var snapshotPath = Path.Combine(options.TaskDirectoryPath, SnapshotFileName);
-        var logPath = Path.Combine(options.TaskDirectoryPath, LogFileName);
+        var snapshotPath = Path.Combine(options.RoomDirectoryPath, SnapshotFileName);
+        var logPath = Path.Combine(options.RoomDirectoryPath, LogFileName);
 
         // Never Directory.CreateDirectory here (unlike RunCommand): a status probe against a task
         // that was never started must report the same typed failure, not conjure the directory
@@ -61,7 +61,7 @@ public static class StatusCommand
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.TaskDirectoryPath}' has no bound snapshot — 'aer status' " +
+                $"Task directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer status' " +
                 "projects a task 'aer run' has already started, and never binds one fresh.");
         }
 
@@ -80,14 +80,14 @@ public static class StatusCommand
                 }
             }
 
-            var checkpoint = ProjectionCheckpointStore.Load(options.TaskDirectoryPath);
+            var checkpoint = ProjectionCheckpointStore.Load(options.RoomDirectoryPath);
             var state = StateProjector.Project(events, snapshot, checkpoint);
 
             PrintState(output, state, logPath, events, entries);
 
             if (options.Follow)
             {
-                var artifactsDir = Path.Combine(options.TaskDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
+                var artifactsDir = Path.Combine(options.RoomDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
                 TailStreams(output, artifactsDir, new Dictionary<string, long>(StringComparer.Ordinal));
             }
 
@@ -96,7 +96,7 @@ public static class StatusCommand
                 return;
             }
 
-            await FollowAsync(output, reader, snapshot, events.Count, logPath, options.TaskDirectoryPath, cancellationToken).ConfigureAwait(false);
+            await FollowAsync(output, reader, snapshot, events.Count, logPath, options.RoomDirectoryPath, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (options.Follow && cancellationToken.IsCancellationRequested)
         {
@@ -120,11 +120,11 @@ public static class StatusCommand
         WorkflowDefinitionSnapshot snapshot,
         int printedEventCount,
         string logPath,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         CancellationToken cancellationToken)
     {
         var lastObservedLength = -1L;
-        var artifactsDir = Path.Combine(taskDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
+        var artifactsDir = Path.Combine(roomDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
         var streamOffsets = new Dictionary<string, long>(StringComparer.Ordinal);
 
         while (true)
@@ -153,7 +153,7 @@ public static class StatusCommand
 
                 printedEventCount = events.Count;
 
-                var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+                var checkpoint = ProjectionCheckpointStore.Load(roomDirectoryPath);
                 var state = StateProjector.Project(events, snapshot, checkpoint);
                 TailStreams(output, artifactsDir, streamOffsets);
 

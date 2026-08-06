@@ -19,7 +19,7 @@ public static class DispatchOptionsParser
         string? name = null;
         string? specFilePath = null;
         string? adapter = null;
-        string? taskDirectoryPath = null;
+        string? roomDirectoryPath = null;
         string? workflowId = null;
 
         var i = 0;
@@ -35,7 +35,7 @@ public static class DispatchOptionsParser
                     adapter = RequireValue(args, ref i, arg);
                     break;
                 case "--task-dir":
-                    taskDirectoryPath = RequireValue(args, ref i, arg);
+                    roomDirectoryPath = RequireValue(args, ref i, arg);
                     break;
                 case "--workflow-id":
                     workflowId = RequireValue(args, ref i, arg);
@@ -67,14 +67,14 @@ public static class DispatchOptionsParser
         // second `aer dispatch review` resume — and so replay — the first's terminal snapshot rather
         // than run again. The per-execution artifact dir already keeps outputs collision-free (#897);
         // this keeps the *task* fresh so the orchestrator's repeated self-dispatch (#778) actually reruns.
-        if (taskDirectoryPath is null)
+        if (roomDirectoryPath is null)
         {
             var uniqueName = $"dispatch-{name}-{Guid.NewGuid().ToString("N")[..8]}";
-            taskDirectoryPath = Path.Combine(Directory.GetCurrentDirectory(), ".aer", uniqueName);
+            roomDirectoryPath = Path.Combine(Directory.GetCurrentDirectory(), ".aer", uniqueName);
         }
 
         return new DispatchOptions(
-            name, specFilePath, TaskDirectoryPath.Resolve(taskDirectoryPath), adapter, workflowId);
+            name, specFilePath, RoomDirectoryPath.Resolve(roomDirectoryPath), adapter, workflowId);
     }
 
     private static string RequireValue(IReadOnlyList<string> args, ref int index, string optionName)

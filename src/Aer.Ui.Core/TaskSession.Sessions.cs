@@ -53,11 +53,11 @@ public sealed partial class TaskSession
         try
         {
             var sessionId = Guid.NewGuid().ToString("N")[..12];
-            var taskDirectoryPath = InteractiveSessionMaterializer.ResolveTaskDirectoryPath(sessionId, request.TaskName, request.DirectoryPath);
+            var roomDirectoryPath = InteractiveSessionMaterializer.ResolveTaskDirectoryPath(sessionId, request.RoomName, request.DirectoryPath);
 
             var metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                 sessionId,
-                taskDirectoryPath,
+                roomDirectoryPath,
                 string.IsNullOrWhiteSpace(request.Adapter) ? "claude" : request.Adapter.Trim().ToLowerInvariant(),
                 request.Model,
                 request.WorkingDirectory,
@@ -66,8 +66,8 @@ public sealed partial class TaskSession
                 request.PermissionGrant,
                 cancellationToken).ConfigureAwait(true);
 
-            SetCurrentTaskDirectory(taskDirectoryPath);
-            await RecordOpenedAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+            SetCurrentTaskDirectory(roomDirectoryPath);
+            await RecordOpenedAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
 
             return new SessionStartOutcome(metadata, null);
         }
@@ -272,16 +272,16 @@ public sealed partial class TaskSession
     private sealed record SessionModeResult(string? Mode);
 
     /// <summary>
-    /// Reads <paramref name="taskDirectoryPath"/>'s <c>.aer/session.json</c> directly rather than
-    /// round-tripping through the daemon (unlike <see cref="LoadAsync"/>'s <c>TaskProjection</c>,
+    /// Reads <paramref name="roomDirectoryPath"/>'s <c>.aer/session.json</c> directly rather than
+    /// round-tripping through the daemon (unlike <see cref="LoadAsync"/>'s <c>RoomProjection</c>,
     /// <see cref="SessionMetadata"/> is a directly-readable local artifact with no in-memory
     /// projection of its own) -- also doubles as the "is this task directory a chat/codebase
     /// session" check <c>MainWindow.OpenAsync</c> uses to decide whether to route to the Chat view.
     /// Returns <see langword="null"/> for a directory that isn't an interactive session at all.
     /// </summary>
-    public async Task<SessionMetadata?> LoadSessionMetadataAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public async Task<SessionMetadata?> LoadSessionMetadataAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
-        var metadataPath = Path.Combine(taskDirectoryPath, ".aer", "session.json"); // vocabulary-ok: technical file path
+        var metadataPath = Path.Combine(roomDirectoryPath, ".aer", "session.json"); // vocabulary-ok: technical file path
         if (!File.Exists(metadataPath))
         {
             return null;

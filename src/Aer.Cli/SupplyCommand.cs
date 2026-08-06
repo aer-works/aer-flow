@@ -63,14 +63,14 @@ public static class SupplyCommand
             throw new CliArgumentException($"Source file '{options.SourceFilePath}' does not exist.");
         }
 
-        var snapshotPath = Path.Combine(options.TaskDirectoryPath, SnapshotFileName);
-        var logPath = Path.Combine(options.TaskDirectoryPath, LogFileName);
-        var artifactsRootPath = Path.Combine(options.TaskDirectoryPath, ArtifactsDirectoryName);
+        var snapshotPath = Path.Combine(options.RoomDirectoryPath, SnapshotFileName);
+        var logPath = Path.Combine(options.RoomDirectoryPath, LogFileName);
+        var artifactsRootPath = Path.Combine(options.RoomDirectoryPath, ArtifactsDirectoryName);
 
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.TaskDirectoryPath}' has no bound snapshot — 'aer supply' " +
+                $"Task directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer supply' " +
                 "targets a task 'aer run' has already started, and never binds one fresh.");
         }
 
@@ -79,7 +79,7 @@ public static class SupplyCommand
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
         var (provisionedConfig, provisionedWorktrees) =
-            WorktreeWorkspaces.Provision(bindingConfig, options.TaskDirectoryPath);
+            WorktreeWorkspaces.Provision(bindingConfig, options.RoomDirectoryPath);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         // Lazy (#662, same reasoning as CancelCommand): materializing this into a plain Dictionary to
         // add the NonProcess override below would enumerate — and so eagerly resolve and refuse —
@@ -98,7 +98,7 @@ public static class SupplyCommand
         var dispatcher = new CoreDispatcher(writer);
 
         var (_, executionId) = await MutationInterface.RecordSupplementaryExecutionAsync(
-                workflowId, options.TaskDirectoryPath, snapshot, workerBindings, artifactsRootPath,
+                workflowId, options.RoomDirectoryPath, snapshot, workerBindings, artifactsRootPath,
                 options.Worker, inputs: [], reader, writer, cancellationToken)
             .ConfigureAwait(false);
 
@@ -106,13 +106,13 @@ public static class SupplyCommand
         File.Copy(options.SourceFilePath, Path.Combine(outputDirectory, options.OutputName), overwrite: true);
 
         var settledState = await MutationInterface.StartWorkflowAsync(
-                workflowId, options.TaskDirectoryPath, snapshot, workerBindings, artifactsRootPath,
+                workflowId, options.RoomDirectoryPath, snapshot, workerBindings, artifactsRootPath,
                 reader, writer, dispatcher, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
         var worktreeTeardowns = WorktreeProvisioner.TeardownIfTerminal(settledState.Status, provisionedWorktrees);
 
-        return new SupplyResult(executionId, new CommandResult(settledState, snapshot, TaskDirectoryPath: options.TaskDirectoryPath, WorktreeTeardowns: worktreeTeardowns));
+        return new SupplyResult(executionId, new CommandResult(settledState, snapshot, RoomDirectoryPath: options.RoomDirectoryPath, WorktreeTeardowns: worktreeTeardowns));
     }
 }
 

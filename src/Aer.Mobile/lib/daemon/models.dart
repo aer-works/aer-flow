@@ -1,4 +1,4 @@
-/// Aer.Daemon's TaskProjection, as pushed over /api/ws and returned by /api/tasks/open.
+/// Aer.Daemon's RoomProjection, as pushed over /api/ws and returned by /api/rooms/open.
 ///
 /// REST payloads are camelCase; WS payloads are PascalCase (Aer.Daemon's own
 /// `SendStateAsync` builds a bare JsonSerializerOptions with no naming policy — see
@@ -9,7 +9,7 @@ library;
 Map<String, dynamic> caseInsensitive(Map<String, dynamic> json) =>
     json.map((key, value) => MapEntry(key.toLowerCase(), value));
 
-/// One step's static definition, from TaskProjection.Snapshot.Steps.
+/// One step's static definition, from RoomProjection.Snapshot.Steps.
 class StepDefinition {
   final String stepId;
   final String worker;
@@ -33,7 +33,7 @@ class StepDefinition {
   }
 }
 
-/// One step's live status, from TaskProjection.State.Steps.
+/// One step's live status, from RoomProjection.State.Steps.
 class WorkflowStepState {
   final String stepId;
   final String status;
@@ -64,7 +64,7 @@ class WorkflowStepState {
   }
 }
 
-/// One execution's artifact-directory contents, from TaskProjection.Lineage.Executions.
+/// One execution's artifact-directory contents, from RoomProjection.Lineage.Executions.
 class ExecutionArtifacts {
   final String executionId;
   final String worker;
@@ -89,12 +89,12 @@ class ExecutionArtifacts {
 /// (fixed alongside issue #262's chat work; see `_connect`'s listener), so a different client
 /// opening a different task no longer silently changes what this phone shows. directoryPath
 /// comes from the DirectoryPath sibling property Aer.Daemon adds to the WS payload (M21 Phase 2,
-/// #232) — it is not part of TaskProjection itself, since /api/tasks/decide and /api/tasks/cancel
+/// #232) — it is not part of RoomProjection itself, since /api/rooms/decide and /api/rooms/cancel
 /// need it and a WS-only client (this app) has no other way to learn it, and it's also this
 /// filter's join key. sessionId is the same kind of sibling, added for the mobile chat UI so a
 /// push that isn't self-started (seeded from another client, or picked from recent tasks) still
 /// tells this phone it's looking at an interactive session and which id to fetch turns for.
-class TaskProjection {
+class RoomProjection {
   final String? directoryPath;
   final String? sessionId;
   final String workflowTemplateId;
@@ -104,7 +104,7 @@ class TaskProjection {
   final List<ExecutionArtifacts> executions;
   final Map<String, String> workerAdapters;
 
-  TaskProjection({
+  RoomProjection({
     required this.directoryPath,
     required this.sessionId,
     required this.workflowTemplateId,
@@ -124,7 +124,7 @@ class TaskProjection {
       ? null
       : executions.where((e) => e.executionId == executionId).cast<ExecutionArtifacts?>().firstWhere((_) => true, orElse: () => null);
 
-  factory TaskProjection.fromJson(Map<String, dynamic> json) {
+  factory RoomProjection.fromJson(Map<String, dynamic> json) {
     final j = caseInsensitive(json);
     final snapshot = caseInsensitive(j['snapshot'] as Map<String, dynamic>);
     final state = caseInsensitive(j['state'] as Map<String, dynamic>);
@@ -137,7 +137,7 @@ class TaskProjection {
       });
     }
 
-    return TaskProjection(
+    return RoomProjection(
       directoryPath: j['directorypath']?.toString(),
       sessionId: j['sessionid']?.toString(),
       workflowTemplateId: snapshot['workflowtemplateid'].toString(),
@@ -182,19 +182,19 @@ class SessionTurn {
 }
 
 /// An interactive session's full state, from GET /api/sessions/{sessionId} (Aer.Daemon/Program.cs)
-/// — REST-only, camelCase; unlike TaskProjection this is never pushed over /api/ws, so there is no
+/// — REST-only, camelCase; unlike RoomProjection this is never pushed over /api/ws, so there is no
 /// PascalCase/camelCase ambiguity to normalize, but this still reads through [caseInsensitive] for
 /// consistency with every other model here.
 class SessionMetadata {
   final String sessionId;
-  final String taskDirectoryPath;
+  final String roomDirectoryPath;
   final String currentAdapter;
   final int turnCount;
   final List<SessionTurn> turns;
 
   SessionMetadata({
     required this.sessionId,
-    required this.taskDirectoryPath,
+    required this.roomDirectoryPath,
     required this.currentAdapter,
     required this.turnCount,
     required this.turns,
@@ -204,7 +204,7 @@ class SessionMetadata {
     final j = caseInsensitive(json);
     return SessionMetadata(
       sessionId: j['sessionid'].toString(),
-      taskDirectoryPath: j['taskdirectorypath'].toString(),
+      roomDirectoryPath: j['taskdirectorypath'].toString(),
       currentAdapter: j['currentadapter']?.toString() ?? '',
       turnCount: (j['turncount'] as num?)?.toInt() ?? 0,
       turns: ((j['turns'] as List<dynamic>?) ?? []).map((t) => SessionTurn.fromJson(t as Map<String, dynamic>)).toList(),
@@ -215,7 +215,7 @@ class SessionMetadata {
 /// One live-streaming event from /api/ws/progress (M24 Phase 1, issue #262) — see TaskSession.cs's
 /// ProgressFrame doc comment on desktop for why this is a dedicated socket/frame shape rather than
 /// an overload of the /api/ws protocol. Broadcast to every connected progress socket regardless of
-/// directory, same as TaskProjection pushes — callers must filter on directoryPath themselves.
+/// directory, same as RoomProjection pushes — callers must filter on directoryPath themselves.
 class SessionProgressEvent {
   final String? directoryPath;
   final String? stepId;
@@ -259,9 +259,9 @@ class ChatCapabilityItem {
 }
 
 /// One task/session directory's lightweight fleet-list entry (M24 Phase 5, #278) — the mobile
-/// counterpart of Aer.Ui.Core's TaskFleetItem, as returned by GET /api/tasks.
-class TaskFleetItem {
-  final String taskDirectoryPath;
+/// counterpart of Aer.Ui.Core's RoomFleetItem, as returned by GET /api/rooms.
+class RoomFleetItem {
+  final String roomDirectoryPath;
   final String friendlyName;
   final String typeLabel;
   final String statusText;
@@ -269,8 +269,8 @@ class TaskFleetItem {
   final bool isArchived;
   final DateTime? lastActivityAt;
 
-  TaskFleetItem({
-    required this.taskDirectoryPath,
+  RoomFleetItem({
+    required this.roomDirectoryPath,
     required this.friendlyName,
     required this.typeLabel,
     required this.statusText,
@@ -279,10 +279,10 @@ class TaskFleetItem {
     this.lastActivityAt,
   });
 
-  factory TaskFleetItem.fromJson(Map<String, dynamic> json) {
+  factory RoomFleetItem.fromJson(Map<String, dynamic> json) {
     final j = caseInsensitive(json);
-    return TaskFleetItem(
-      taskDirectoryPath: j['taskdirectorypath']?.toString() ?? '',
+    return RoomFleetItem(
+      roomDirectoryPath: j['taskdirectorypath']?.toString() ?? '',
       friendlyName: j['friendlyname']?.toString() ?? '',
       typeLabel: j['typelabel']?.toString() ?? '',
       statusText: j['statustext']?.toString() ?? '',
@@ -294,7 +294,7 @@ class TaskFleetItem {
 }
 
 /// GET /api/sessions/{id}/commands's shape: WorkerCapabilities's own fields plus the additive
-/// RecentlyUsed sibling (same idiom as TaskProjection's DirectoryPath/WorkerAdapters siblings).
+/// RecentlyUsed sibling (same idiom as RoomProjection's DirectoryPath/WorkerAdapters siblings).
 class SessionCommandsResult {
   final String vendor;
   final List<ChatCapabilityItem> items;

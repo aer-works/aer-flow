@@ -31,18 +31,18 @@ public sealed class ConcurrencyGuard : IDisposable
     }
 
     /// <summary>
-    /// Acquires the lock for <paramref name="taskDirectoryPath"/>, creating the directory first
+    /// Acquires the lock for <paramref name="roomDirectoryPath"/>, creating the directory first
     /// if it does not yet exist.
     /// </summary>
     /// <exception cref="WorkflowLockedException">
     /// Another Flow instance already holds the lock for this task.
     /// </exception>
-    public static ConcurrencyGuard Acquire(string taskDirectoryPath, string? holderDescription = null)
+    public static ConcurrencyGuard Acquire(string roomDirectoryPath, string? holderDescription = null)
     {
-        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
 
-        Directory.CreateDirectory(taskDirectoryPath);
-        var lockFilePath = Path.Combine(taskDirectoryPath, LockFileName);
+        Directory.CreateDirectory(roomDirectoryPath);
+        var lockFilePath = Path.Combine(roomDirectoryPath, LockFileName);
 
         FileStream lockStream;
         try
@@ -51,11 +51,11 @@ public sealed class ConcurrencyGuard : IDisposable
         }
         catch (IOException ex)
         {
-            var holder = TryReadHolderInfo(taskDirectoryPath);
-            throw new WorkflowLockedException(BuildLockedMessage(taskDirectoryPath, holder), ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
+            var holder = TryReadHolderInfo(roomDirectoryPath);
+            throw new WorkflowLockedException(BuildLockedMessage(roomDirectoryPath, holder), ex, holder?.HolderDescription, holder?.AcquiredAtUtc);
         }
 
-        return CreateWithSidecar(lockStream, taskDirectoryPath, holderDescription);
+        return CreateWithSidecar(lockStream, roomDirectoryPath, holderDescription);
     }
 
     /// <summary>
@@ -79,12 +79,12 @@ public sealed class ConcurrencyGuard : IDisposable
     /// <exception cref="WorkflowLockedException">
     /// The lock was still held when <paramref name="within"/> ran out.
     /// </exception>
-    public static ConcurrencyGuard AcquireWithin(string taskDirectoryPath, TimeSpan within, string? holderDescription = null)
+    public static ConcurrencyGuard AcquireWithin(string roomDirectoryPath, TimeSpan within, string? holderDescription = null)
     {
-        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
 
-        Directory.CreateDirectory(taskDirectoryPath);
-        var lockFilePath = Path.Combine(taskDirectoryPath, LockFileName);
+        Directory.CreateDirectory(roomDirectoryPath);
+        var lockFilePath = Path.Combine(roomDirectoryPath, LockFileName);
 
         // Stopwatch, not DateTime.UtcNow: a wall clock can step backwards (an NTP correction, a
         // manual change) and silently stretch this wait well past its budget. Monotonic is what a
@@ -96,7 +96,7 @@ public sealed class ConcurrencyGuard : IDisposable
             try
             {
                 var lockStream = new FileStream(lockFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-                return CreateWithSidecar(lockStream, taskDirectoryPath, holderDescription);
+                return CreateWithSidecar(lockStream, roomDirectoryPath, holderDescription);
             }
             catch (IOException) when (elapsed.Elapsed < within)
             {
@@ -106,8 +106,8 @@ public sealed class ConcurrencyGuard : IDisposable
             }
             catch (IOException ex)
             {
-                var holder = TryReadHolderInfo(taskDirectoryPath);
-                var message = $"{BuildLockedMessage(taskDirectoryPath, holder)} Still held after waiting " +
+                var holder = TryReadHolderInfo(roomDirectoryPath);
+                var message = $"{BuildLockedMessage(roomDirectoryPath, holder)} Still held after waiting " +
                     $"{within.TotalMilliseconds:0}ms, so this is not a routine overlap.";
 
                 // The OS holder probe costs hundreds of milliseconds, so it runs only here — the
@@ -125,9 +125,9 @@ public sealed class ConcurrencyGuard : IDisposable
         }
     }
 
-    private static ConcurrencyGuard CreateWithSidecar(FileStream lockStream, string taskDirectoryPath, string? holderDescription)
+    private static ConcurrencyGuard CreateWithSidecar(FileStream lockStream, string roomDirectoryPath, string? holderDescription)
     {
-        var sidecarPath = Path.Combine(taskDirectoryPath, HolderFileName);
+        var sidecarPath = Path.Combine(roomDirectoryPath, HolderFileName);
         var description = holderDescription ?? DefaultHolderDescription();
         try
         {
@@ -159,9 +159,9 @@ public sealed class ConcurrencyGuard : IDisposable
     /// self-description is appended here, and the two-shapes wording stays as the fallback for a
     /// holder that did not (or whose write lost a race).
     /// </summary>
-    private static string BuildLockedMessage(string taskDirectoryPath, LockHolderInfo? holder)
+    private static string BuildLockedMessage(string roomDirectoryPath, LockHolderInfo? holder)
     {
-        var baseMsg = $"Directory '{taskDirectoryPath}' is already locked by another Flow instance — either a live " +
+        var baseMsg = $"Directory '{roomDirectoryPath}' is already locked by another Flow instance — either a live " +
             "'aer run' pump, or a background component that takes this directory's lock briefly (a room's " +
             "memory-proposal sweep does this while escalating a new proposal). A live in-flight execution " +
             "can only be reached from the pump process itself (Ctrl+C); 'aer cancel' from a second " +
@@ -177,20 +177,20 @@ public sealed class ConcurrencyGuard : IDisposable
     }
 
     /// <summary>
-    /// Reads the holder sidecar file <c>flow.lock.holder</c> for <paramref name="taskDirectoryPath"/> if present and readable.
+    /// Reads the holder sidecar file <c>flow.lock.holder</c> for <paramref name="roomDirectoryPath"/> if present and readable.
     /// Tolerates absence/unreadability by returning null for both fields.
     /// </summary>
-    public static (string? HolderDescription, DateTime? AcquiredAtUtc) ReadHolderInfo(string taskDirectoryPath)
+    public static (string? HolderDescription, DateTime? AcquiredAtUtc) ReadHolderInfo(string roomDirectoryPath)
     {
-        var info = TryReadHolderInfo(taskDirectoryPath);
+        var info = TryReadHolderInfo(roomDirectoryPath);
         return (info?.HolderDescription, info?.AcquiredAtUtc);
     }
 
-    private static LockHolderInfo? TryReadHolderInfo(string taskDirectoryPath)
+    private static LockHolderInfo? TryReadHolderInfo(string roomDirectoryPath)
     {
         try
         {
-            var sidecarPath = Path.Combine(taskDirectoryPath, HolderFileName);
+            var sidecarPath = Path.Combine(roomDirectoryPath, HolderFileName);
             if (File.Exists(sidecarPath))
             {
                 var text = File.ReadAllText(sidecarPath);
@@ -210,7 +210,7 @@ public sealed class ConcurrencyGuard : IDisposable
 
     /// <summary>
     /// Reports whether another live holder currently owns the lock for
-    /// <paramref name="taskDirectoryPath"/>, without acquiring it and without creating the
+    /// <paramref name="roomDirectoryPath"/>, without acquiring it and without creating the
     /// directory or the lock file. A read-only probe: callers that need the lock still go through
     /// <see cref="Acquire"/>. A missing <c>flow.lock</c> (or a non-existent directory) means no
     /// holder. A lock file left on disk by a previously-released guard is deliberately <em>not</em>
@@ -218,11 +218,11 @@ public sealed class ConcurrencyGuard : IDisposable
     /// meaning, not the file's existence — so this opens the file to test the OS-held lock rather
     /// than reading its mere presence.
     /// </summary>
-    public static bool IsHeld(string taskDirectoryPath)
+    public static bool IsHeld(string roomDirectoryPath)
     {
-        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
 
-        var lockFilePath = Path.Combine(taskDirectoryPath, LockFileName);
+        var lockFilePath = Path.Combine(roomDirectoryPath, LockFileName);
         if (!File.Exists(lockFilePath))
         {
             return false;

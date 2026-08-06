@@ -22,9 +22,9 @@ public partial class HomeView : UserControl
             await picker.ShowDialog(topLevel);
         }
 
-        if (picker.MaterializedTaskDirectoryPath is { } taskPath)
+        if (picker.MaterializedTaskDirectoryPath is { } roomPath)
         {
-            TaskDirectoryPathBox.Text = taskPath;
+            RoomDirectoryPathBox.Text = roomPath;
             if (topLevel != null)
             {
                 // A record becomes visible the moment it exists on disk, not when its first
@@ -35,20 +35,20 @@ public partial class HomeView : UserControl
                 // knew about. Found by running the app: a freshly created task was reachable only
                 // through the folder picker.
                 await topLevel.RefreshRecordListsAsync();
-                if (File.Exists(Path.Combine(taskPath, ".aer", "session.json"))) // vocabulary-ok: technical file path
+                if (File.Exists(Path.Combine(roomPath, ".aer", "session.json"))) // vocabulary-ok: technical file path
                 {
                     // A chat/codebase session's initial turn is already dispatched (or about to be)
                     // by the daemon's own fire-and-forget background task -- Open, not Run, so this
                     // doesn't start a second, competing execution against the same task directory
                     // (M24 Phase 1 desktop chat UI, issue #262). Open also routes to the dedicated
                     // Chat view once it detects session.json, which Run never did.
-                    await topLevel.OpenAsync(taskPath);
+                    await topLevel.OpenAsync(roomPath);
                 }
                 else
                 {
-                    var workflowPath = System.IO.Path.Combine(taskPath, "workflow.json");
-                    var bindingsPath = System.IO.Path.Combine(taskPath, "bindings.json"); // vocabulary-ok: technical file path
-                    await topLevel.RunAsync(taskPath, workflowPath, bindingsPath);
+                    var workflowPath = System.IO.Path.Combine(roomPath, "workflow.json");
+                    var bindingsPath = System.IO.Path.Combine(roomPath, "bindings.json"); // vocabulary-ok: technical file path
+                    await topLevel.RunAsync(roomPath, workflowPath, bindingsPath);
                 }
             }
         }
@@ -66,10 +66,10 @@ public partial class HomeView : UserControl
     /// <summary>
     /// #212: a folder picker for "Open a task" — the same <see cref="AuthorView.OnChooseWorkspaceClick"/>
     /// pattern (write the picked path into the visible text box, never a hidden field), so Open
-    /// still reads from <see cref="TaskDirectoryPathBox"/> exactly as it always has.
+    /// still reads from <see cref="RoomDirectoryPathBox"/> exactly as it always has.
     /// <para>
     /// Owner feedback: asked for a default task directory on Home. Recent tasks already have their
-    /// own one-click cards above (<see cref="MainWindowViewModel.Home"/>'s <c>TaskCards</c>) — the
+    /// own one-click cards above (<see cref="MainWindowViewModel.Home"/>'s <c>RoomCards</c>) — the
     /// best "default" for a task you've already run. What was missing was a starting point for a
     /// task you haven't opened yet: this picker now opens in the same
     /// <c>Documents/Baton</c> workspace root <see cref="NewWorkflowViewModel.EffectiveWorkspacePath"/>
@@ -95,7 +95,7 @@ public partial class HomeView : UserControl
 
         if (folders.Count == 1 && folders[0].TryGetLocalPath() is { } localPath)
         {
-            TaskDirectoryPathBox.Text = localPath;
+            RoomDirectoryPathBox.Text = localPath;
         }
     }
 

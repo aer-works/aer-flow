@@ -211,7 +211,7 @@ public class FlowStateReporterTests
             WorkflowStatus.Terminal);
 
         using var stringWriter = new StringWriter();
-        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, TaskDirectoryPath: taskDir));
+        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, RoomDirectoryPath: taskDir));
 
         var output = stringWriter.ToString();
 
@@ -263,7 +263,7 @@ public class FlowStateReporterTests
             WorkflowStatus.Paused);
 
         using var stringWriter = new StringWriter();
-        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, TaskDirectoryPath: taskDir));
+        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, RoomDirectoryPath: taskDir));
 
         var output = stringWriter.ToString();
         var expectedPath = Path.Combine(taskDir, "artifacts", $"execution_{executionId}", "verdict");

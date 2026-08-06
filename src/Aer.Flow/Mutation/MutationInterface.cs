@@ -40,11 +40,11 @@ public static class MutationInterface
     /// never the reverse, and never signalled directly without a recorded intent first.
     /// </param>
     /// <exception cref="WorkflowLockedException">
-    /// Another Flow instance already holds <paramref name="taskDirectoryPath"/>'s lock.
+    /// Another Flow instance already holds <paramref name="roomDirectoryPath"/>'s lock.
     /// </exception>
     public static async Task<FlowState> StartWorkflowAsync(
         WorkflowId workflowId,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         WorkflowDefinitionSnapshot snapshot,
         IReadOnlyDictionary<string, WorkerBinding> workerBindings,
         string artifactsRootPath,
@@ -57,7 +57,7 @@ public static class MutationInterface
         Func<double>? jitterSource = null,
         string? holderDescription = null)
     {
-        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(workerBindings);
         ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
@@ -65,10 +65,10 @@ public static class MutationInterface
         ArgumentNullException.ThrowIfNull(eventLogWriter);
         ArgumentNullException.ThrowIfNull(dispatcher);
 
-        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, holderDescription);
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath, holderDescription);
 
         return await PumpToFixedPointAsync(
-                workflowId, taskDirectoryPath, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
+                workflowId, roomDirectoryPath, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
                 inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken,
                 timeProvider ?? TimeProvider.System, jitterSource ?? (() => Random.Shared.NextDouble()))
             .ConfigureAwait(false);
@@ -82,12 +82,12 @@ public static class MutationInterface
     /// appending anything — an invalid decision throws and leaves the log untouched.
     /// </summary>
     /// <exception cref="WorkflowLockedException">
-    /// Another Flow instance already holds <paramref name="taskDirectoryPath"/>'s lock.
+    /// Another Flow instance already holds <paramref name="roomDirectoryPath"/>'s lock.
     /// </exception>
     /// <exception cref="InvalidExternalDecisionException">The decision violates one of §17.2's rules.</exception>
     public static async Task<FlowState> RecordDecisionAsync(
         WorkflowId workflowId,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         WorkflowDefinitionSnapshot snapshot,
         IReadOnlyDictionary<string, WorkerBinding> workerBindings,
         string artifactsRootPath,
@@ -104,7 +104,7 @@ public static class MutationInterface
         Func<double>? jitterSource = null,
         string? holderDescription = null)
     {
-        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(workerBindings);
         ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
@@ -112,9 +112,9 @@ public static class MutationInterface
         ArgumentNullException.ThrowIfNull(eventLogWriter);
         ArgumentNullException.ThrowIfNull(dispatcher);
 
-        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, holderDescription);
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath, holderDescription);
 
-        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var checkpoint = ProjectionCheckpointStore.Load(roomDirectoryPath);
         var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);
         if (log.IsFallbackToFull)
         {
@@ -137,7 +137,7 @@ public static class MutationInterface
         await eventLogWriter.AppendAsync(new FlowEvent.WorkflowResumed(decisionId), cancellationToken).ConfigureAwait(false);
 
         return await PumpToFixedPointAsync(
-                workflowId, taskDirectoryPath, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
+                workflowId, roomDirectoryPath, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
                 inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken,
                 timeProvider ?? TimeProvider.System, jitterSource ?? (() => Random.Shared.NextDouble()))
             .ConfigureAwait(false);
@@ -157,7 +157,7 @@ public static class MutationInterface
     /// as <see cref="FlowEvent.ExecutionSucceeded"/>.
     /// </summary>
     /// <exception cref="WorkflowLockedException">
-    /// Another Flow instance already holds <paramref name="taskDirectoryPath"/>'s lock.
+    /// Another Flow instance already holds <paramref name="roomDirectoryPath"/>'s lock.
     /// </exception>
     /// <exception cref="UnresolvedWorkerException">
     /// <paramref name="worker"/> has no corresponding <see cref="WorkerBinding.NonProcess"/> among
@@ -166,7 +166,7 @@ public static class MutationInterface
     /// </exception>
     public static async Task<(FlowState State, ExecutionId ExecutionId)> RecordSupplementaryExecutionAsync(
         WorkflowId workflowId,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         WorkflowDefinitionSnapshot snapshot,
         IReadOnlyDictionary<string, WorkerBinding> workerBindings,
         string artifactsRootPath,
@@ -177,7 +177,7 @@ public static class MutationInterface
         CancellationToken cancellationToken = default,
         string? holderDescription = null)
     {
-        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(workerBindings);
         ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
@@ -186,7 +186,7 @@ public static class MutationInterface
         ArgumentNullException.ThrowIfNull(eventLogReader);
         ArgumentNullException.ThrowIfNull(eventLogWriter);
 
-        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, holderDescription);
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath, holderDescription);
 
         if (!workerBindings.TryGetValue(worker, out var binding) || binding is not WorkerBinding.NonProcess nonProcess)
         {
@@ -216,7 +216,7 @@ public static class MutationInterface
         await eventLogWriter.AppendAsync(CreateExecutionRequestAccepted(request), cancellationToken)
             .ConfigureAwait(false);
 
-        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var checkpoint = ProjectionCheckpointStore.Load(roomDirectoryPath);
         var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);
         if (log.IsFallbackToFull)
         {
@@ -239,14 +239,14 @@ public static class MutationInterface
     /// delivered — that is Phase 2's machinery.
     /// </summary>
     /// <exception cref="WorkflowLockedException">
-    /// Another Flow instance already holds <paramref name="taskDirectoryPath"/>'s lock.
+    /// Another Flow instance already holds <paramref name="roomDirectoryPath"/>'s lock.
     /// </exception>
     /// <exception cref="UnknownExecutionIdException">
     /// <paramref name="targetExecutionId"/> was never admitted via <see cref="FlowEvent.ExecutionRequestAccepted"/>.
     /// </exception>
     public static async Task<FlowState> RequestCancellationAsync(
         WorkflowId workflowId,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         WorkflowDefinitionSnapshot snapshot,
         IReadOnlyDictionary<string, WorkerBinding> workerBindings,
         string artifactsRootPath,
@@ -260,7 +260,7 @@ public static class MutationInterface
         Func<double>? jitterSource = null,
         string? holderDescription = null)
     {
-        ArgumentException.ThrowIfNullOrEmpty(taskDirectoryPath);
+        ArgumentException.ThrowIfNullOrEmpty(roomDirectoryPath);
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(workerBindings);
         ArgumentException.ThrowIfNullOrEmpty(artifactsRootPath);
@@ -268,9 +268,9 @@ public static class MutationInterface
         ArgumentNullException.ThrowIfNull(eventLogWriter);
         ArgumentNullException.ThrowIfNull(dispatcher);
 
-        using var guard = ConcurrencyGuard.Acquire(taskDirectoryPath, holderDescription);
+        using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath, holderDescription);
 
-        var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        var checkpoint = ProjectionCheckpointStore.Load(roomDirectoryPath);
         var log = await eventLogReader.ReadSnapshotFromOffsetAsync(checkpoint?.ByteOffset ?? 0, cancellationToken).ConfigureAwait(false);
         if (log.IsFallbackToFull)
         {
@@ -288,7 +288,7 @@ public static class MutationInterface
             .ConfigureAwait(false);
 
         return await PumpToFixedPointAsync(
-                workflowId, taskDirectoryPath, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
+                workflowId, roomDirectoryPath, snapshot, workerBindings, artifactsRootPath, eventLogReader, eventLogWriter, dispatcher,
                 inFlightExecutions ?? new InFlightExecutionRegistry(), cancellationToken,
                 timeProvider ?? TimeProvider.System, jitterSource ?? (() => Random.Shared.NextDouble()))
             .ConfigureAwait(false);
@@ -315,7 +315,7 @@ public static class MutationInterface
     /// </remarks>
     private static async Task<FlowState> PumpToFixedPointAsync(
         WorkflowId workflowId,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         WorkflowDefinitionSnapshot snapshot,
         IReadOnlyDictionary<string, WorkerBinding> workerBindings,
         string artifactsRootPath,
@@ -338,7 +338,7 @@ public static class MutationInterface
         // could never converge to the consistent, fully-classified state a host stop promises.
         var ioCancellationToken = cancellationToken;
         FlowState state;
-        ProjectionCheckpoint? currentCheckpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+        ProjectionCheckpoint? currentCheckpoint = ProjectionCheckpointStore.Load(roomDirectoryPath);
         ProjectionCheckpoint? latestCheckpoint = null;
 
         while (true)
@@ -711,7 +711,7 @@ public static class MutationInterface
                                 CoreExitedByExecutionId = prunedExited
                             }
                         };
-                        ProjectionCheckpointStore.Save(taskDirectoryPath, latestCheckpoint);
+                        ProjectionCheckpointStore.Save(roomDirectoryPath, latestCheckpoint);
                     }
 
                     return state;

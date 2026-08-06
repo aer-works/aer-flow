@@ -32,7 +32,7 @@ namespace Aer.Daemon
 {
     public static class DaemonHost
     {
-        // M21 Phase 2 (#232): see the /api/tasks/artifact handler below for why this is larger
+        // M21 Phase 2 (#232): see the /api/rooms/artifact handler below for why this is larger
         // than HomeViewModel's 400-char inbox snippet.
         private const int ArtifactPreviewMaxLength = 50_000;
 
@@ -209,14 +209,14 @@ namespace Aer.Daemon
 
                 TaskSession? session = null;
 
-                Func<string, CancellationToken, Task> reopenTaskAsync = async (taskDirectoryPath, cancellationToken) =>
+                Func<string, CancellationToken, Task> reopenTaskAsync = async (roomDirectoryPath, cancellationToken) =>
                 {
                     if (session != null)
                     {
-                        var outcome = await session.LoadAsync(taskDirectoryPath, cancellationToken);
+                        var outcome = await session.LoadAsync(roomDirectoryPath, cancellationToken);
                         if (outcome.Projection != null)
                         {
-                            await broadcast.BroadcastStateAsync(outcome.Projection, taskDirectoryPath);
+                            await broadcast.BroadcastStateAsync(outcome.Projection, roomDirectoryPath);
                         }
                     }
                 };
@@ -771,10 +771,10 @@ namespace Aer.Daemon
 
             // #672: the operator's decision surface for held work escalated into a room, and the
             // seam where approving a memory-proposal-shaped item actually applies it (decision
-            // 0044 point 3). One endpoint with an Outcome field, mirroring /api/tasks/decide's own
+            // 0044 point 3). One endpoint with an Outcome field, mirroring /api/rooms/decide's own
             // shape above, rather than two endpoints -- the daemon's existing decide-style
             // convention, not a new one invented for this workflow. Synchronous (unlike
-            // /api/tasks/decide's fire-and-forget dispatch): a resolve is one journal append plus,
+            // /api/rooms/decide's fire-and-forget dispatch): a resolve is one journal append plus,
             // at most, one small file write -- not a worker turn -- so the operator gets the actual
             // outcome (including a traversal refusal or a loud missing-delete-target failure) back
             // in the response instead of polling turn-errors.log for it.
@@ -793,7 +793,7 @@ namespace Aer.Daemon
                 // #672 review: RoomMutationInterface's own ConcurrencyGuard.Acquire unconditionally
                 // creates the directory it locks, so without this check a typo'd RoomDirectoryPath
                 // would still leave a stray directory (with a flow.lock) on disk before the "not
-                // found" 400 below ever fires -- matching /api/tasks/open's own invalid-directory
+                // found" 400 below ever fires -- matching /api/rooms/open's own invalid-directory
                 // guard above.
                 if (!Directory.Exists(request.RoomDirectoryPath))
                 {
@@ -859,14 +859,14 @@ namespace Aer.Daemon
 
                 // #333: new records are created in the one record root, never the legacy split.
                 var baseTasksDir = AerPaths.Sessions;
-                var folderName = string.IsNullOrWhiteSpace(request.TaskName)
+                var folderName = string.IsNullOrWhiteSpace(request.RoomName)
                     ? $"task-{DateTime.UtcNow:yyyyMMddHHmmss}"
-                    : request.TaskName.Trim();
-                var taskDirectoryPath = Path.GetFullPath(Path.Combine(baseTasksDir, folderName));
+                    : request.RoomName.Trim();
+                var roomDirectoryPath = Path.GetFullPath(Path.Combine(baseTasksDir, folderName));
                 var normalizedBaseTasksDir = Path.GetFullPath(baseTasksDir);
-                if (!taskDirectoryPath.StartsWith(normalizedBaseTasksDir + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                if (!roomDirectoryPath.StartsWith(normalizedBaseTasksDir + Path.DirectorySeparatorChar, StringComparison.Ordinal))
                 {
-                    return Results.BadRequest("TaskName must be a simple folder name, not a path.");
+                    return Results.BadRequest("RoomName must be a simple folder name, not a path.");
                 }
 
                 try
@@ -875,27 +875,27 @@ namespace Aer.Daemon
                         request.TemplateId,
                         request.PrimaryAdapter ?? "claude",
                         request.SecondaryAdapter,
-                        taskDirectoryPath,
+                        roomDirectoryPath,
                         request.CustomPrompt,
                         request.SecondaryCustomPrompt).ConfigureAwait(true);
 
-                    var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
-                    var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
+                    var workflowFilePath = Path.Combine(roomDirectoryPath, "workflow.json");
+                    var bindingsFilePath = Path.Combine(roomDirectoryPath, "bindings.json");
 
                     pathHolder.BindingsFilePath = bindingsFilePath;
-                    session.SetCurrentTaskDirectory(taskDirectoryPath);
-                    await session.RecordOpenedAsync(taskDirectoryPath).ConfigureAwait(true);
-                    var outcome = await session.LoadAsync(taskDirectoryPath).ConfigureAwait(true);
+                    session.SetCurrentTaskDirectory(roomDirectoryPath);
+                    await session.RecordOpenedAsync(roomDirectoryPath).ConfigureAwait(true);
+                    var outcome = await session.LoadAsync(roomDirectoryPath).ConfigureAwait(true);
                     if (outcome.Projection != null)
                     {
-                        await broadcast.BroadcastStateAsync(outcome.Projection, taskDirectoryPath).ConfigureAwait(true);
+                        await broadcast.BroadcastStateAsync(outcome.Projection, roomDirectoryPath).ConfigureAwait(true);
                     }
 
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            await session.RunAsync(taskDirectoryPath, workflowFilePath, bindingsFilePath).ConfigureAwait(true);
+                            await session.RunAsync(roomDirectoryPath, workflowFilePath, bindingsFilePath).ConfigureAwait(true);
                         }
                         catch (Exception ex)
                         {
@@ -903,7 +903,7 @@ namespace Aer.Daemon
                         }
                     });
 
-                    return Results.Ok(new { TaskDirectoryPath = taskDirectoryPath });
+                    return Results.Ok(new { RoomDirectoryPath = roomDirectoryPath });
                 }
                 catch (Exception ex)
                 {
@@ -911,13 +911,13 @@ namespace Aer.Daemon
                 }
             });
 
-            app.MapGet("/api/tasks/recent", async (TaskSession session) =>
+            app.MapGet("/api/rooms/recent", async (TaskSession session) =>
             {
                 var directories = await session.LoadRecentTaskDirectoriesAsync();
                 return Results.Ok(directories);
             });
 
-            app.MapPost("/api/tasks/open", async ([FromBody] OpenTaskRequest request, TaskSession session, BindingsPathHolder pathHolder) =>
+            app.MapPost("/api/rooms/open", async ([FromBody] OpenTaskRequest request, TaskSession session, BindingsPathHolder pathHolder) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath))
                 {
@@ -955,14 +955,14 @@ namespace Aer.Daemon
                     : outcome.ErrorMessage);
             });
 
-            app.MapPost("/api/tasks/run", async ([FromBody] RunTaskRequest request, TaskSession session, BindingsPathHolder pathHolder) =>
+            app.MapPost("/api/rooms/run", async ([FromBody] RunTaskRequest request, TaskSession session, BindingsPathHolder pathHolder) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath)) return Results.BadRequest("DirectoryPath is required.");
                 if (string.IsNullOrEmpty(request.BindingsFilePath)) return Results.BadRequest("BindingsFilePath is required.");
 
                 pathHolder.BindingsFilePath = request.BindingsFilePath;
 
-                // #330: unlike /api/tasks/open and /api/templates/run, this endpoint -- the one the
+                // #330: unlike /api/rooms/open and /api/templates/run, this endpoint -- the one the
                 // desktop's own TaskSession.RunAsync HTTP branch posts to -- never gave already-
                 // connected clients (a paired phone) any immediate sign that a run just started here.
                 // Best-effort and may no-op for a brand-new task (no snapshot.json until the pump
@@ -1002,13 +1002,13 @@ namespace Aer.Daemon
                             request.BindingsFilePath);
                         if (outcome.ErrorMessage is { } errorMessage)
                         {
-                            await AppendTurnErrorAsync(request.DirectoryPath, "/api/tasks/run", errorMessage).ConfigureAwait(false);
+                            await AppendTurnErrorAsync(request.DirectoryPath, "/api/rooms/run", errorMessage).ConfigureAwait(false);
                         }
                     }
                     catch (Exception ex)
                     {
                         Console.Error.WriteLine($"Error executing task run in background: {ex}");
-                        await AppendTurnErrorAsync(request.DirectoryPath, "/api/tasks/run", ex).ConfigureAwait(false);
+                        await AppendTurnErrorAsync(request.DirectoryPath, "/api/rooms/run", ex).ConfigureAwait(false);
                     }
                     finally
                     {
@@ -1019,7 +1019,7 @@ namespace Aer.Daemon
                 return Results.Ok();
             });
 
-            app.MapPost("/api/tasks/decide", async ([FromBody] DecideTaskRequest request, TaskSession session) =>
+            app.MapPost("/api/rooms/decide", async ([FromBody] DecideTaskRequest request, TaskSession session) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath)) return Results.BadRequest("DirectoryPath is required.");
 
@@ -1029,7 +1029,7 @@ namespace Aer.Daemon
                     var referenceOutcome = await session.LoadAsync(request.DirectoryPath);
                     if (referenceOutcome.Projection is not { } referenceProjection)
                     {
-                        // #324: same guarantee as /api/tasks/open -- LoadAsync may fail without a message.
+                        // #324: same guarantee as /api/rooms/open -- LoadAsync may fail without a message.
                         return Results.BadRequest(string.IsNullOrEmpty(referenceOutcome.ErrorMessage)
                             ? "Could not open the task. Its saved state could not be read."
                             : referenceOutcome.ErrorMessage);
@@ -1052,7 +1052,7 @@ namespace Aer.Daemon
                     }
                 }
 
-                // #590: see the matching lock in /api/tasks/run above -- same persisted-SessionId
+                // #590: see the matching lock in /api/rooms/run above -- same persisted-SessionId
                 // exposure, same fix.
                 _ = Task.Run(async () =>
                 {
@@ -1060,7 +1060,7 @@ namespace Aer.Daemon
                     await turnLock.WaitAsync().ConfigureAwait(false);
                     try
                     {
-                        // #828: same gap as /api/tasks/run above -- TaskSession.DecideAsync's
+                        // #828: same gap as /api/rooms/run above -- TaskSession.DecideAsync's
                         // in-process fallback also catches AerFlowException/FileNotFoundException
                         // itself and returns a MutationOutcome rather than throwing, so its
                         // ErrorMessage is the primary place a failure here (e.g. this decision losing
@@ -1076,13 +1076,13 @@ namespace Aer.Daemon
                             request.SupplementaryOutputName);
                         if (outcome.ErrorMessage is { } errorMessage)
                         {
-                            await AppendTurnErrorAsync(request.DirectoryPath, "/api/tasks/decide", errorMessage).ConfigureAwait(false);
+                            await AppendTurnErrorAsync(request.DirectoryPath, "/api/rooms/decide", errorMessage).ConfigureAwait(false);
                         }
                     }
                     catch (Exception ex)
                     {
                         Console.Error.WriteLine($"Error executing task decide in background: {ex}");
-                        await AppendTurnErrorAsync(request.DirectoryPath, "/api/tasks/decide", ex).ConfigureAwait(false);
+                        await AppendTurnErrorAsync(request.DirectoryPath, "/api/rooms/decide", ex).ConfigureAwait(false);
                     }
                     finally
                     {
@@ -1093,7 +1093,7 @@ namespace Aer.Daemon
                 return Results.Ok();
             });
 
-            app.MapPost("/api/tasks/cancel", async ([FromBody] CancelTaskRequest request, TaskSession session) =>
+            app.MapPost("/api/rooms/cancel", async ([FromBody] CancelTaskRequest request, TaskSession session) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath)) return Results.BadRequest("DirectoryPath is required.");
 
@@ -1120,7 +1120,7 @@ namespace Aer.Daemon
             // (the everyday view); includeArchived=true surfaces them for the management screen.
             // A directory that fails to load (corrupt snapshot/log) is skipped rather than failing
             // the whole list, since one bad item shouldn't hide every other task/session.
-            app.MapGet("/api/tasks", async (bool? includeArchived) =>
+            app.MapGet("/api/rooms", async (bool? includeArchived) =>
             {
                 // #333: one root, one kind of record -- the two-root concatenation this replaced is
                 // what "one list of one kind of thing" was blocked on.
@@ -1132,12 +1132,12 @@ namespace Aer.Daemon
                     directories.AddRange(Directory.GetDirectories(baseSessionsDir));
                 }
 
-                var items = new List<TaskFleetItem>();
+                var items = new List<RoomFleetItem>();
                 foreach (var directory in directories)
                 {
                     try
                     {
-                        var item = await TaskProjectionLoader.LoadFleetStatusAsync(directory).ConfigureAwait(true);
+                        var item = await RoomProjectionLoader.LoadFleetStatusAsync(directory).ConfigureAwait(true);
                         if (item.IsArchived && includeArchived != true)
                         {
                             continue;
@@ -1155,7 +1155,7 @@ namespace Aer.Daemon
                 return Results.Ok(items.OrderByDescending(i => i.LastActivityAt ?? i.Updated).ThenBy(i => i.FriendlyName, StringComparer.OrdinalIgnoreCase).ToList());
             });
 
-            app.MapPost("/api/tasks/archive", async ([FromBody] TaskDirectoryRequest request) =>
+            app.MapPost("/api/rooms/archive", async ([FromBody] RoomDirectoryRequest request) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath))
                 {
@@ -1166,11 +1166,11 @@ namespace Aer.Daemon
                     return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
                 }
 
-                await TaskLifecycle.ArchiveAsync(resolvedPath).ConfigureAwait(true);
+                await RoomLifecycle.ArchiveAsync(resolvedPath).ConfigureAwait(true);
                 return Results.Ok();
             });
 
-            app.MapPost("/api/tasks/unarchive", async ([FromBody] TaskDirectoryRequest request) =>
+            app.MapPost("/api/rooms/unarchive", async ([FromBody] RoomDirectoryRequest request) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath))
                 {
@@ -1181,15 +1181,15 @@ namespace Aer.Daemon
                     return Results.BadRequest("DirectoryPath must be inside ~/.aer/tasks or ~/.aer/sessions.");
                 }
 
-                await TaskLifecycle.UnarchiveAsync(resolvedPath).ConfigureAwait(true);
+                await RoomLifecycle.UnarchiveAsync(resolvedPath).ConfigureAwait(true);
                 return Results.Ok();
             });
 
-            // A real delete frees the directory's name for reuse (TaskDirectoryAlreadyExistsException's
+            // A real delete frees the directory's name for reuse (RoomDirectoryAlreadyExistsException's
             // collision guard checks File.Exists on workflow.json, which archiving alone never
-            // clears — see TaskLifecycle's remarks) and also strips the stale recent so a later
-            // /api/tasks/recent-driven open doesn't 404 on a directory that no longer exists.
-            app.MapPost("/api/tasks/delete", async ([FromBody] TaskDirectoryRequest request, LocalUiConfigurationStore configStore) =>
+            // clears — see RoomLifecycle's remarks) and also strips the stale recent so a later
+            // /api/rooms/recent-driven open doesn't 404 on a directory that no longer exists.
+            app.MapPost("/api/rooms/delete", async ([FromBody] RoomDirectoryRequest request, LocalUiConfigurationStore configStore) =>
             {
                 if (string.IsNullOrEmpty(request.DirectoryPath))
                 {
@@ -1211,7 +1211,7 @@ namespace Aer.Daemon
             });
 
             // M21 Phase 2 (#232): a client with no access to the daemon host's filesystem
-            // (Aer.Mobile) otherwise has no way to see what it's approving — TaskProjection only
+            // (Aer.Mobile) otherwise has no way to see what it's approving — RoomProjection only
             // ever carries file *paths*, never bytes (HomeViewModel's desktop-side inbox preview
             // reads artifact content straight off local disk). fileName is validated against the
             // execution's own recorded OutputFiles rather than trusted as a raw path component,
@@ -1219,7 +1219,7 @@ namespace Aer.Daemon
             // content only — capped well above the Home inbox snippet's 400 chars, since a phone
             // has no "open the real file" fallback, but still bounded so one huge artifact can't
             // stall a slow LAN/cellular transfer.
-            app.MapGet("/api/tasks/artifact", async (string directoryPath, string executionId, string fileName, TaskSession session) =>
+            app.MapGet("/api/rooms/artifact", async (string directoryPath, string executionId, string fileName, TaskSession session) =>
             {
                 if (string.IsNullOrEmpty(directoryPath) || string.IsNullOrEmpty(executionId) || string.IsNullOrEmpty(fileName))
                 {
@@ -1262,7 +1262,7 @@ namespace Aer.Daemon
             {
                 var adapter = string.IsNullOrWhiteSpace(request.Adapter) ? "claude" : request.Adapter.Trim().ToLowerInvariant();
                 var sessionId = Guid.NewGuid().ToString("N")[..12];
-                var taskDirectoryPath = InteractiveSessionMaterializer.ResolveTaskDirectoryPath(sessionId, request.TaskName, request.DirectoryPath);
+                var roomDirectoryPath = InteractiveSessionMaterializer.ResolveTaskDirectoryPath(sessionId, request.RoomName, request.DirectoryPath);
 
                 if (!string.IsNullOrWhiteSpace(request.WorkingDirectory))
                 {
@@ -1277,7 +1277,7 @@ namespace Aer.Daemon
                 {
                     metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                         sessionId,
-                        taskDirectoryPath,
+                        roomDirectoryPath,
                         adapter,
                         request.Model,
                         request.WorkingDirectory,
@@ -1290,11 +1290,11 @@ namespace Aer.Daemon
                     return Results.BadRequest(ex.Message);
                 }
 
-                var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
+                var bindingsFilePath = Path.Combine(roomDirectoryPath, "bindings.json");
 
                 pathHolder.BindingsFilePath = bindingsFilePath;
-                session.SetCurrentTaskDirectory(taskDirectoryPath);
-                await session.RecordOpenedAsync(taskDirectoryPath).ConfigureAwait(true);
+                session.SetCurrentTaskDirectory(roomDirectoryPath);
+                await session.RecordOpenedAsync(roomDirectoryPath).ConfigureAwait(true);
 
                 if (!string.IsNullOrWhiteSpace(request.InitialMessage))
                 {
@@ -1302,7 +1302,7 @@ namespace Aer.Daemon
                     {
                         try
                         {
-                            await ExecuteSessionTurnAsync(session, taskDirectoryPath, metadata, request.InitialMessage, adapter, request.Model, isInitial: true, broadcast.BroadcastStateAsync, adapters, broadcast.BroadcastSessionProgressAsync).ConfigureAwait(false);
+                            await ExecuteSessionTurnAsync(session, roomDirectoryPath, metadata, request.InitialMessage, adapter, request.Model, isInitial: true, broadcast.BroadcastStateAsync, adapters, broadcast.BroadcastSessionProgressAsync).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {
@@ -1312,10 +1312,10 @@ namespace Aer.Daemon
                 }
                 else
                 {
-                    var outcome = await session.LoadAsync(taskDirectoryPath).ConfigureAwait(true);
+                    var outcome = await session.LoadAsync(roomDirectoryPath).ConfigureAwait(true);
                     if (outcome.Projection != null)
                     {
-                        await broadcast.BroadcastStateAsync(outcome.Projection, taskDirectoryPath).ConfigureAwait(true);
+                        await broadcast.BroadcastStateAsync(outcome.Projection, roomDirectoryPath).ConfigureAwait(true);
                     }
                 }
 
@@ -1372,7 +1372,7 @@ namespace Aer.Daemon
                     }
                 });
 
-                return Results.Ok(new { SessionId = metadata.SessionId, TaskDirectoryPath = directoryPath });
+                return Results.Ok(new { SessionId = metadata.SessionId, RoomDirectoryPath = directoryPath });
             });
 
             app.MapGet("/api/sessions/{sessionId}", async (string sessionId) =>
@@ -1653,9 +1653,9 @@ namespace Aer.Daemon
             mutex?.Dispose();
         }
 
-        // Session folders are only named "session-{sessionId}" when StartSessionRequest.TaskName is
+        // Session folders are only named "session-{sessionId}" when StartSessionRequest.RoomName is
         // omitted (the fallback name at MapPost "/api/sessions/start" above) -- a caller-supplied
-        // TaskName (e.g. a human-readable title) produces a differently-named folder, so any lookup
+        // RoomName (e.g. a human-readable title) produces a differently-named folder, so any lookup
         // by sessionId alone must not assume the fallback convention holds. Mirrors the scan
         // MapGet "/api/sessions" (list) already does per-directory, keyed by the persisted
         // SessionMetadata.SessionId instead of the folder name.
@@ -1663,9 +1663,9 @@ namespace Aer.Daemon
         // caller-supplied path reaching real filesystem mutation (archive/unarchive marker writes,
         // and delete's recursive Directory.Delete) via remote-reachable endpoints (mobile's
         // DaemonClient.deleteTask() included) -- an unchecked path here is a strictly worse version
-        // of #250's RunTemplate TaskName traversal, since delete needs no traversal trick at all,
+        // of #250's RunTemplate RoomName traversal, since delete needs no traversal trick at all,
         // just any absolute path. Every fleet item this API surfaces is itself a direct child of
-        // the record root (Directory.GetDirectories in the /api/tasks handler above), so requiring
+        // the record root (Directory.GetDirectories in the /api/rooms handler above), so requiring
         // the resolved path be contained within it costs nothing legitimate.
         // #333: this deliberately no longer accepts the legacy `tasks` root. Migration copies rather
         // than moves, so those directories still exist on disk -- but nothing enumerates them any
@@ -1817,7 +1817,7 @@ namespace Aer.Daemon
             string? requestAdapter,
             string? requestModel,
             bool isInitial,
-            Func<TaskProjection, string?, Task> broadcastStateAsync,
+            Func<RoomProjection, string?, Task> broadcastStateAsync,
             IReadOnlyDictionary<string, IWorkerAdapter> adapters,
             Func<string, string, WorkerProgressEvent, Task> broadcastSessionProgressAsync,
             bool forceHandoff = false)
@@ -1868,7 +1868,7 @@ namespace Aer.Daemon
             string? requestAdapter,
             string? requestModel,
             bool isInitial,
-            Func<TaskProjection, string?, Task> broadcastStateAsync,
+            Func<RoomProjection, string?, Task> broadcastStateAsync,
             IReadOnlyDictionary<string, IWorkerAdapter> adapters,
             Func<string, string, WorkerProgressEvent, Task> broadcastSessionProgressAsync,
             bool forceHandoff = false)
@@ -1941,7 +1941,7 @@ namespace Aer.Daemon
                 // inherited daemon/app cwd. The grant above is still derived from metadata.WorkingDirectory
                 // (null -> fail-closed), so this run-dir fallback hardens where it starts without widening
                 // what it may do.
-                WorkingDirectory: InteractiveSessionMaterializer.ResolveRunDirectory(metadata.WorkingDirectory, metadata.TaskDirectoryPath),
+                WorkingDirectory: InteractiveSessionMaterializer.ResolveRunDirectory(metadata.WorkingDirectory, metadata.RoomDirectoryPath),
                 SessionId: vendorSessionId,
                 ResumeSession: resumeSession,
                 StreamJson: string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase),

@@ -31,8 +31,8 @@ public static class FlowStateReporter
         }
 
         output.WriteLine($"Workflow status: {result.State.Status}");
-        var artifactsRootPath = result.TaskDirectoryPath is not null
-            ? Path.Combine(result.TaskDirectoryPath, ArtifactManager.ArtifactsDirectoryName)
+        var artifactsRootPath = result.RoomDirectoryPath is not null
+            ? Path.Combine(result.RoomDirectoryPath, ArtifactManager.ArtifactsDirectoryName)
             : null;
 
         foreach (var step in result.State.Steps)

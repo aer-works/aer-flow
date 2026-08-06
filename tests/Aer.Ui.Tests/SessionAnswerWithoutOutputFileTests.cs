@@ -183,7 +183,7 @@ public class SessionAnswerWithoutOutputFileTests : IAsyncLifetime
     {
         var start = new StartSessionRequest(
             Adapter: "claude",
-            TaskName: "no-output-file-" + Guid.NewGuid().ToString("N"),
+            RoomName: "no-output-file-" + Guid.NewGuid().ToString("N"),
             InitialMessage: message,
             SafetyCeiling: 200);
 

@@ -24,7 +24,7 @@ class TasksScreen extends StatefulWidget {
 }
 
 class _TasksScreenState extends State<TasksScreen> {
-  List<TaskFleetItem> _items = [];
+  List<RoomFleetItem> _items = [];
   bool _includeArchived = false;
   bool _isLoading = true;
   String? _loadError;
@@ -56,18 +56,18 @@ class _TasksScreenState extends State<TasksScreen> {
     }
   }
 
-  Future<void> _archive(TaskFleetItem item) async {
+  Future<void> _archive(RoomFleetItem item) async {
     try {
-      await widget.client.archiveTask(item.taskDirectoryPath);
+      await widget.client.archiveTask(item.roomDirectoryPath);
       await _refresh();
     } on DaemonException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
-  Future<void> _unarchive(TaskFleetItem item) async {
+  Future<void> _unarchive(RoomFleetItem item) async {
     try {
-      await widget.client.unarchiveTask(item.taskDirectoryPath);
+      await widget.client.unarchiveTask(item.roomDirectoryPath);
       await _refresh();
     } on DaemonException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
@@ -77,7 +77,7 @@ class _TasksScreenState extends State<TasksScreen> {
   /// Reuses `_cancelRun`'s existing `showDialog` + `AlertDialog` confirm pattern
   /// (inbox_screen.dart) — mobile already has this precedent, unlike desktop, which has no
   /// modal-dialog infrastructure and uses an inline two-step confirm instead.
-  Future<void> _delete(TaskFleetItem item) async {
+  Future<void> _delete(RoomFleetItem item) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -92,26 +92,26 @@ class _TasksScreenState extends State<TasksScreen> {
     if (confirmed != true) return;
 
     try {
-      await widget.client.deleteTask(item.taskDirectoryPath);
+      await widget.client.deleteTask(item.roomDirectoryPath);
       await _refresh();
     } on DaemonException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
-  void _enterSelectionMode(TaskFleetItem item) {
+  void _enterSelectionMode(RoomFleetItem item) {
     setState(() {
       _selectionMode = true;
-      _selectedPaths.add(item.taskDirectoryPath);
+      _selectedPaths.add(item.roomDirectoryPath);
     });
   }
 
-  void _toggleSelection(TaskFleetItem item) {
+  void _toggleSelection(RoomFleetItem item) {
     setState(() {
-      if (_selectedPaths.contains(item.taskDirectoryPath)) {
-        _selectedPaths.remove(item.taskDirectoryPath);
+      if (_selectedPaths.contains(item.roomDirectoryPath)) {
+        _selectedPaths.remove(item.roomDirectoryPath);
       } else {
-        _selectedPaths.add(item.taskDirectoryPath);
+        _selectedPaths.add(item.roomDirectoryPath);
       }
       if (_selectedPaths.isEmpty) {
         _selectionMode = false;
@@ -127,11 +127,11 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   /// Archives every selected, not-yet-archived item (issue #288) — sequential calls against the
-  /// existing per-directory `/api/tasks/archive` endpoint (same reasoning as desktop's
+  /// existing per-directory `/api/rooms/archive` endpoint (same reasoning as desktop's
   /// `TasksViewModel.BulkArchiveAsync`: archive mutates the shared fleet index, so parallel calls
   /// could race), one `_refresh()` at the end rather than one per item.
   Future<void> _bulkArchive() async {
-    final targets = _items.where((i) => _selectedPaths.contains(i.taskDirectoryPath) && !i.isArchived).toList();
+    final targets = _items.where((i) => _selectedPaths.contains(i.roomDirectoryPath) && !i.isArchived).toList();
     if (targets.isEmpty) {
       _exitSelectionMode();
       return;
@@ -140,7 +140,7 @@ class _TasksScreenState extends State<TasksScreen> {
     final failures = <String>[];
     for (final item in targets) {
       try {
-        await widget.client.archiveTask(item.taskDirectoryPath);
+        await widget.client.archiveTask(item.roomDirectoryPath);
       } on DaemonException catch (e) {
         failures.add('${item.friendlyName}: ${e.message}');
       }
@@ -159,7 +159,7 @@ class _TasksScreenState extends State<TasksScreen> {
   /// Deletes every selected item (issue #288) after a single "Delete N tasks?" confirm — the bulk
   /// counterpart of `_delete`'s per-item confirm, not a regression to no confirmation.
   Future<void> _bulkDelete() async {
-    final targets = _items.where((i) => _selectedPaths.contains(i.taskDirectoryPath)).toList();
+    final targets = _items.where((i) => _selectedPaths.contains(i.roomDirectoryPath)).toList();
     if (targets.isEmpty) {
       _exitSelectionMode();
       return;
@@ -181,7 +181,7 @@ class _TasksScreenState extends State<TasksScreen> {
     final failures = <String>[];
     for (final item in targets) {
       try {
-        await widget.client.deleteTask(item.taskDirectoryPath);
+        await widget.client.deleteTask(item.roomDirectoryPath);
       } on DaemonException catch (e) {
         failures.add('${item.friendlyName}: ${e.message}');
       }
@@ -238,7 +238,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     itemCount: _items.length,
                     itemBuilder: (context, index) {
                       final item = _items[index];
-                      final isSelected = _selectedPaths.contains(item.taskDirectoryPath);
+                      final isSelected = _selectedPaths.contains(item.roomDirectoryPath);
                       return Card(
                         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
@@ -276,7 +276,7 @@ class _TasksScreenState extends State<TasksScreen> {
                                       if (item.pausedStepCount > 0)
                                         Text('${item.pausedStepCount} step(s) awaiting a decision',
                                             style: Theme.of(context).textTheme.bodySmall),
-                                      Text(item.taskDirectoryPath, style: Theme.of(context).textTheme.bodySmall),
+                                      Text(item.roomDirectoryPath, style: Theme.of(context).textTheme.bodySmall),
                                       const SizedBox(height: 8),
                                       if (!_selectionMode)
                                         Row(

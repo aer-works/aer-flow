@@ -148,7 +148,7 @@ public class CapturedWorkerStreamTests
     public async Task RoundTrip_And_RenderEscaping_BothPolarities()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"stream-roundtrip-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
@@ -199,7 +199,7 @@ public class CapturedWorkerStreamTests
             await File.WriteAllTextAsync(workflowFile, JsonSerializer.Serialize(definition), TestContext.Current.CancellationToken);
             await File.WriteAllTextAsync(bindingsFile, JsonSerializer.Serialize(bindings), TestContext.Current.CancellationToken);
 
-            var runOptions = new RunOptions(workflowFile, bindingsFile, taskDirectory);
+            var runOptions = new RunOptions(workflowFile, bindingsFile, roomDirectory);
             var runResult = await RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken);
 
             // Succeeded, not just Terminal: a failed run is also Terminal, and that weaker assert
@@ -208,7 +208,7 @@ public class CapturedWorkerStreamTests
             Assert.Equal(StepStatus.Succeeded, runResult.State.Steps[0].Status);
 
             var execId = runResult.State.Steps[0].LatestExecutionId!.Value.Value;
-            var execDir = Path.Combine(taskDirectory, "artifacts", $"execution_{execId}");
+            var execDir = Path.Combine(roomDirectory, "artifacts", $"execution_{execId}");
             var stdoutFile = Path.Combine(execDir, ExecutionStreamLogger.StdoutLogFileName);
 
             Assert.True(File.Exists(stdoutFile), $"Expected stream log file at {stdoutFile}");
@@ -218,7 +218,7 @@ public class CapturedWorkerStreamTests
 
             // Render with StatusCommand --follow and verify neutralized output
             var output = new StringWriter();
-            await StatusCommand.ExecuteAsync(new StatusOptions(taskDirectory, Follow: true), output, TestContext.Current.CancellationToken);
+            await StatusCommand.ExecuteAsync(new StatusOptions(roomDirectory, Follow: true), output, TestContext.Current.CancellationToken);
             var statusText = output.ToString();
 
             Assert.Contains("Workflow status: Terminal", statusText);

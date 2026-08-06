@@ -28,7 +28,7 @@ public class MainWindowRunTests
     public async Task RunAsync_starts_a_fresh_task_from_a_template_and_bindings_file_and_renders_it_to_terminal()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-run-fresh-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
@@ -36,7 +36,7 @@ public class MainWindowRunTests
 
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
-            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;
@@ -63,7 +63,7 @@ public class MainWindowRunTests
     public async Task RunAsync_records_the_task_directory_and_remembers_the_bindings_and_template_paths()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-run-remember-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
@@ -71,10 +71,10 @@ public class MainWindowRunTests
             var configurationStore = new LocalUiConfigurationStore(NewConfigFilePath());
             var window = new MainWindow(configurationStore, Adapters);
 
-            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             var recents = await configurationStore.LoadRecentTaskDirectoriesAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(Path.GetFullPath(taskDirectory), Assert.Single(recents));
+            Assert.Equal(Path.GetFullPath(roomDirectory), Assert.Single(recents));
             Assert.Equal(
                 Path.GetFullPath(bindingsFilePath),
                 await configurationStore.LoadLastBindingsFilePathAsync(TestContext.Current.CancellationToken));
@@ -92,7 +92,7 @@ public class MainWindowRunTests
     public async Task RunAsync_resumes_an_already_bound_task_directory_with_no_workflow_template()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-run-resume-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
@@ -104,13 +104,13 @@ public class MainWindowRunTests
                 await WriteThreeStepWorkflowAsync(testRoot), TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
             await SnapshotBinder.PersistAsync(
-                snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+                snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
             // No workflow template path given: a resume never needs one (RunOptions.WorkflowFilePath's
             // own remarks, issue #137) since the snapshot is already bound.
-            await window.RunAsync(taskDirectory, workflowTemplateFilePath: null, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowTemplateFilePath: null, bindingsFilePath, TestContext.Current.CancellationToken);
 
             var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;
@@ -127,17 +127,17 @@ public class MainWindowRunTests
     public async Task RunAsync_renders_a_missing_template_on_a_fresh_start_as_an_in_window_message_not_a_crash()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-run-missing-template-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
             // A fresh task directory (no snapshot.json yet) with no template given at all.
-            await window.RunAsync(taskDirectory, workflowTemplateFilePath: null, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowTemplateFilePath: null, bindingsFilePath, TestContext.Current.CancellationToken);
 
             var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;
-            Assert.Contains(taskDirectory, runStatusText.Text);
+            Assert.Contains(roomDirectory, runStatusText.Text);
             Assert.True(window.FindViewControl<Button>("RunButton")!.IsEnabled);
         }
         finally

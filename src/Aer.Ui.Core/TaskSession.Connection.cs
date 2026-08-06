@@ -309,9 +309,9 @@ public sealed partial class TaskSession
     private sealed record ProgressFrame(string DirectoryPath, string StepId, string Kind, string Text, bool IsPartial);
 
     /// <summary>
-    /// Mirrors <see cref="TaskProjection"/>'s shape plus the <c>DirectoryPath</c> sibling property
+    /// Mirrors <see cref="RoomProjection"/>'s shape plus the <c>DirectoryPath</c> sibling property
     /// Aer.Daemon bolts onto every <c>/api/ws</c> frame (M21 Phase 2, #232). Deserializing straight
-    /// into <see cref="TaskProjection"/>, as <see cref="ReceiveWebSocketDataAsync"/> did before,
+    /// into <see cref="RoomProjection"/>, as <see cref="ReceiveWebSocketDataAsync"/> did before,
     /// silently drops that sibling — leaving no way to tell whether an incoming push is even for the
     /// directory this client has open, so every push got applied unconditionally regardless of which
     /// client's action produced it. This wrapper exists solely so the receive loop can filter.
@@ -323,7 +323,7 @@ public sealed partial class TaskSession
         ExecutionHistory History,
         ArtifactLineage Lineage);
 
-    /// <summary>The M24 Phase 1 live in-turn streaming socket's client-side counterpart -- see <see cref="SessionProgressReceived"/>. A dedicated connection, not folded into <see cref="StartWebSocketListenerAsync"/>'s own socket, for the exact same reason the daemon keeps the two endpoints separate (<c>Aer.Daemon.Program</c>'s <c>progressWebSockets</c> remarks): this frame shape has no type discriminator, so sharing a socket risks a <see cref="TaskProjection"/> deserialization corrupting on it.</summary>
+    /// <summary>The M24 Phase 1 live in-turn streaming socket's client-side counterpart -- see <see cref="SessionProgressReceived"/>. A dedicated connection, not folded into <see cref="StartWebSocketListenerAsync"/>'s own socket, for the exact same reason the daemon keeps the two endpoints separate (<c>Aer.Daemon.Program</c>'s <c>progressWebSockets</c> remarks): this frame shape has no type discriminator, so sharing a socket risks a <see cref="RoomProjection"/> deserialization corrupting on it.</summary>
     private async Task StartProgressWebSocketListenerAsync(string resolvedUrl, string? token, CancellationToken cancellationToken)
     {
         _progressWsCts?.Cancel();
@@ -433,7 +433,7 @@ public sealed partial class TaskSession
 
                     if (frame != null)
                     {
-                        var projection = new TaskProjection(frame.Snapshot, frame.State, frame.History, frame.Lineage);
+                        var projection = new RoomProjection(frame.Snapshot, frame.State, frame.History, frame.Lineage);
 
                         // Consumer 1 (#336): every frame, whichever directory it is for. The switcher's
                         // list shows every session at once, so a push for a session this client is not

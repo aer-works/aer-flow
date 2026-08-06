@@ -8,7 +8,7 @@ public class StatusOptionsParserTests
     {
         var options = StatusOptionsParser.Parse(["task"]);
 
-        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.RoomDirectoryPath);
         Assert.False(options.Follow);
     }
 
@@ -17,7 +17,7 @@ public class StatusOptionsParserTests
     {
         var options = StatusOptionsParser.Parse(["task", "--follow"]);
 
-        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.RoomDirectoryPath);
         Assert.True(options.Follow);
     }
 
@@ -26,7 +26,7 @@ public class StatusOptionsParserTests
     {
         var options = StatusOptionsParser.Parse(["--follow", "task"]);
 
-        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.RoomDirectoryPath);
         Assert.True(options.Follow);
     }
 

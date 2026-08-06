@@ -130,17 +130,17 @@ public class SessionTurnSerializationEndToEndTests : IAsyncLifetime
         Assert.Equal(1 + ConcurrentSends, final.TurnCount);
 
         // And the destructive branch never ran: Flow's own bookkeeping survived every overlap.
-        var taskDirectory = final.TaskDirectoryPath;
-        Assert.False(string.IsNullOrWhiteSpace(taskDirectory));
-        Assert.True(File.Exists(Path.Combine(taskDirectory, "flow.jsonl")), "flow.jsonl was deleted by a racing turn.");
-        Assert.True(File.Exists(Path.Combine(taskDirectory, "snapshot.json")), "snapshot.json was deleted by a racing turn.");
+        var roomDirectory = final.RoomDirectoryPath;
+        Assert.False(string.IsNullOrWhiteSpace(roomDirectory));
+        Assert.True(File.Exists(Path.Combine(roomDirectory, "flow.jsonl")), "flow.jsonl was deleted by a racing turn.");
+        Assert.True(File.Exists(Path.Combine(roomDirectory, "snapshot.json")), "snapshot.json was deleted by a racing turn.");
     }
 
     private async Task<SessionMetadata> StartStubSessionAsync(string initialMessage)
     {
         var request = new StartSessionRequest(
             Adapter: "claude",
-            TaskName: "serialization-session-" + Guid.NewGuid().ToString("N"),
+            RoomName: "serialization-session-" + Guid.NewGuid().ToString("N"),
             InitialMessage: initialMessage);
 
         var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);

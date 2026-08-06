@@ -5,11 +5,11 @@ namespace Aer.Ui.Core;
 
 /// <summary>
 /// Opens a raw, not-yet-instantiated <see cref="WorkflowDefinition"/> template file directly —
-/// the DAG view's other input alongside <see cref="TaskProjectionLoader"/>'s bound-task path (UI
+/// the DAG view's other input alongside <see cref="RoomProjectionLoader"/>'s bound-task path (UI
 /// spec §5, §10; issue #120). Reuses <see cref="WorkflowDefinitionParser.LoadFromFileAsync"/>
 /// exactly as Flow's own write path (template loading ahead of <c>SnapshotBinder.Bind</c>) does —
 /// never a second parser — the same "consume the read model as a library" seam
-/// <see cref="TaskProjectionLoader"/> established for snapshots (M14 Phase 1, issue #118).
+/// <see cref="RoomProjectionLoader"/> established for snapshots (M14 Phase 1, issue #118).
 /// </summary>
 public static class TemplateProjectionLoader
 {

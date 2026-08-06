@@ -25,7 +25,7 @@ public static class ArtifactManager
     /// <summary>
     /// The directory under a task directory that every artifact root is built from (§16) — the same
     /// shared-constant reasoning as <see cref="PromptFileName"/>: every layer that composes
-    /// <c>{taskDirectory}/artifacts</c> must agree on the segment exactly (#773). Tests deliberately
+    /// <c>{roomDirectory}/artifacts</c> must agree on the segment exactly (#773). Tests deliberately
     /// keep restating the literal instead of reading this back: they pin the on-disk contract, which
     /// a change to this constant must break loudly, not follow silently.
     /// </summary>

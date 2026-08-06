@@ -52,14 +52,14 @@ public static class CancelCommand
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(adapters);
 
-        var snapshotPath = Path.Combine(options.TaskDirectoryPath, SnapshotFileName);
-        var logPath = Path.Combine(options.TaskDirectoryPath, LogFileName);
-        var artifactsRootPath = Path.Combine(options.TaskDirectoryPath, ArtifactsDirectoryName);
+        var snapshotPath = Path.Combine(options.RoomDirectoryPath, SnapshotFileName);
+        var logPath = Path.Combine(options.RoomDirectoryPath, LogFileName);
+        var artifactsRootPath = Path.Combine(options.RoomDirectoryPath, ArtifactsDirectoryName);
 
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.TaskDirectoryPath}' has no bound snapshot — 'aer cancel' " +
+                $"Task directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer cancel' " +
                 "targets a task 'aer run' has already started, and never binds one fresh.");
         }
 
@@ -68,7 +68,7 @@ public static class CancelCommand
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
         var (provisionedConfig, provisionedWorktrees, _) =
-            WorktreeWorkspaces.ProvisionLazily(bindingConfig, options.TaskDirectoryPath);
+            WorktreeWorkspaces.ProvisionLazily(bindingConfig, options.RoomDirectoryPath);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         // Lazy (#662): cancel targets a task 'aer run' already started — it does not need to know how
         // to dispatch a worker it will never dispatch, so a bindings file naming an unresolvable one
@@ -85,7 +85,7 @@ public static class CancelCommand
 
         var state = await MutationInterface.RequestCancellationAsync(
                 workflowId,
-                options.TaskDirectoryPath,
+                options.RoomDirectoryPath,
                 snapshot,
                 workerBindings,
                 artifactsRootPath,
@@ -98,6 +98,6 @@ public static class CancelCommand
 
         var worktreeTeardowns = WorktreeProvisioner.TeardownIfTerminal(state.Status, provisionedWorktrees);
 
-        return new CommandResult(state, snapshot, TaskDirectoryPath: options.TaskDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
+        return new CommandResult(state, snapshot, RoomDirectoryPath: options.RoomDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
     }
 }

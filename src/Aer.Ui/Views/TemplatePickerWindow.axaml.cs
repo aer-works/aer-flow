@@ -81,13 +81,13 @@ public partial class TemplatePickerWindow : Window
         var secondaryVendor = (ReviewRunRadio.IsChecked == true || TwoVendorDialogueRadio.IsChecked == true)
             ? (SecondaryVendorCombo.SelectedItem?.ToString() ?? primaryVendor)
             : null;
-        var taskName = string.IsNullOrWhiteSpace(TaskNameBox.Text) ? $"task-{DateTime.UtcNow:yyyyMMddHHmmss}" : TaskNameBox.Text.Trim();
+        var roomName = string.IsNullOrWhiteSpace(RoomNameBox.Text) ? $"task-{DateTime.UtcNow:yyyyMMddHHmmss}" : RoomNameBox.Text.Trim();
         var customPrompt = string.IsNullOrWhiteSpace(CustomPromptBox.Text) ? null : CustomPromptBox.Text.Trim();
         var secondaryCustomPrompt = string.IsNullOrWhiteSpace(SecondaryCustomPromptBox.Text) ? null : SecondaryCustomPromptBox.Text.Trim();
 
         var baseTasksDir = AerPaths.Sessions;
-        var taskDirectoryPath = Path.GetFullPath(Path.Combine(baseTasksDir, taskName));
-        if (!taskDirectoryPath.StartsWith(Path.GetFullPath(baseTasksDir) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        var roomDirectoryPath = Path.GetFullPath(Path.Combine(baseTasksDir, roomName));
+        if (!roomDirectoryPath.StartsWith(Path.GetFullPath(baseTasksDir) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
         {
             Close(false);
             return;
@@ -105,7 +105,7 @@ public partial class TemplatePickerWindow : Window
                 {
                     var request = new StartSessionRequest(
                         Adapter: primaryVendor,
-                        TaskName: taskName,
+                        RoomName: roomName,
                         WorkingDirectory: workDir,
                         InitialMessage: customPrompt);
 
@@ -116,14 +116,14 @@ public partial class TemplatePickerWindow : Window
                         return;
                     }
 
-                    taskDirectoryPath = outcome.Metadata.TaskDirectoryPath;
+                    roomDirectoryPath = outcome.Metadata.RoomDirectoryPath;
                 }
                 else
                 {
                     var sessionId = Guid.NewGuid().ToString("N")[..12];
                     await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                         sessionId: sessionId,
-                        taskDirectoryPath: taskDirectoryPath,
+                        roomDirectoryPath: roomDirectoryPath,
                         adapter: primaryVendor,
                         model: null,
                         workingDirectory: workDir,
@@ -136,12 +136,12 @@ public partial class TemplatePickerWindow : Window
                     templateId,
                     primaryVendor,
                     secondaryVendor,
-                    taskDirectoryPath,
+                    roomDirectoryPath,
                     customPrompt,
                     secondaryCustomPrompt).ConfigureAwait(true);
             }
 
-            MaterializedTaskDirectoryPath = taskDirectoryPath;
+            MaterializedTaskDirectoryPath = roomDirectoryPath;
             Close(true);
         }
         catch (Exception ex)
@@ -154,7 +154,7 @@ public partial class TemplatePickerWindow : Window
     /// Surfaces a failed Start attempt in-window instead of silently closing (the prior behavior --
     /// closing on any failure with no message at all -- was especially misleading once task/session
     /// name collisions started failing closed instead of silently overwriting the earlier task, see
-    /// <c>TaskDirectoryAlreadyExistsException</c>). Leaves the window open so the user can pick a
+    /// <c>RoomDirectoryAlreadyExistsException</c>). Leaves the window open so the user can pick a
     /// different name and retry without re-entering everything else.
     /// </summary>
     private void ShowError(string message)

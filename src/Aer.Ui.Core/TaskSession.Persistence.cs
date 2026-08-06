@@ -16,8 +16,8 @@ namespace Aer.Ui.Core;
 
 public sealed partial class TaskSession
 {
-    public Task RecordOpenedAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
-        => _configurationStore.RecordOpenedAsync(taskDirectoryPath, cancellationToken);
+    public Task RecordOpenedAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
+        => _configurationStore.RecordOpenedAsync(roomDirectoryPath, cancellationToken);
 
     public Task<IReadOnlyList<string>> LoadRecentTaskDirectoriesAsync(CancellationToken cancellationToken = default)
         => _configurationStore.LoadRecentTaskDirectoriesAsync(cancellationToken);

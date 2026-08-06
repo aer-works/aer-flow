@@ -28,17 +28,17 @@ public class WorkingDirectoryEndToEndTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-cwd-plain-{Guid.NewGuid():N}");
         var projectDirectory = Path.Combine(testRoot, "project");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(projectDirectory);
             await File.WriteAllTextAsync(
                 Path.Combine(projectDirectory, "notes.txt"), "from-the-real-project-folder", TestContext.Current.CancellationToken);
 
-            await RunAgainstConfiguredDirectoryAsync(testRoot, taskDirectory, projectDirectory);
+            await RunAgainstConfiguredDirectoryAsync(testRoot, roomDirectory, projectDirectory);
 
-            var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+            var reader = new FlowEventLogReader(Path.Combine(roomDirectory, "flow.jsonl"));
             var executionId = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionSucceeded>().Single().ExecutionId;
             var outputPath = Path.Combine(artifactsRoot, $"execution_{executionId}", "output");
@@ -59,7 +59,7 @@ public class WorkingDirectoryEndToEndTests
         // that one is needed: the .git directory's presence is otherwise irrelevant to cwd wiring.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-cwd-git-{Guid.NewGuid():N}");
         var projectDirectory = Path.Combine(testRoot, "project");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(projectDirectory);
@@ -69,10 +69,10 @@ public class WorkingDirectoryEndToEndTests
             await RunGitAsync(projectDirectory, "add", "notes.txt");
             await RunGitAsync(projectDirectory, "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "seed");
 
-            await RunAgainstConfiguredDirectoryAsync(testRoot, taskDirectory, projectDirectory);
+            await RunAgainstConfiguredDirectoryAsync(testRoot, roomDirectory, projectDirectory);
 
-            var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+            var reader = new FlowEventLogReader(Path.Combine(roomDirectory, "flow.jsonl"));
             var executionId = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionSucceeded>().Single().ExecutionId;
             var outputPath = Path.Combine(artifactsRoot, $"execution_{executionId}", "output");
@@ -90,7 +90,7 @@ public class WorkingDirectoryEndToEndTests
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-cwd-worktree-{Guid.NewGuid():N}");
         var repository = Path.Combine(testRoot, "repo");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(repository);
@@ -103,7 +103,7 @@ public class WorkingDirectoryEndToEndTests
 
             var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteWorktreeBindingsAsync(testRoot, repository, "review-target");
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var finalState =
                 (await RunCommand.ExecuteAsync(options, Adapters, cancellationToken: TestContext.Current.CancellationToken)).State;
@@ -113,15 +113,15 @@ public class WorkingDirectoryEndToEndTests
 
             // The worker read notes.txt by its bare name — proof its cwd was the provisioned worktree,
             // which the engine created from the ref with nobody checking anything out.
-            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            var reader = new FlowEventLogReader(Path.Combine(roomDirectory, "flow.jsonl"));
             var executionId = (await reader.ReadAllAsync(TestContext.Current.CancellationToken))
                 .OfType<FlowEvent.ExecutionSucceeded>().Single().ExecutionId;
-            var outputPath = Path.Combine(taskDirectory, "artifacts", $"execution_{executionId}", "output");
+            var outputPath = Path.Combine(roomDirectory, "artifacts", $"execution_{executionId}", "output");
             Assert.Equal(
                 "from-the-worktree", (await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken)).Trim());
 
             // A clean Terminal run removes the worktree (the worker wrote only to AER_OUTPUT_DIR).
-            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "reader");
+            var worktreePath = Path.Combine(roomDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "reader");
             Assert.False(Directory.Exists(worktreePath), "a clean Terminal run should tear the provisioned worktree down");
         }
         finally
@@ -130,11 +130,11 @@ public class WorkingDirectoryEndToEndTests
         }
     }
 
-    private static async Task RunAgainstConfiguredDirectoryAsync(string testRoot, string taskDirectory, string workingDirectory)
+    private static async Task RunAgainstConfiguredDirectoryAsync(string testRoot, string roomDirectory, string workingDirectory)
     {
         var workflowFilePath = await WriteSingleStepWorkflowAsync(testRoot);
         var bindingsFilePath = await WriteReadRelativeFileBindingsAsync(testRoot, workingDirectory);
-        var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+        var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
         var finalState = (await RunCommand.ExecuteAsync(options, Adapters)).State;
 

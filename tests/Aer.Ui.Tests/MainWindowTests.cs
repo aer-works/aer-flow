@@ -21,12 +21,12 @@ public class MainWindowTests
     public async Task Renders_workflow_status_and_each_steps_status_from_a_real_task_directory()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-{Guid.NewGuid():N}");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
-            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
@@ -44,7 +44,7 @@ public class MainWindowTests
                     TimeSpan.FromSeconds(30)),
             };
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             await using (var writer = new FlowEventLogWriter(logPath))
             {
                 var reader = new FlowEventLogReader(logPath);
@@ -52,10 +52,10 @@ public class MainWindowTests
 
                 await MutationInterface.StartWorkflowAsync(
                     new WorkflowId("wf-ui-window-e2e"),
-                    taskDirectory,
+                    roomDirectory,
                     snapshot,
                     bindings,
-                    Path.Combine(taskDirectory, "artifacts"),
+                    Path.Combine(roomDirectory, "artifacts"),
                     reader,
                     writer,
                     dispatcher,
@@ -63,7 +63,7 @@ public class MainWindowTests
             }
 
             var window = new MainWindow();
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
@@ -74,7 +74,7 @@ public class MainWindowTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
