@@ -6,7 +6,7 @@ namespace Aer.Cli;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The outbox is not the workspace. <c>AER_OUTPUT_DIR</c> is a directory AER owns under the task
+/// The outbox is not the workspace. <c>AER_OUTPUT_DIR</c> is a directory AER owns under the room
 /// directory's <c>artifacts/execution_&lt;id&gt;/</c>, and a grant that withholds "modify the
 /// workspace" was never meant to withhold "write your report". Conflating them is why a read-only
 /// reviewer cannot produce a deliverable, and why every reviewing template grants a write it does

@@ -125,6 +125,7 @@ public class OutboxWriteExemptionTests
 
         // And the operator is told which of the two things went wrong. The generic withheld-tool
         // message sends them to their permission grant for a fault that is in their --room-dir.
+        // record-once-ok: #443 src/Aer.Cli/HookCheckCommand.cs
         using var stderr = new StringWriter();
         var exitCode = HookCheckCommand.Execute(
             new StringReader(Payload("Write", new { file_path = Path.Combine(relative, "review.md") })),

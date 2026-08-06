@@ -403,7 +403,7 @@ public partial class MainWindow : Window
                 _ = ViewModel.Remote.RefreshPairedClientsAsync(_session);
             }
         };
-        // M19 Phase 4 (#189): Save & Run without leaving the flow — each run gets a fresh task
+        // M19 Phase 4 (#189): Save & Run without leaving the flow — each run gets a fresh room
         // directory beside the authored files (one workspace per workflow, tasks inside it), then
         // the shell navigates to the Task view and drives the same RunAsync as the Run button.
         ViewModel.NewWorkflow.RunRequested += async (workflowFilePath, bindingsFilePath) =>
@@ -643,6 +643,7 @@ public partial class MainWindow : Window
     /// or resumes an already-bound <paramref name="roomDirectoryPath"/> after a pause or stop — the
     /// same <c>RunCommand.ExecuteAsync</c> call <c>aer run</c> makes, reused in-process rather than
     /// spawning the installed binary (the seam decision this phase resolves). Bindings are never
+    /// record-once-ok: #443 src/Aer.Ui.Core/BindingsEditorViewModel.cs
     /// persisted in a room directory (M14 Phase 2's decision of record) and the template is only
     /// ever <em>bound from</em> on a fresh start (<see cref="RunOptions.WorkflowFilePath"/>'s own
     /// remarks, which also cover what a resume now reads it for), so both are asked for here rather
@@ -1795,7 +1796,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // A selection can legitimately point at nothing durable by the next refresh (the task
+        // A selection can legitimately point at nothing durable by the next refresh (the room
         // directory was deleted or recreated) — clear rather than render a guess (§12).
         if (TranscriptProjectionLoader.Load(_conversationOutputDirectory) is not { } transcript)
         {

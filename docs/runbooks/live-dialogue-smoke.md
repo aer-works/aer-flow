@@ -53,6 +53,7 @@ The exchange is deliberately short (`TurnBudget: 2` — one turn per side, a one
 prompt) to keep this smoke test cheap and fast, the same reasoning `live-claude-smoke.md`'s
 single-sentence draft prompt uses.
 
+<!-- record-once-ok: #443 docs/runbooks/live-claude-smoke.md -->
 Each run uses a fresh temporary room directory, so repeated runs never resume a prior one.
 
 ## What "green" means

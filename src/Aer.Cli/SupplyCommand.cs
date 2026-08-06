@@ -32,6 +32,7 @@ public static class SupplyCommand
     private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="SnapshotLoadException">
+    /// record-once-ok: #443 src/Aer.Cli/DecideCommand.cs
     /// The room directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
     /// persisted snapshot is malformed.
     /// </exception>
@@ -42,6 +43,7 @@ public static class SupplyCommand
     /// </exception>
     /// <exception cref="CliArgumentException"><see cref="SupplyOptions.SourceFilePath"/> does not exist.</exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
+    /// record-once-ok: #443 src/Aer.Cli/RunCommand.cs
     /// Another Flow instance already holds this room directory's lock.
     /// </exception>
     /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">

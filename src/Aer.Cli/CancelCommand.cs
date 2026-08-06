@@ -23,6 +23,7 @@ public static class CancelCommand
     private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="SnapshotLoadException">
+    /// record-once-ok: #443 src/Aer.Cli/DecideCommand.cs
     /// The room directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
     /// persisted snapshot is malformed.
     /// </exception>
@@ -35,6 +36,7 @@ public static class CancelCommand
     /// <paramref name="options"/>'s <c>ExecutionId</c> was never admitted for execution.
     /// </exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
+    /// record-once-ok: #443 src/Aer.Cli/RunCommand.cs
     /// Another Flow instance already holds this room directory's lock; see that exception's message
     /// for which holders are possible and how to reach an in-flight execution instead. (#857: this
     /// used to paraphrase the message as "most likely a live <c>aer run</c> pump" — a single cause

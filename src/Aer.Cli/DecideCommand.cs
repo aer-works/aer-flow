@@ -34,6 +34,7 @@ public static class DecideCommand
     /// </exception>
     /// <exception cref="InvalidExternalDecisionException">The decision violates one of §17.2's rules.</exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
+    /// record-once-ok: #443 src/Aer.Cli/RunCommand.cs
     /// Another Flow instance already holds this room directory's lock.
     /// </exception>
     /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">

@@ -3,8 +3,9 @@ using System.Text.Json;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// Local UI Configuration (UI spec §3.1, §4): a remembered list of recently opened task
+/// Local UI Configuration (UI spec §3.1, §4): a remembered list of recently opened room
 /// directories, plus (M15 Phase 1, issue #137) the last worker-bindings file and workflow template
+/// record-once-ok: #443 src/Aer.Ui.Core/BindingsEditorViewModel.cs
 /// file a Run action used — bindings are never persisted in a room directory (M14 Phase 2's
 /// decision of record) and a template is only ever consulted on a fresh start, so both are UI
 /// inputs asked for every time, with the value remembered here purely to pre-fill that ask.
@@ -79,6 +80,7 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     }
 
     /// <summary>
+    /// record-once-ok: #443 src/Aer.Ui.Core/BindingsEditorViewModel.cs
     /// The bindings file (M15 Phase 1, issue #137): never persisted in a room directory (M14 Phase
     /// 2's decision of record), so a Run action asks the user for it every time — this is only the
     /// remembered default that pre-fills the ask, exactly the same non-authoritative convenience the
