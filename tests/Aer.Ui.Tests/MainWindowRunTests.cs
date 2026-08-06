@@ -14,7 +14,7 @@ namespace Aer.Ui.Tests;
 /// the same call <c>aer run</c> makes, driven through a deterministic shell-stub
 /// <see cref="IWorkerAdapter"/> (never a live vendor CLI) so this is CI-safe on every OS. Covers
 /// both halves of the phase's "Run" action: starting a fresh task from a template + bindings file,
-/// and resuming an already-bound task directory that needs no template at all.
+/// and resuming an already-bound room directory that needs no template at all.
 /// </summary>
 public class MainWindowRunTests
 {
@@ -22,7 +22,7 @@ public class MainWindowRunTests
         new Dictionary<string, IWorkerAdapter> { ["shell"] = new ShellCommandWorkerAdapter() };
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-run-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-run-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     [AvaloniaFact]
     public async Task RunAsync_starts_a_fresh_task_from_a_template_and_bindings_file_and_renders_it_to_terminal()
@@ -60,7 +60,7 @@ public class MainWindowRunTests
     }
 
     [AvaloniaFact]
-    public async Task RunAsync_records_the_task_directory_and_remembers_the_bindings_and_template_paths()
+    public async Task RunAsync_records_the_room_directory_and_remembers_the_bindings_and_template_paths()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-run-remember-{Guid.NewGuid():N}");
         var roomDirectory = Path.Combine(testRoot, "task");
@@ -89,7 +89,7 @@ public class MainWindowRunTests
     }
 
     [AvaloniaFact]
-    public async Task RunAsync_resumes_an_already_bound_task_directory_with_no_workflow_template()
+    public async Task RunAsync_resumes_an_already_bound_room_directory_with_no_workflow_template()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-run-resume-{Guid.NewGuid():N}");
         var roomDirectory = Path.Combine(testRoot, "task");
@@ -133,7 +133,7 @@ public class MainWindowRunTests
             var bindingsFilePath = await WriteThreeStepBindingsAsync(testRoot);
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
-            // A fresh task directory (no snapshot.json yet) with no template given at all.
+            // A fresh room directory (no snapshot.json yet) with no template given at all.
             await window.RunAsync(roomDirectory, workflowTemplateFilePath: null, bindingsFilePath, TestContext.Current.CancellationToken);
 
             var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;

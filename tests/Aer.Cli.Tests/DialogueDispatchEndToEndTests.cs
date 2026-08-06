@@ -126,9 +126,9 @@ public class DialogueDispatchEndToEndTests
             var originalBindingsFilePath = await WriteRelativeDialogueBindingsAsync(originalDirectory);
 
             // First run, from where the pair was originally authored.
-            var firstTaskDirectory = Path.Combine(testRoot, "task-original");
+            var firstRoomDirectory = Path.Combine(testRoot, "task-original");
             var firstState = (await RunCommand.ExecuteAsync(
-                new RunOptions(workflowFilePath, originalBindingsFilePath, firstTaskDirectory), WorkerAdapterRegistry.Default,
+                new RunOptions(workflowFilePath, originalBindingsFilePath, firstRoomDirectory), WorkerAdapterRegistry.Default,
                 cancellationToken: TestContext.Current.CancellationToken)).State;
             Assert.Equal(WorkflowStatus.Terminal, firstState.Status);
             AssertStepSucceeded(firstState);
@@ -139,9 +139,9 @@ public class DialogueDispatchEndToEndTests
                 Path.Combine(originalDirectory, "dialogue-config.json"), Path.Combine(copiedDirectory, "dialogue-config.json"));
 
             var copiedBindingsFilePath = Path.Combine(copiedDirectory, "bindings.json");
-            var secondTaskDirectory = Path.Combine(testRoot, "task-copied");
+            var secondRoomDirectory = Path.Combine(testRoot, "task-copied");
             var secondState = (await RunCommand.ExecuteAsync(
-                new RunOptions(workflowFilePath, copiedBindingsFilePath, secondTaskDirectory), WorkerAdapterRegistry.Default,
+                new RunOptions(workflowFilePath, copiedBindingsFilePath, secondRoomDirectory), WorkerAdapterRegistry.Default,
                 cancellationToken: TestContext.Current.CancellationToken)).State;
 
             Assert.Equal(WorkflowStatus.Terminal, secondState.Status);

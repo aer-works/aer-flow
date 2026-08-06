@@ -10,7 +10,7 @@ namespace Aer.Ui.Tests;
 /// <summary>
 /// M14 Phase 2 (issue #119): the full read-model surface plus change observation, driven through
 /// the real <see cref="MainWindow"/> exactly like <see cref="MainWindowTests"/> already does for
-/// Phase 1's rendering, but building task directories directly from hand-written
+/// Phase 1's rendering, but building room directories directly from hand-written
 /// <see cref="FlowEvent"/>s (matching <c>Aer.Flow.Tests.Projection.StateProjectorTests</c>'
 /// convention) rather than driving a full <c>MutationInterface</c> pump — the point here is what the
 /// UI renders from a given event history, not re-proving dispatch behavior Aer.Flow's own tests
@@ -61,9 +61,9 @@ public class MainWindowProjectionTests
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-window-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-window-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
-    private static async Task<string> CreateTaskDirectoryAsync(
+    private static async Task<string> CreateRoomDirectoryAsync(
         WorkflowDefinitionSnapshot snapshot, IEnumerable<FlowEvent> events, CancellationToken cancellationToken)
     {
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-history-{Guid.NewGuid():N}");
@@ -89,7 +89,7 @@ public class MainWindowProjectionTests
         var firstArchitectAttempt = new ExecutionId("a-1");
         var secondArchitectAttempt = new ExecutionId("a-2");
         var criticExecutionId = new ExecutionId("c-1");
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(firstArchitectAttempt, Architect)),
@@ -129,7 +129,7 @@ public class MainWindowProjectionTests
         var architectExecutionId = new ExecutionId("a-1");
         var criticExecutionId = new ExecutionId("c-1");
         var decisionId = new DecisionId("decision-1");
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
@@ -167,7 +167,7 @@ public class MainWindowProjectionTests
     {
         var snapshot = TwoStepSnapshot();
         var humanExecutionId = new ExecutionId("supplement-1");
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeNonProcessRequest(humanExecutionId, null)),
@@ -193,7 +193,7 @@ public class MainWindowProjectionTests
     {
         var snapshot = TwoStepSnapshot();
         var executionId = new ExecutionId("a-1");
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
@@ -219,19 +219,19 @@ public class MainWindowProjectionTests
     [AvaloniaFact]
     public async Task OpenAsync_does_not_record_a_directory_that_failed_to_load()
     {
-        var notATaskDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-invalid-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(notATaskDirectory);
+        var notARoomDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-invalid-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(notARoomDirectory);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.OpenAsync(notATaskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(notARoomDirectory, TestContext.Current.CancellationToken);
 
             // M19 Phase 2 (#187): the recents list is projected as Home's task cards now.
             Assert.Empty(window.ViewModel.Home.RoomCards);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(notATaskDirectory);
+            DirectoryCleanup.DeleteRecursively(notARoomDirectory);
         }
     }
 
@@ -265,7 +265,7 @@ public class MainWindowProjectionTests
         var snapshot = TwoStepSnapshot();
         var architectExecutionId = new ExecutionId("a-1");
         var criticExecutionId = new ExecutionId("c-1");
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
@@ -304,7 +304,7 @@ public class MainWindowProjectionTests
         var snapshot = TwoStepSnapshot();
         var architectExecutionId = new ExecutionId("a-1");
         var criticExecutionId = new ExecutionId("c-1");
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
@@ -341,14 +341,14 @@ public class MainWindowProjectionTests
 
         await window.RefreshAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("No task directory loaded.", window.FindViewControl<TextBlock>("StatusText")!.Text);
+        Assert.Equal("No room directory loaded.", window.FindViewControl<TextBlock>("StatusText")!.Text);
     }
 
     [AvaloniaFact]
-    public async Task OpenAsync_when_task_directory_lacks_workflow_path_does_not_populate_box_with_bare_template_id()
+    public async Task OpenAsync_when_room_directory_lacks_workflow_path_does_not_populate_box_with_bare_template_id()
     {
         var snapshot = TwoStepSnapshot();
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [],
             TestContext.Current.CancellationToken);
@@ -367,10 +367,10 @@ public class MainWindowProjectionTests
     }
 
     [AvaloniaFact]
-    public async Task OpenAsync_when_workflow_path_is_missing_falls_back_to_the_task_directorys_own_workflow_json()
+    public async Task OpenAsync_when_workflow_path_is_missing_falls_back_to_the_room_directorys_own_workflow_json()
     {
         var snapshot = TwoStepSnapshot();
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [],
             TestContext.Current.CancellationToken);

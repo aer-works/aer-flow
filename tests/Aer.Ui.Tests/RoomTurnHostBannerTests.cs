@@ -12,7 +12,7 @@ public class RoomTurnHostBannerTests
         new Dictionary<string, IWorkerAdapter>();
 
     private static MainWindow NewWindow() => new(
-        new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-turnhost-config-{Guid.NewGuid():N}", "recent-task-directories.json")),
+        new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-turnhost-config-{Guid.NewGuid():N}", "recent-room-directories.json")),
         Adapters);
 
     private static RoomTurnHostStatus CreateStatus(

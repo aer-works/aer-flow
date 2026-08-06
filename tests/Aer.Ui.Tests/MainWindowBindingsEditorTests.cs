@@ -33,7 +33,7 @@ public class MainWindowBindingsEditorTests
     // precedent) — these tests don't exercise recents/config persistence at all, but a stray write
     // to the real per-user config directory would still be an unwanted side effect of running them.
     private static MainWindow NewWindow() => new(
-        new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-bindings-config-{Guid.NewGuid():N}", "recent-task-directories.json")),
+        new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-bindings-config-{Guid.NewGuid():N}", "recent-room-directories.json")),
         Adapters);
 
     private static string CopyFixtureToTemp(string fileName)

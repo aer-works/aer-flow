@@ -47,7 +47,7 @@ public class StatusCommandEndToEndTests
     }
 
     [Fact]
-    public async Task Status_against_a_nonexistent_task_directory_throws_a_typed_error_and_creates_nothing()
+    public async Task Status_against_a_nonexistent_room_directory_throws_a_typed_error_and_creates_nothing()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var roomDirectory = Path.Combine(testRoot, "task");

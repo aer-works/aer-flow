@@ -25,7 +25,7 @@ namespace Aer.Ui.Tests;
 public class ConversationRoundTripTests
 {
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-conv-gate-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-conv-gate-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     [AvaloniaFact]
     public async Task A_dialogue_run_to_terminal_projects_its_conversation_in_the_ui()

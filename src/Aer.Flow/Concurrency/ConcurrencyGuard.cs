@@ -154,7 +154,7 @@ public sealed class ConcurrencyGuard : IDisposable
     /// #857: the base message does not assert a single cause. It used to name "a live 'aer run'
     /// pump" as the likely holder, which predates rooms and is wrong in a case an operator can
     /// hit; it also does not name the room sweep specifically, because most callers lock a
-    /// per-execution task directory no sweep ever touches. The lock file itself still cannot say
+    /// per-execution room directory no sweep ever touches. The lock file itself still cannot say
     /// who won it — what changed with #618 is the sidecar beside it: when a holder wrote one, its
     /// self-description is appended here, and the two-shapes wording stays as the fallback for a
     /// holder that did not (or whose write lost a race).
@@ -242,7 +242,7 @@ public sealed class ConcurrencyGuard : IDisposable
     /// <summary>
     /// Releases the lock. The lock file itself is deliberately left on disk — under §15's
     /// guarantee, only the OS-held lock carries meaning, not the file's existence — so a
-    /// subsequent <see cref="Acquire"/> call for the same task directory succeeds immediately.
+    /// subsequent <see cref="Acquire"/> call for the same room directory succeeds immediately.
     /// The holder sidecar is removed best-effort first, while the lock is still held, so no reader
     /// ever sees this holder's label on a lock it has already released; a delete that loses a race
     /// leaves only the stale-beside-free-lock case the class doc calls harmless by construction.

@@ -43,9 +43,9 @@ public class NavigationShellTests
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-shell-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-shell-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
-    private static async Task<string> CreateTaskDirectoryAsync(
+    private static async Task<string> CreateRoomDirectoryAsync(
         WorkflowDefinitionSnapshot snapshot, IEnumerable<FlowEvent> events, CancellationToken cancellationToken)
     {
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-{Guid.NewGuid():N}");
@@ -72,7 +72,7 @@ public class NavigationShellTests
     {
         var configFilePath = NewConfigFilePath();
         var executionId = new ExecutionId("a-1");
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
@@ -99,11 +99,11 @@ public class NavigationShellTests
     }
 
     /// <summary>A task paused at critic, with a durable output file for the inbox preview.</summary>
-    private static async Task<string> CreatePausedTaskDirectoryAsync(string reviewContent, CancellationToken cancellationToken)
+    private static async Task<string> CreatePausedRoomDirectoryAsync(string reviewContent, CancellationToken cancellationToken)
     {
         var architectExecutionId = new ExecutionId("a-1");
         var criticExecutionId = new ExecutionId("c-1");
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
@@ -121,7 +121,7 @@ public class NavigationShellTests
     }
 
     /// <summary>A task paused at a NeedsInput pause point (#334) — the shape an interactive session settles into: "your turn to reply", not an approval gate.</summary>
-    private static async Task<string> CreateNeedsInputTaskDirectoryAsync(string replyContent, CancellationToken cancellationToken)
+    private static async Task<string> CreateNeedsInputRoomDirectoryAsync(string replyContent, CancellationToken cancellationToken)
     {
         var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
             new WorkflowTemplateId("session-like"),
@@ -136,7 +136,7 @@ public class NavigationShellTests
 
         var architectExecutionId = new ExecutionId("a-1");
         var criticExecutionId = new ExecutionId("c-1");
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
@@ -165,7 +165,7 @@ public class NavigationShellTests
         var finishedId = new ExecutionId("f-1");
         var finishedCriticId = new ExecutionId("f-2");
         var cancelledId = new ExecutionId("c-1");
-        var finishedDirectory = await CreateTaskDirectoryAsync(
+        var finishedDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(finishedId, Architect)),
@@ -174,7 +174,7 @@ public class NavigationShellTests
                 new FlowEvent.ExecutionSucceeded(finishedCriticId),
             ],
             TestContext.Current.CancellationToken);
-        var cancelledDirectory = await CreateTaskDirectoryAsync(
+        var cancelledDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(cancelledId, Architect)),
@@ -217,7 +217,7 @@ public class NavigationShellTests
     public async Task OpenAsync_navigates_to_the_task_section()
     {
         var executionId = new ExecutionId("a-1");
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
@@ -270,7 +270,7 @@ public class NavigationShellTests
     public async Task InitializeAsync_surfaces_a_paused_recent_as_an_inbox_item_with_its_artifact_preview()
     {
         var configFilePath = NewConfigFilePath();
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(
             "The plan looks solid overall.", TestContext.Current.CancellationToken);
         try
         {
@@ -303,7 +303,7 @@ public class NavigationShellTests
         // #334: the exact bug — a settled chat turn showed "Waiting for your review" and a [Review]
         // button. A NeedsInput pause must read as "your turn to reply" on every Home surface.
         var configFilePath = NewConfigFilePath();
-        var roomDirectory = await CreateNeedsInputTaskDirectoryAsync("ok", TestContext.Current.CancellationToken);
+        var roomDirectory = await CreateNeedsInputRoomDirectoryAsync("ok", TestContext.Current.CancellationToken);
         try
         {
             await new LocalUiConfigurationStore(configFilePath)
@@ -332,7 +332,7 @@ public class NavigationShellTests
     public async Task Inbox_review_opens_the_task_and_navigates_to_the_task_section()
     {
         var configFilePath = NewConfigFilePath();
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(
             "Needs another pass at the error handling.", TestContext.Current.CancellationToken);
         try
         {
@@ -375,12 +375,12 @@ public class NavigationShellTests
     public async Task A_recent_that_no_longer_loads_renders_as_an_unavailable_card_not_an_error()
     {
         var configFilePath = NewConfigFilePath();
-        var notATaskDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-stale-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(notATaskDirectory);
+        var notARoomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-stale-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(notARoomDirectory);
         try
         {
             await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(notATaskDirectory, TestContext.Current.CancellationToken);
+                .RecordOpenedAsync(notARoomDirectory, TestContext.Current.CancellationToken);
 
             var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
             await window.InitializeAsync(TestContext.Current.CancellationToken);
@@ -392,7 +392,7 @@ public class NavigationShellTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(notATaskDirectory);
+            DirectoryCleanup.DeleteRecursively(notARoomDirectory);
         }
     }
 }

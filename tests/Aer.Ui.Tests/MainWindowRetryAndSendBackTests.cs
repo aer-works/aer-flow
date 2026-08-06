@@ -24,7 +24,7 @@ public class MainWindowRetryAndSendBackTests
         new Dictionary<string, IWorkerAdapter> { ["shell"] = new ShellCommandWorkerAdapter() };
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-retry-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-retry-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     [AvaloniaFact]
     public async Task Retry_with_a_revision_file_supplies_the_artifact_then_reruns_the_paused_step_and_the_workflow_runs_to_terminal()

@@ -59,8 +59,8 @@ public class FlowStateReporterTests
 
     /// <summary>
     /// #628: a resumed run reports the prior run's status and writes no new events, so without this
-    /// line an already-terminal task directory is indistinguishable from a fresh failure. Naming the
-    /// template is the point — under <c>--task-dir</c> it need not be the file on the command line.
+    /// line an already-terminal room directory is indistinguishable from a fresh failure. Naming the
+    /// template is the point — under <c>--room-dir</c> it need not be the file on the command line.
     /// </summary>
     /// <remarks>
     /// A fresh run is the polarity control on the same output: a reporter that printed the line

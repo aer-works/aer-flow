@@ -151,7 +151,7 @@ public class SupplyCommandEndToEndTests
     }
 
     [Fact]
-    public async Task Supplying_against_a_task_directory_with_no_snapshot_throws_a_typed_error()
+    public async Task Supplying_against_a_room_directory_with_no_snapshot_throws_a_typed_error()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-supply-{Guid.NewGuid():N}");
         var roomDirectory = Path.Combine(testRoot, "task");

@@ -1,7 +1,7 @@
 namespace Aer.Cli;
 
 /// <summary>
-/// Parses <c>aer cancel</c>'s arguments: <c>aer cancel &lt;task-dir&gt; --execution &lt;execution-id&gt;
+/// Parses <c>aer cancel</c>'s arguments: <c>aer cancel &lt;room-dir&gt; --execution &lt;execution-id&gt;
 /// --bindings &lt;bindings-file&gt; [--workflow-id &lt;id&gt;]</c>. Never throws a bare
 /// <see cref="InvalidOperationException"/> for a malformed invocation — every failure here is a
 /// <see cref="CliArgumentException"/> (CLAUDE.md's error-handling rules), mirroring
@@ -10,7 +10,7 @@ namespace Aer.Cli;
 public static class CancelOptionsParser
 {
     private const string Usage =
-        "Usage: aer cancel <task-dir> --execution <execution-id> --bindings <bindings-file> [--workflow-id <id>]";
+        "Usage: aer cancel <room-dir> --execution <execution-id> --bindings <bindings-file> [--workflow-id <id>]";
 
     public static CancelOptions Parse(IReadOnlyList<string> args)
     {
@@ -53,7 +53,7 @@ public static class CancelOptionsParser
 
         if (roomDirectoryPath is null)
         {
-            throw new CliArgumentException($"Missing required <task-dir> argument. {Usage}");
+            throw new CliArgumentException($"Missing required <room-dir> argument. {Usage}");
         }
 
         if (executionId is null)

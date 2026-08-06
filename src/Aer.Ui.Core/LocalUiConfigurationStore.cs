@@ -5,12 +5,12 @@ namespace Aer.Ui.Core;
 /// <summary>
 /// Local UI Configuration (UI spec §3.1, §4): a remembered list of recently opened task
 /// directories, plus (M15 Phase 1, issue #137) the last worker-bindings file and workflow template
-/// file a Run action used — bindings are never persisted in a task directory (M14 Phase 2's
+/// file a Run action used — bindings are never persisted in a room directory (M14 Phase 2's
 /// decision of record) and a template is only ever consulted on a fresh start, so both are UI
 /// inputs asked for every time, with the value remembered here purely to pre-fill that ask.
-/// Deliberately never authoritative — a task directory's own contents are (§3.1's
+/// Deliberately never authoritative — a room directory's own contents are (§3.1's
 /// self-describing-directory contract) — so this store treats a missing or corrupt config file as
-/// "nothing remembered yet" rather than a startup failure, and drops any remembered task directory
+/// "nothing remembered yet" rather than a startup failure, and drops any remembered room directory
 /// path that no longer exists on disk when it loads the list back, rather than surfacing it as an
 /// error. This is this phase's concrete answer to §3.1's "how a UI populates its list"
 /// implementation choice: ask the user for a path (or pick a remembered one), never scan a
@@ -42,7 +42,7 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     /// <summary>
     /// Records <paramref name="roomDirectoryPath"/> as the most recently opened directory,
     /// deduplicated against any existing entry for the same path and capped at
-    /// <see cref="MaxRecentTaskDirectories"/> — the list is a bounded convenience, not a full
+    /// <see cref="MaxRecentRoomDirectories"/> — the list is a bounded convenience, not a full
     /// history.
     /// </summary>
     public async Task RecordOpenedAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
@@ -79,7 +79,7 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     }
 
     /// <summary>
-    /// The bindings file (M15 Phase 1, issue #137): never persisted in a task directory (M14 Phase
+    /// The bindings file (M15 Phase 1, issue #137): never persisted in a room directory (M14 Phase
     /// 2's decision of record), so a Run action asks the user for it every time — this is only the
     /// remembered default that pre-fills the ask, exactly the same non-authoritative convenience the
     /// recents list already is (§3.1, §4).

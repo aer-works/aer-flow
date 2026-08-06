@@ -32,7 +32,7 @@ public class MainWindowCancelAndStopTests
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(30);
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-cancel-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-cancel-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     [AvaloniaFact]
     public async Task Targeted_cancel_of_a_locally_hosted_execution_is_delivered_via_the_retained_registry()

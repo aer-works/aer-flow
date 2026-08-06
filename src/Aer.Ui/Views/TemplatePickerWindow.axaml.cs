@@ -12,7 +12,7 @@ public partial class TemplatePickerWindow : Window
 {
     private readonly MainWindow? _owner;
 
-    public string? MaterializedTaskDirectoryPath { get; private set; }
+    public string? MaterializedRoomDirectoryPath { get; private set; }
 
     /// <summary>
     /// <paramref name="owner"/> routes chat/codebase session creation through
@@ -141,7 +141,7 @@ public partial class TemplatePickerWindow : Window
                     secondaryCustomPrompt).ConfigureAwait(true);
             }
 
-            MaterializedTaskDirectoryPath = roomDirectoryPath;
+            MaterializedRoomDirectoryPath = roomDirectoryPath;
             Close(true);
         }
         catch (Exception ex)

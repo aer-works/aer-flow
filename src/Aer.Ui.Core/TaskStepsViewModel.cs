@@ -166,7 +166,7 @@ public sealed partial class StepItemViewModel : ObservableObject
 
 /// <summary>
 /// M25 / issue #618 (#480 rider): the waiting-on-lock banner.
-/// Surfaces when a task directory is held by another process. Reads as a WAIT, never an error.
+/// Surfaces when a room directory is held by another process. Reads as a WAIT, never an error.
 /// </summary>
 public sealed partial class WaitingOnLockBannerViewModel : ObservableObject
 {

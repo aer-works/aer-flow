@@ -35,7 +35,7 @@ public sealed partial class RunningExecutionViewModel : ObservableObject
 
     /// <summary>
     /// Whether this window's own currently in-flight pump is the one that dispatched this execution
-    /// — determined once, at render time, from whether this task directory is the one this window is
+    /// — determined once, at render time, from whether this room directory is the one this window is
     /// actively pumping (<see cref="MainWindow"/>'s own retained registry). A non-process execution is
     /// never locally hosted: it never registers with <c>InFlightExecutionRegistry</c> in the first
     /// place (Phase 1's <c>NonProcessCancellationDetector</c> owns that tier directly). Drives both

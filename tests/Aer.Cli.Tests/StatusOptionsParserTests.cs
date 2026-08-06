@@ -4,7 +4,7 @@ namespace Aer.Cli.Tests;
 public class StatusOptionsParserTests
 {
     [Fact]
-    public void A_bare_task_directory_parses_with_follow_false()
+    public void A_bare_room_directory_parses_with_follow_false()
     {
         var options = StatusOptionsParser.Parse(["task"]);
 
@@ -22,7 +22,7 @@ public class StatusOptionsParserTests
     }
 
     [Fact]
-    public void The_follow_flag_may_precede_the_positional_task_directory()
+    public void The_follow_flag_may_precede_the_positional_room_directory()
     {
         var options = StatusOptionsParser.Parse(["--follow", "task"]);
 
@@ -31,7 +31,7 @@ public class StatusOptionsParserTests
     }
 
     [Fact]
-    public void A_missing_task_directory_throws()
+    public void A_missing_room_directory_throws()
     {
         Assert.Throws<CliArgumentException>(() => StatusOptionsParser.Parse(["--follow"]));
     }

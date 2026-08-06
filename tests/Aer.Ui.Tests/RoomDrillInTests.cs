@@ -12,7 +12,7 @@ namespace Aer.Ui.Tests;
 /// M19 Phase 3 (issue #188): the per-step drill-in — <see cref="StepItemViewModel"/> built by
 /// <see cref="MainWindowViewModel.RebuildTaskSteps"/> on every load, plain-language primary text,
 /// needs-you-first auto-selection, selection surviving refresh, and the outputs/conversation/
-/// decisions slices. Task directories built from hand-written <see cref="FlowEvent"/>s, matching
+/// decisions slices. Room directories built from hand-written <see cref="FlowEvent"/>s, matching
 /// <see cref="MainWindowProjectionTests"/>' convention.
 /// </summary>
 public class RoomDrillInTests
@@ -44,9 +44,9 @@ public class RoomDrillInTests
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-drillin-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-drillin-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
-    private static async Task<string> CreateTaskDirectoryAsync(
+    private static async Task<string> CreateRoomDirectoryAsync(
         WorkflowDefinitionSnapshot snapshot, IEnumerable<FlowEvent> events, CancellationToken cancellationToken)
     {
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-drillin-{Guid.NewGuid():N}");
@@ -64,9 +64,9 @@ public class RoomDrillInTests
     }
 
     /// <summary>Paused at critic after one architect failure + success; a-2 and c-1 each have a durable output file.</summary>
-    private static async Task<string> CreatePausedTaskDirectoryAsync(CancellationToken cancellationToken)
+    private static async Task<string> CreatePausedRoomDirectoryAsync(CancellationToken cancellationToken)
     {
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -95,7 +95,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task LoadAsync_builds_plain_language_step_items_and_auto_selects_the_paused_step()
     {
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
@@ -143,7 +143,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task Output_file_preview_command_renders_into_the_preview_box()
     {
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
@@ -174,7 +174,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task Switching_the_selected_step_clears_and_reloads_the_output_preview()
     {
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
@@ -221,7 +221,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task A_captured_prompt_file_surfaces_as_PromptFiles_and_is_excluded_from_OutputFiles()
     {
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         await File.WriteAllTextAsync(
             Path.Combine(outputDirectory, "prompt.txt"), "Review the plan.", TestContext.Current.CancellationToken);
@@ -267,7 +267,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task Explicit_preview_of_a_different_file_survives_a_slower_in_flight_auto_preview()
     {
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         await File.WriteAllTextAsync(
             Path.Combine(outputDirectory, "prompt.txt"), "Review the plan.", TestContext.Current.CancellationToken);
@@ -322,7 +322,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task A_newer_preview_request_still_wins_even_when_issued_immediately_after_an_older_one()
     {
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         var olderFilePath = Path.Combine(outputDirectory, "older.txt");
         var newerFilePath = Path.Combine(outputDirectory, "newer.txt");
@@ -372,7 +372,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task A_cancelled_preview_neither_throws_nor_writes_the_box()
     {
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         var filePath = Path.Combine(roomDirectory, "artifacts", "execution_c-1", "review.md");
         try
         {
@@ -400,7 +400,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task A_step_with_no_captured_prompt_reports_no_prompt_files()
     {
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
@@ -420,7 +420,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task Selection_follows_step_id_across_refresh_and_the_dag_click_entry_point()
     {
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
@@ -447,7 +447,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task Decision_lines_render_in_plain_language_on_the_decided_step()
     {
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -484,7 +484,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task A_recorded_transcript_surfaces_as_the_steps_conversation_and_renders_on_show()
     {
-        var roomDirectory = await CreatePausedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         var turn = JsonSerializer.Serialize(
             new { Sequence = 1, Role = "initiator", Vendor = "claude", Prompt = "p", Text = "hello" });
@@ -513,7 +513,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task Failed_step_renders_failed_banner_with_reason_and_stderr_excerpt()
     {
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -557,7 +557,7 @@ public class RoomDrillInTests
         // the switch to the empty default — a denied-tool failure reading as a bare "Failed" is exactly
         // the #597 defect the suffix exists to prevent. Reds against the pre-fix switch, which had no
         // ToolDenied arm.
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -589,7 +589,7 @@ public class RoomDrillInTests
         // Two attempts, both with transcripts: the banner's reason comes from the newest reasoned
         // attempt (a-2), so its "Show full output" must open a-2's conversation. Index 0 of the
         // chronological collections is a-1 — a different run than the headline describes.
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -650,7 +650,7 @@ public class RoomDrillInTests
                     Critic, "critic", ["brief"], ["review"], DependsOn: [], RetryPolicy: new RetryPolicy(1),
                     PausePoint: new PausePoint(SupersedeTargets: [Critic])),
             ]));
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             independentSnapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("c-1"), Critic)),
@@ -679,7 +679,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task Succeeded_step_shows_no_failed_banner_polarity()
     {
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -704,7 +704,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task Ask_worker_to_fix_prefills_chat_input_and_navigates_to_chat()
     {
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),
@@ -743,7 +743,7 @@ public class RoomDrillInTests
     [AvaloniaFact]
     public async Task Ask_worker_to_fix_appends_to_a_half_typed_message_instead_of_replacing_it()
     {
-        var roomDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(new ExecutionId("a-1"), Architect)),

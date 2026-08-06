@@ -4,7 +4,7 @@ namespace Aer.Cli.Tests;
 public class CancelOptionsParserTests
 {
     [Fact]
-    public void A_task_directory_execution_id_and_bindings_option_parse_with_null_workflow_id()
+    public void A_room_directory_execution_id_and_bindings_option_parse_with_null_workflow_id()
     {
         var options = CancelOptionsParser.Parse(["task", "--execution", "exec-1", "--bindings", "bindings.json"]);
 
@@ -27,7 +27,7 @@ public class CancelOptionsParserTests
     }
 
     [Fact]
-    public void Options_may_precede_the_positional_task_directory()
+    public void Options_may_precede_the_positional_room_directory()
     {
         var options = CancelOptionsParser.Parse(["--execution", "exec-1", "--bindings", "bindings.json", "task"]);
 
@@ -37,7 +37,7 @@ public class CancelOptionsParserTests
     }
 
     [Fact]
-    public void A_missing_task_directory_throws()
+    public void A_missing_room_directory_throws()
     {
         Assert.Throws<CliArgumentException>(() => CancelOptionsParser.Parse(["--execution", "exec-1", "--bindings", "bindings.json"]));
     }

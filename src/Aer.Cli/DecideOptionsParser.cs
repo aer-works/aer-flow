@@ -3,7 +3,7 @@ using Aer.Flow.Domain;
 namespace Aer.Cli;
 
 /// <summary>
-/// Parses <c>aer decide</c>'s arguments: <c>aer decide &lt;task-dir&gt; --execution &lt;execution-id&gt;
+/// Parses <c>aer decide</c>'s arguments: <c>aer decide &lt;room-dir&gt; --execution &lt;execution-id&gt;
 /// --type resume|reject|retry-with-revision|supersede [--target-step &lt;step-id&gt;]
 /// [--supplementary &lt;execution-id&gt;] --bindings &lt;bindings-file&gt; [--workflow-id &lt;id&gt;]</c>.
 /// Never throws a bare <see cref="InvalidOperationException"/> for a malformed invocation — every
@@ -15,7 +15,7 @@ namespace Aer.Cli;
 public static class DecideOptionsParser
 {
     private const string Usage =
-        "Usage: aer decide <task-dir> --execution <execution-id> --type resume|reject|retry-with-revision|supersede " +
+        "Usage: aer decide <room-dir> --execution <execution-id> --type resume|reject|retry-with-revision|supersede " +
         "[--target-step <step-id>] [--supplementary <execution-id>] --bindings <bindings-file> [--workflow-id <id>]";
 
     public static DecideOptions Parse(IReadOnlyList<string> args)
@@ -71,7 +71,7 @@ public static class DecideOptionsParser
 
         if (roomDirectoryPath is null)
         {
-            throw new CliArgumentException($"Missing required <task-dir> argument. {Usage}");
+            throw new CliArgumentException($"Missing required <room-dir> argument. {Usage}");
         }
 
         if (executionId is null)

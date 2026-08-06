@@ -25,9 +25,9 @@ orchestration trial, and got a different bug each time:
 
 - `WorkflowTemplateVersion` is an `int`, not a semver string.
 - `Steps[].Inputs` and `Contract.OptionalMetadata` are JSON arrays, not objects.
-- `--task-dir` must be absolute. A relative one resolves against the CLI's own cwd, but `agy` runs
+- `--room-dir` must be absolute. A relative one resolves against the CLI's own cwd, but `agy` runs
   with cwd set to `WorkingDirectory` (`AgyWorkerAdapter.cs`: `agy -p` ignores the process working
-  directory entirely). A relative task-dir plus an explicit `WorkingDirectory` silently produces an
+  directory entirely). A relative room-dir plus an explicit `WorkingDirectory` silently produces an
   `AER_OUTPUT_DIR` the dispatched process resolves against the wrong root — the run exits 0, the
   step is reported `Failed`, and nothing says why.
 

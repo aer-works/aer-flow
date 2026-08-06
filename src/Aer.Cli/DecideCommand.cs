@@ -25,7 +25,7 @@ public static class DecideCommand
     private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="SnapshotLoadException">
-    /// The task directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
+    /// The room directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
     /// persisted snapshot is malformed.
     /// </exception>
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
@@ -34,7 +34,7 @@ public static class DecideCommand
     /// </exception>
     /// <exception cref="InvalidExternalDecisionException">The decision violates one of §17.2's rules.</exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
-    /// Another Flow instance already holds this task directory's lock.
+    /// Another Flow instance already holds this room directory's lock.
     /// </exception>
     /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">
     /// Another process — most likely a live <c>aer run</c> engine — already holds this task's
@@ -67,7 +67,7 @@ public static class DecideCommand
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer decide' " +
+                $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer decide' " +
                 "targets a task 'aer run' has already started, and never binds one fresh.");
         }
 

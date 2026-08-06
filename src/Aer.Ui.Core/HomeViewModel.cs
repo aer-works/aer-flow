@@ -9,14 +9,14 @@ using CommunityToolkit.Mvvm.Input;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// Home's read model (M19 Phase 2, issue #187): the recent task directories as live status cards,
+/// Home's read model (M19 Phase 2, issue #187): the recent room directories as live status cards,
 /// and the decision inbox — everything across those tasks currently waiting on the human, one item
 /// per paused step, each leading with the artifact to review (information-architecture.md).
 /// Rebuilt from durable contents on every refresh (§3.1, §11) with the same rebuild-from-scratch
 /// discipline as every other projection surface — never reconciled.
 /// <para>
 /// <b>Inbox scan-scope decision of record (the phase's named open question):</b> the inbox scans
-/// <em>all</em> recent task directories, not just the open task — Home exists precisely for the
+/// <em>all</em> recent room directories, not just the open task — Home exists precisely for the
 /// moment no task is open yet, and an inbox that only knew about the open task would be empty
 /// exactly when it matters most. The scan is bounded by the recents list the store already caps,
 /// and it refreshes on Home activation plus the poller's tick while an open task is being
@@ -225,7 +225,7 @@ public sealed partial class RoomCardViewModel(
     [RelayCommand]
     private Task Open() => openRoomAsync(RoomDirectoryPath);
 
-    /// <summary>The card title is the task directory's leaf name — the human's handle for the task, with the full path detail-on-demand (ux-principles §3).</summary>
+    /// <summary>The card title is the room directory's leaf name — the human's handle for the task, with the full path detail-on-demand (ux-principles §3).</summary>
     public static string TitleFor(string roomDirectoryPath)
         => Path.GetFileName(Path.TrimEndingDirectorySeparator(roomDirectoryPath));
 

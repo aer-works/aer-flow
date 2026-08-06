@@ -6,7 +6,7 @@ namespace Aer.Adapters;
 /// <summary>
 /// The pre-dispatch pass that turns a binding's declared <see cref="WorktreeWorkspace"/> into a real
 /// directory the worker runs in (#669). For each entry declaring one it provisions a git worktree
-/// under the task directory — one per worker, never shared — and rewrites that entry's
+/// under the room directory — one per worker, never shared — and rewrites that entry's
 /// <see cref="WorkerBindingConfigEntry.WorkingDirectory"/> to point at it, so
 /// <see cref="WorkerBindingResolver.Resolve"/> downstream sees an ordinary directory and needs no
 /// worktree knowledge. Returns the worktrees to tear down once the run reaches Terminal.
@@ -19,7 +19,7 @@ namespace Aer.Adapters;
 /// </summary>
 public static class WorktreeWorkspaces
 {
-    /// <summary>The task-directory-relative parent the per-worker worktrees are created under.</summary>
+    /// <summary>The room-directory-relative parent the per-worker worktrees are created under.</summary>
     public const string WorkspacesDirectoryName = "workspaces";
 
     /// <summary>

@@ -239,7 +239,7 @@ public class WorktreeProvisioningCommandTests
             var worktreePath = Path.Combine(roomDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
             Assert.True(Directory.Exists(worktreePath));
 
-            // Calling DecideCommand on existing task directory provisions again (idempotent reuse)
+            // Calling DecideCommand on existing room directory provisions again (idempotent reuse)
             var pausedExecutionId = pausedResult.State.Steps.Single(s => s.StepId.Value == "a").LatestExecutionId!.Value;
             var decideOptions = new DecideOptions(
                 roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,

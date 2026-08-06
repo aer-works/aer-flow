@@ -1747,7 +1747,7 @@ namespace Aer.Daemon
         /// #393: one turn at a time per session directory. Every turn does
         /// <see cref="RoomClient.LoadAsync"/>, branches on the projection, and -- in the
         /// re-materialize branch -- deletes <c>snapshot.json</c>/<c>flow.jsonl</c>/<c>artifacts</c>
-        /// *before* <c>RunAsync</c> takes Flow's per-task-directory lock, so that read-then-delete
+        /// *before* <c>RunAsync</c> takes Flow's per-room-directory lock, so that read-then-delete
         /// window sits outside every existing lock. Turns also run fire-and-forget behind an
         /// already-returned 200, so two overlapping <c>POST /api/sessions/send</c> calls for the same
         /// session genuinely interleave there. <see cref="IsSessionSafeToReMaterialize"/> (#354) makes
@@ -1762,7 +1762,7 @@ namespace Aer.Daemon
         /// while the directory is stable, and because this lock also serialises the
         /// <c>room.json</c> read-modify-write an id-keyed lock would miss.
         ///
-        /// Keyed by the session's task directory: that is what the deletes target, it matches Flow's
+        /// Keyed by the session's room directory: that is what the deletes target, it matches Flow's
         /// own lock granularity, and it is the one identifier all three call sites (create, send,
         /// compact) share. Keys are normalised and compared case-insensitively so two spellings of the
         /// same directory cannot end up with two different semaphores -- on a case-sensitive

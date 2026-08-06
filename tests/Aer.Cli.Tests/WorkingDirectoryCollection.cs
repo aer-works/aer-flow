@@ -7,8 +7,8 @@ namespace Aer.Cli.Tests;
 /// parallel, so without this the parsers can read a cwd the outbox test is borrowing.
 /// </summary>
 /// <remarks>
-/// Latent since #681 gave the parsers a resolved task directory; observed once as
-/// <c>SupplyOptionsParserTests.Options_may_precede_the_positional_task_directory</c> expecting a path
+/// Latent since #681 gave the parsers a resolved room directory; observed once as
+/// <c>SupplyOptionsParserTests.Options_may_precede_the_positional_room_directory</c> expecting a path
 /// under the outbox's temp directory.
 /// </remarks>
 [CollectionDefinition(Name, DisableParallelization = true)]

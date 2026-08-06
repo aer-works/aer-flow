@@ -54,7 +54,7 @@ public class CancelCommandEndToEndTests
     }
 
     [Fact]
-    public async Task Cancelling_a_task_directory_whose_bindings_file_also_names_an_unresolvable_worker_still_succeeds()
+    public async Task Cancelling_a_room_directory_whose_bindings_file_also_names_an_unresolvable_worker_still_succeeds()
     {
         // #662, pinning the rationale CancelCommand's own lazy-resolve comment carries: "reviewer"
         // is never used by the three-step workflow below — it stands in for a worker whose contract
@@ -87,7 +87,7 @@ public class CancelCommandEndToEndTests
     }
 
     [Fact]
-    public async Task Cancelling_a_task_directory_whose_bindings_file_also_names_an_unprovisionable_worktree_worker_still_succeeds()
+    public async Task Cancelling_a_room_directory_whose_bindings_file_also_names_an_unprovisionable_worktree_worker_still_succeeds()
     {
         // #1012: lazy worktree provisioning in aer cancel ensures an unprovisionable worktree spec
         // on an unrelated worker does not block cancelling an execution.
@@ -153,7 +153,7 @@ public class CancelCommandEndToEndTests
     }
 
     [Fact]
-    public async Task Cancelling_against_a_task_directory_with_no_snapshot_throws_a_typed_error()
+    public async Task Cancelling_against_a_room_directory_with_no_snapshot_throws_a_typed_error()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var roomDirectory = Path.Combine(testRoot, "task");

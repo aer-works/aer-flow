@@ -59,7 +59,7 @@ public static class SnapshotBinder
     /// method ASSUMES no concurrent writer — "a snapshot is bound and persisted exactly once per task"
     /// is a caller invariant upheld by <c>RunCommand</c>'s bind-or-load choice, not something this
     /// method enforces (its <c>File.Exists</c> check has an unguarded window; two racing engines on
-    /// one task directory would be refused earlier by the journal's ConcurrencyGuard, which is the
+    /// one room directory would be refused earlier by the journal's ConcurrencyGuard, which is the
     /// actual enforcement point). What it does guard against is the writer-vs-reader race, and
     /// measurement while building this fix's own race test
     /// showed Windows' overwrite-rename needs the destination free of default-share handles: a

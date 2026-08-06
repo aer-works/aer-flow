@@ -141,7 +141,7 @@ public class DecideCommandEndToEndTests
             // Uses the real WorkerAdapterRegistry.Default (the "noop" bookkeeping adapter), not
             // this file's test-only "shell" adapter -- the spawned subprocess below resolves
             // through the real registry, same as an operator's actual invocation, so setup must
-            // produce a task directory that registry can also resolve.
+            // produce a room directory that registry can also resolve.
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteNoOpApprovalGateBindingsAsync(testRoot);
             var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
@@ -360,7 +360,7 @@ public class DecideCommandEndToEndTests
     }
 
     [Fact]
-    public async Task Deciding_against_a_task_directory_with_no_snapshot_throws_a_typed_error()
+    public async Task Deciding_against_a_room_directory_with_no_snapshot_throws_a_typed_error()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-decide-{Guid.NewGuid():N}");
         var roomDirectory = Path.Combine(testRoot, "task");

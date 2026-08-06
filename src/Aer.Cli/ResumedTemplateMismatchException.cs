@@ -3,13 +3,13 @@ using Aer.Flow;
 namespace Aer.Cli;
 
 /// <summary>
-/// Raised by <see cref="RunCommand.ExecuteAsync"/> when the task directory already holds a bound
+/// Raised by <see cref="RunCommand.ExecuteAsync"/> when the room directory already holds a bound
 /// snapshot and the workflow file named on the command line is a different template (#628).
 /// </summary>
 /// <remarks>
 /// <para>
 /// Resuming from the snapshot rather than the named file is intended (M15 Phase 1, #137): a second
-/// <c>aer run</c> against the same task directory is how a closed terminal or a slept laptop is
+/// <c>aer run</c> against the same room directory is how a closed terminal or a slept laptop is
 /// recovered from. What was not intended is that it happened silently even when the two disagreed,
 /// so an operator who pointed a fresh workflow at a directory another task had used got that other
 /// task's result — down to its declared outputs and timeout — with no new events written and no

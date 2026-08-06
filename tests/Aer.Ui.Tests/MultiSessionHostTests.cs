@@ -176,7 +176,7 @@ public class MultiSessionHostTests : IAsyncLifetime
         Assert.NotEqual(alpha, beta);
     }
 
-    /// <summary>Starts a session whose worker parks, and returns its task directory path.</summary>
+    /// <summary>Starts a session whose worker parks, and returns its room directory path.</summary>
     private async Task<string> StartBlockedSessionAsync(string sessionKey)
     {
         var request = new StartSessionRequest(

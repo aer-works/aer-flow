@@ -2,7 +2,7 @@ namespace Aer.Cli;
 
 /// <summary>
 /// Parses <c>aer dispatch</c>'s arguments: <c>aer dispatch &lt;name&gt; [--spec &lt;spec-file&gt;]
-/// [--adapter &lt;name&gt;] [--task-dir &lt;dir&gt;] [--workflow-id &lt;id&gt;]</c>. <c>--spec</c> is
+/// [--adapter &lt;name&gt;] [--room-dir &lt;dir&gt;] [--workflow-id &lt;id&gt;]</c>. <c>--spec</c> is
 /// optional here because whether it is required depends on whether <c>&lt;name&gt;</c> resolves to a
 /// role (needs one) or a workflow template (rejects one) — a catalog question <see cref="DispatchCommand"/>
 /// answers, not the parser. Every malformed invocation is a <see cref="CliArgumentException"/>
@@ -12,7 +12,7 @@ public static class DispatchOptionsParser
 {
     /// <summary>The one copy of <c>aer dispatch</c>'s usage line, printed here on error and by <c>Program</c>.</summary>
     public const string Usage =
-        "Usage: aer dispatch <name> [--spec <spec-file>] [--adapter <name>] [--task-dir <dir>] [--workflow-id <id>]";
+        "Usage: aer dispatch <name> [--spec <spec-file>] [--adapter <name>] [--room-dir <dir>] [--workflow-id <id>]";
 
     public static DispatchOptions Parse(IReadOnlyList<string> args)
     {
@@ -34,7 +34,7 @@ public static class DispatchOptionsParser
                 case "--adapter":
                     adapter = RequireValue(args, ref i, arg);
                     break;
-                case "--task-dir":
+                case "--room-dir":
                     roomDirectoryPath = RequireValue(args, ref i, arg);
                     break;
                 case "--workflow-id":

@@ -47,7 +47,7 @@ public sealed partial class RoomClient
         }
 
         // In-process fallback: materialize locally, same directory-naming rule the daemon endpoint
-        // uses (InteractiveSessionMaterializer.ResolveTaskDirectoryPath), so a session created
+        // uses (InteractiveSessionMaterializer.ResolveRoomDirectoryPath), so a session created
         // without a daemon lands wherever a later-started daemon's /api/sessions endpoints would
         // also look for it.
         try
@@ -275,7 +275,7 @@ public sealed partial class RoomClient
     /// Reads <paramref name="roomDirectoryPath"/>'s <c>.aer/room.json</c> directly rather than
     /// round-tripping through the daemon (unlike <see cref="LoadAsync"/>'s <c>RoomProjection</c>,
     /// <see cref="SessionMetadata"/> is a directly-readable local artifact with no in-memory
-    /// projection of its own) -- also doubles as the "is this task directory a chat/codebase
+    /// projection of its own) -- also doubles as the "is this room directory a chat/codebase
     /// session" check <c>MainWindow.OpenAsync</c> uses to decide whether to route to the Chat view.
     /// Returns <see langword="null"/> for a directory that isn't an interactive session at all.
     /// </summary>

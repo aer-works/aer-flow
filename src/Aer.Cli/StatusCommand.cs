@@ -6,7 +6,7 @@ using Aer.Flow.Templates;
 namespace Aer.Cli;
 
 /// <summary>
-/// <c>aer status</c> (#730): a read-only projection of a task directory's recorded events —
+/// <c>aer status</c> (#730): a read-only projection of a room directory's recorded events —
 /// "this session's workaround was hand-rolled monitors polling PIDs and tailing <c>flow.jsonl</c>
 /// by path", which this replaces with the product's own register. Every field printed comes from
 /// <see cref="StateProjector.Project"/> — the same projection <see cref="RunCommand"/>,
@@ -16,7 +16,7 @@ namespace Aer.Cli;
 /// <para>
 /// Deliberately never takes <see cref="Aer.Flow.Concurrency.ConcurrencyGuard"/>'s lock and never
 /// constructs a <see cref="FlowEventLogWriter"/>: this is the one command in <c>Aer.Cli</c> that can
-/// run concurrently with a live <c>aer run</c> pump on the same task directory, which is the whole
+/// run concurrently with a live <c>aer run</c> pump on the same room directory, which is the whole
 /// point of a status/watch command. It also never resolves a worker binding (no <c>--bindings</c>
 /// option exists on <see cref="StatusOptions"/> at all) — nothing here dispatches, so there is
 /// nothing to bind.
@@ -37,7 +37,7 @@ public static class StatusCommand
     private const int PollIntervalMs = 500;
 
     /// <exception cref="SnapshotLoadException">
-    /// The task directory has no persisted snapshot — a nonexistent directory and an existing one
+    /// The room directory has no persisted snapshot — a nonexistent directory and an existing one
     /// that was never started via <c>aer run</c> fail identically here (both are just "no
     /// <c>snapshot.json</c> at this path"), or the persisted snapshot is malformed.
     /// </exception>
@@ -61,7 +61,7 @@ public static class StatusCommand
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer status' " +
+                $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer status' " +
                 "projects a task 'aer run' has already started, and never binds one fresh.");
         }
 

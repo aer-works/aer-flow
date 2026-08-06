@@ -27,7 +27,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   String? _connectionError;
   final _pendingStepIds = <String>{};
 
-  /// Which task directory *this phone* is currently viewing — set only by this phone's own
+  /// Which room directory *this phone* is currently viewing — set only by this phone's own
   /// actions (recent-task pick, starting a task/session), never by another client's. Aer.Daemon's
   /// own "current task" is a separate, process-wide notion the daemon uses only to decide what a
   /// brand-new WS connection sees before this phone has opened anything of its own; `_connect`'s

@@ -1,14 +1,14 @@
 namespace Aer.Cli;
 
 /// <summary>
-/// Parses <c>aer status</c>'s arguments: <c>aer status &lt;task-dir&gt; [--follow]</c>. Never
+/// Parses <c>aer status</c>'s arguments: <c>aer status &lt;room-dir&gt; [--follow]</c>. Never
 /// throws a bare <see cref="InvalidOperationException"/> for a malformed invocation — every
 /// failure here is a <see cref="CliArgumentException"/> (CLAUDE.md's error-handling rules),
 /// mirroring <see cref="RunOptionsParser"/>/<see cref="CancelOptionsParser"/>.
 /// </summary>
 public static class StatusOptionsParser
 {
-    public const string Usage = "Usage: aer status <task-dir> [--follow]";
+    public const string Usage = "Usage: aer status <room-dir> [--follow]";
 
     public static StatusOptions Parse(IReadOnlyList<string> args)
     {
@@ -44,7 +44,7 @@ public static class StatusOptionsParser
 
         if (roomDirectoryPath is null)
         {
-            throw new CliArgumentException($"Missing required <task-dir> argument. {Usage}");
+            throw new CliArgumentException($"Missing required <room-dir> argument. {Usage}");
         }
 
         return new StatusOptions(RoomDirectoryPath.Resolve(roomDirectoryPath), follow);

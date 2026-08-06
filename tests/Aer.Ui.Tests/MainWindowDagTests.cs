@@ -16,7 +16,7 @@ namespace Aer.Ui.Tests;
 /// <summary>
 /// Drives the real <see cref="MainWindow"/>'s DAG rendering (M14 Phase 3, issue #120) through
 /// <see cref="DagCanvas"/>'s actual rendered controls — the same headless-Avalonia approach
-/// <see cref="MainWindowTests"/> established (Phase 1) — over both a bound task directory and a
+/// <see cref="MainWindowTests"/> established (Phase 1) — over both a bound room directory and a
 /// raw, not-yet-instantiated template file, since UI spec §10 requires the graph view to render
 /// both.
 /// </summary>

@@ -23,7 +23,7 @@ public static class ArtifactManager
     public const string PromptFileName = "prompt.txt";
 
     /// <summary>
-    /// The directory under a task directory that every artifact root is built from (§16) — the same
+    /// The directory under a room directory that every artifact root is built from (§16) — the same
     /// shared-constant reasoning as <see cref="PromptFileName"/>: every layer that composes
     /// <c>{roomDirectory}/artifacts</c> must agree on the segment exactly (#773). Tests deliberately
     /// keep restating the literal instead of reading this back: they pin the on-disk contract, which
@@ -197,7 +197,7 @@ public static class ArtifactManager
         // run is reported as `Contract not satisfied` after being paid for in full, indistinguishable
         // from a worker that ignored its instructions.
         //
-        // The CLI resolves a task directory at its boundary, which is where the one measured instance
+        // The CLI resolves a room directory at its boundary, which is where the one measured instance
         // came from. This refuses loudly for every other caller, because the cost of being wrong here
         // is a whole frontier-model run and a cause nothing names.
         RefuseRelative(outputDirectory, nameof(outputDirectory));

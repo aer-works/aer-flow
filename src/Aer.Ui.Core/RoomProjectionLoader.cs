@@ -40,7 +40,7 @@ public sealed record RoomFleetItem(
     DateTimeOffset? LastActivityAt = null);
 
 /// <summary>
-/// The seam this phase exists to prove (issue #118): opens a real task directory using exactly
+/// The seam this phase exists to prove (issue #118): opens a real room directory using exactly
 /// the read-model library calls Flow's own write path uses — <see cref="SnapshotBinder.LoadFromFileAsync"/>
 /// for the bound snapshot (AER Flow spec §11.2), <see cref="FlowEventLogReader"/> for the Flow
 /// Event Store (§5.1), and <see cref="StateProjector.Project"/> to reconstruct <see cref="Aer.Flow.Domain.FlowState"/>
@@ -72,7 +72,7 @@ public static class RoomProjectionLoader
         if (!File.Exists(snapshotPath))
         {
             throw new InvalidRoomDirectoryException(
-                $"Not a task directory (no '{SnapshotFileName}' found): '{roomDirectoryPath}'");
+                $"Not a room directory (no '{SnapshotFileName}' found): '{roomDirectoryPath}'");
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
@@ -114,7 +114,7 @@ public static class RoomProjectionLoader
         {
             // A materialized interactive session with no initial message never actually runs (a
             // known quirk, not an error -- see DaemonIntegrationTests' WebSocketSnapshot_* remarks).
-            // A DAG task directory with no snapshot yet shouldn't exist by construction, but is
+            // A DAG room directory with no snapshot yet shouldn't exist by construction, but is
             // represented the same defensive way rather than thrown on.
             // For a room with no journal/snapshot yet, LastActivityAt falls back to created timestamp
             // (scoped strictly to the pre-first-event window).

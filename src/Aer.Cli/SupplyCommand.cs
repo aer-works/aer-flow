@@ -32,7 +32,7 @@ public static class SupplyCommand
     private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="SnapshotLoadException">
-    /// The task directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
+    /// The room directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
     /// persisted snapshot is malformed.
     /// </exception>
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
@@ -42,7 +42,7 @@ public static class SupplyCommand
     /// </exception>
     /// <exception cref="CliArgumentException"><see cref="SupplyOptions.SourceFilePath"/> does not exist.</exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
-    /// Another Flow instance already holds this task directory's lock.
+    /// Another Flow instance already holds this room directory's lock.
     /// </exception>
     /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">
     /// Same journal-held refusal as <see cref="DecideCommand"/> (#816); see that exception's own docs.
@@ -70,7 +70,7 @@ public static class SupplyCommand
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer supply' " +
+                $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer supply' " +
                 "targets a task 'aer run' has already started, and never binds one fresh.");
         }
 

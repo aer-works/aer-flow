@@ -18,7 +18,7 @@ namespace Aer.Ui.Tests;
 public class MainWindowTests
 {
     [AvaloniaFact]
-    public async Task Renders_workflow_status_and_each_steps_status_from_a_real_task_directory()
+    public async Task Renders_workflow_status_and_each_steps_status_from_a_real_room_directory()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-{Guid.NewGuid():N}");
@@ -81,22 +81,22 @@ public class MainWindowTests
     [AvaloniaFact]
     public async Task Renders_the_error_message_for_a_directory_with_no_snapshot()
     {
-        var notATaskDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-not-a-task-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(notATaskDirectory);
+        var notARoomDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-not-a-task-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(notARoomDirectory);
         try
         {
             var window = new MainWindow();
-            await window.LoadAsync(notATaskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(notARoomDirectory, TestContext.Current.CancellationToken);
 
             var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
 
-            Assert.Contains(notATaskDirectory, statusText.Text);
+            Assert.Contains(notARoomDirectory, statusText.Text);
             Assert.Empty(stepsPanel.Children);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(notATaskDirectory);
+            DirectoryCleanup.DeleteRecursively(notARoomDirectory);
         }
     }
 }

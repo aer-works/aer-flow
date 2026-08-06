@@ -1,7 +1,7 @@
 namespace Aer.Cli;
 
 /// <summary>
-/// Parses <c>aer supply</c>'s arguments: <c>aer supply &lt;task-dir&gt; --worker &lt;role&gt;
+/// Parses <c>aer supply</c>'s arguments: <c>aer supply &lt;room-dir&gt; --worker &lt;role&gt;
 /// --output &lt;name&gt; --file &lt;source-path&gt; --bindings &lt;bindings-file&gt;
 /// [--workflow-id &lt;id&gt;]</c>. Mirrors <see cref="CancelOptionsParser"/>'s conventions — every
 /// failure here is a <see cref="CliArgumentException"/>, never a bare
@@ -10,7 +10,7 @@ namespace Aer.Cli;
 public static class SupplyOptionsParser
 {
     private const string Usage =
-        "Usage: aer supply <task-dir> --worker <role> --output <name> --file <source-path> " +
+        "Usage: aer supply <room-dir> --worker <role> --output <name> --file <source-path> " +
         "--bindings <bindings-file> [--workflow-id <id>]";
 
     public static SupplyOptions Parse(IReadOnlyList<string> args)
@@ -62,7 +62,7 @@ public static class SupplyOptionsParser
 
         if (roomDirectoryPath is null)
         {
-            throw new CliArgumentException($"Missing required <task-dir> argument. {Usage}");
+            throw new CliArgumentException($"Missing required <room-dir> argument. {Usage}");
         }
 
         if (worker is null)

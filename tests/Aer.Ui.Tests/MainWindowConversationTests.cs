@@ -23,12 +23,12 @@ public class MainWindowConversationTests
     private static readonly StepId Critic = new("critic");
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-conversation-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-conversation-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     private static string TurnLine(int sequence, string role, string vendor, string prompt, string text)
         => $"{{\"Sequence\":{sequence},\"Role\":\"{role}\",\"Vendor\":\"{vendor}\",\"Prompt\":\"{prompt}\",\"Text\":\"{text}\"}}";
 
-    private static async Task<string> CreatePumpedTaskDirectoryAsync(CancellationToken cancellationToken)
+    private static async Task<string> CreatePumpedRoomDirectoryAsync(CancellationToken cancellationToken)
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-conversation-window-{Guid.NewGuid():N}");
@@ -96,7 +96,7 @@ public class MainWindowConversationTests
     [AvaloniaFact]
     public async Task Only_executions_whose_output_directory_has_a_transcript_get_a_conversation_row()
     {
-        var roomDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var (window, _) = await LoadWithTranscriptOnStepAsync(
@@ -119,7 +119,7 @@ public class MainWindowConversationTests
     [AvaloniaFact]
     public async Task ShowConversation_renders_turns_in_file_order_with_prompt_collapsed()
     {
-        var roomDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var (window, transcriptDirectory) = await LoadWithTranscriptOnStepAsync(
@@ -155,7 +155,7 @@ public class MainWindowConversationTests
     [AvaloniaFact]
     public async Task A_malformed_line_renders_as_an_explicit_marker_between_intact_turns()
     {
-        var roomDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var (window, transcriptDirectory) = await LoadWithTranscriptOnStepAsync(
@@ -183,7 +183,7 @@ public class MainWindowConversationTests
     [AvaloniaFact]
     public async Task Refresh_rerenders_the_selected_conversation_and_picks_up_appended_turns()
     {
-        var roomDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var (window, transcriptDirectory) = await LoadWithTranscriptOnStepAsync(
@@ -215,7 +215,7 @@ public class MainWindowConversationTests
     [AvaloniaFact]
     public async Task An_execution_without_a_transcript_gets_no_conversation_row_at_all()
     {
-        var roomDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));

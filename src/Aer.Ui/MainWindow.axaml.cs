@@ -541,7 +541,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The full "open a task directory" action (UI spec §3.1): loads and renders it via
+    /// The full "open a room directory" action (UI spec §3.1): loads and renders it via
     /// <see cref="LoadAsync"/>, then — only on success — records it as the most recently opened
     /// directory and starts/stops live re-projection (M14 Phase 2, issue #119) depending on whether
     /// the projected workflow has reached a terminal state. This is what <see cref="OpenButton"/>
@@ -553,7 +553,7 @@ public partial class MainWindow : Window
     /// a raw <c>WorkflowDefinition</c> template instead (M14 Phase 3, issue #120: the DAG view
     /// renders both bound tasks and not-yet-instantiated templates). A template is not a task —
     /// there is no execution state to remember a re-projection cadence for, so it is neither
-    /// recorded to <see cref="LocalUiConfigurationStore"/> (that store is task-directory recents
+    /// recorded to <see cref="LocalUiConfigurationStore"/> (that store is room-directory recents
     /// specifically, per its Phase 2 decision of record) nor live-refreshed.
     /// </para>
     /// </summary>
@@ -643,11 +643,11 @@ public partial class MainWindow : Window
     /// or resumes an already-bound <paramref name="roomDirectoryPath"/> after a pause or stop — the
     /// same <c>RunCommand.ExecuteAsync</c> call <c>aer run</c> makes, reused in-process rather than
     /// spawning the installed binary (the seam decision this phase resolves). Bindings are never
-    /// persisted in a task directory (M14 Phase 2's decision of record) and the template is only
+    /// persisted in a room directory (M14 Phase 2's decision of record) and the template is only
     /// ever <em>bound from</em> on a fresh start (<see cref="RunOptions.WorkflowFilePath"/>'s own
     /// remarks, which also cover what a resume now reads it for), so both are asked for here rather
     /// than inferred — "ask, don't infer," the same discipline the recents list already follows for
-    /// task-directory discovery (UI spec §3.1).
+    /// room-directory discovery (UI spec §3.1).
     /// <para>
     /// The pump itself runs on a background thread (<see cref="Task.Run(Func{Task})"/>): a live
     /// execution can take however long a real worker takes, and the UI thread must never await that
@@ -973,7 +973,7 @@ public partial class MainWindow : Window
     /// </para>
     /// <para>
     /// Advisory display only, never a save gate (§9): bindings are deliberately not template data
-    /// and never persisted in a task directory, so <see cref="SaveBindingsAsync"/> never consults
+    /// and never persisted in a room directory, so <see cref="SaveBindingsAsync"/> never consults
     /// this. Called explicitly — after New/Open/Save bindings and after adding a row — rather than
     /// wired to any template-editor change notification, since this phase does not touch that
     /// surface's events either.
@@ -983,7 +983,7 @@ public partial class MainWindow : Window
         => ViewModel.BindingsEditor.RefreshTemplateCrossCheck(ViewModel.TemplateEditor.Baseline);
 
     /// <summary>
-    /// Re-projects the currently open task directory in place (M14 Phase 2's change-observation
+    /// Re-projects the currently open room directory in place (M14 Phase 2's change-observation
     /// requirement, issue #119) — a no-op if nothing has been opened yet. Public and directly
     /// awaitable for the same reason <see cref="LoadAsync"/> is (issue #118): a test can drive
     /// exactly one re-projection deterministically, rather than pumping the dispatcher and waiting
@@ -1040,7 +1040,7 @@ public partial class MainWindow : Window
         if (outcome.Projection is not { } projection)
         {
             // A real GUI has no stderr/exit-code convention to fail into (Aer.Cli's Program.cs
-            // boundary) — an invalid task directory or a malformed snapshot/event log renders as an
+            // boundary) — an invalid room directory or a malformed snapshot/event log renders as an
             // in-window message instead. The session has already cleared the mutation surfaces.
             StatusText.Text = outcome.ErrorMessage;
             ClearProjectionPanels();
@@ -1183,7 +1183,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Renders a raw, not-yet-instantiated <see cref="WorkflowDefinition"/> template's DAG
     /// (M14 Phase 3, issue #120; UI spec §5, §10) — the counterpart to <see cref="LoadAsync"/> for
-    /// paths that name a file rather than a task directory. There is no <see cref="FlowState"/> to
+    /// paths that name a file rather than a room directory. There is no <see cref="FlowState"/> to
     /// overlay (a template is not bound to any task, so it has never executed) and no execution
     /// history/decisions/supplementary-execution surface either — those are all per-task facts;
     /// only the graph itself is meaningful for a template.
@@ -1247,7 +1247,7 @@ public partial class MainWindow : Window
     /// by lines (one per <see cref="DagEdge"/>): solid for an ordinary <c>DependsOn</c> dependency,
     /// dashed for a declared <c>PausePoint.SupersedeTargets</c> entry (UI spec §10; issue #120).
     /// <paramref name="statusByStepId"/> is <c>null</c> for a raw template — nothing to overlay — or
-    /// populated from the bound task's <see cref="FlowState"/> for a real task directory; either way
+    /// populated from the bound task's <see cref="FlowState"/> for a real room directory; either way
     /// every node still renders, just without a status-derived background in the template case.
     /// </summary>
     private void RenderDag(IReadOnlyList<WorkflowStepDefinition> steps, IReadOnlyDictionary<StepId, StepStatus>? statusByStepId)
@@ -1626,7 +1626,7 @@ public partial class MainWindow : Window
     /// naming its declared inputs' resolved producers, then a row of buttons — one per file actually
     /// present in its output directory — each wired to <see cref="ShowArtifactPreviewAsync"/>.
     /// <paramref name="roomDirectoryPath"/> is <see cref="LoadAsync"/>'s own parameter, not
-    /// <see cref="RoomClient.CurrentTaskDirectoryPath"/>: <c>LoadAsync</c> is a supported, directly-callable
+    /// <see cref="RoomClient.CurrentRoomDirectoryPath"/>: <c>LoadAsync</c> is a supported, directly-callable
     /// entry point in its own right (issue #118) that a caller may invoke without ever going through
     /// <see cref="OpenAsync"/> (which is the only place that field is set) — the rendered buttons must
     /// resolve against the directory this exact call just loaded, not a field that might still be
@@ -1862,7 +1862,7 @@ public partial class MainWindow : Window
     /// The snapshot-vs-template diff surface (UI spec §5; M14 Phase 4, issue #121): loads
     /// <paramref name="templateFilePath"/> via <see cref="TemplateProjectionLoader"/> and compares it
     /// against the currently open task's bound snapshot via <see cref="SnapshotTemplateDiffer"/>.
-    /// Requires a task directory to already be open — <see cref="RoomClient.LastSnapshot"/> is only ever set by
+    /// Requires a room directory to already be open — <see cref="RoomClient.LastSnapshot"/> is only ever set by
     /// <see cref="LoadAsync"/>'s success path, never by opening a raw template on its own, since a
     /// template with nothing bound to it has nothing to diff against.
     /// </summary>

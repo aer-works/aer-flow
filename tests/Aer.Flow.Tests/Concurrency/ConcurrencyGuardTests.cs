@@ -6,7 +6,7 @@ namespace Aer.Flow.Tests.Concurrency;
 public class ConcurrencyGuardTests
 {
     [Fact]
-    public void Acquire_creates_the_task_directory_if_it_does_not_exist()
+    public void Acquire_creates_the_room_directory_if_it_does_not_exist()
     {
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
@@ -356,12 +356,12 @@ public class ConcurrencyGuardTests
         try
         {
             File.WriteAllBytes(rootFile, []);
-            var invalidTaskDirectory = Path.Combine(rootFile, "subfolder");
+            var invalidRoomDirectory = Path.Combine(rootFile, "subfolder");
 
             // ThrowsAny: the exact subtype is the OS's choice (Windows throws plain IOException
             // here, Linux DirectoryNotFoundException); the claim is only that a non-sharing
             // failure stays a raw IOException-family throw with no probe text.
-            var ex = Assert.ThrowsAny<IOException>(() => ConcurrencyGuard.Acquire(invalidTaskDirectory));
+            var ex = Assert.ThrowsAny<IOException>(() => ConcurrencyGuard.Acquire(invalidRoomDirectory));
 
             Assert.DoesNotContain("Current holder:", ex.Message);
         }

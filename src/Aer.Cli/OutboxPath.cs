@@ -14,7 +14,7 @@ namespace Aer.Cli;
 /// </para>
 /// <para>
 /// <b>What this proves is "inside the outbox", never "outside the workspace"</b> — those are not the
-/// same claim, and the task directory is not required to sit outside the repo: the repo's own
+/// same claim, and the room directory is not required to sit outside the repo: the repo's own
 /// dispatcher defaults it to a gitignored scratch subtree <em>within</em> the checkout. Containment
 /// in the allocated, per-execution outbox is the whole of the guarantee.
 /// </para>
@@ -51,7 +51,7 @@ public static class OutboxPath
         // A relative outbox is not a location. This process is spawned by the vendor CLI and inherits
         // *its* working directory, so resolving one here answers "inside a directory of that name
         // under the worker's cwd" — and the worker's cwd is the workspace. Measured: a run with a
-        // relative --task-dir emitted AER_OUTPUT_DIR as `task2\artifacts\execution_<id>`, the worker
+        // relative --room-dir emitted AER_OUTPUT_DIR as `task2\artifacts\execution_<id>`, the worker
         // created that path inside its workspace and wrote there, and this check called it contained.
         // The exemption would have laundered a workspace write. AER always has an absolute path to
         // give; anything else is a question this cannot answer, so it denies.

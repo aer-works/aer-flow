@@ -23,7 +23,7 @@ public static class CancelCommand
     private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="SnapshotLoadException">
-    /// The task directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
+    /// The room directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
     /// persisted snapshot is malformed.
     /// </exception>
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
@@ -35,7 +35,7 @@ public static class CancelCommand
     /// <paramref name="options"/>'s <c>ExecutionId</c> was never admitted for execution.
     /// </exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
-    /// Another Flow instance already holds this task directory's lock; see that exception's message
+    /// Another Flow instance already holds this room directory's lock; see that exception's message
     /// for which holders are possible and how to reach an in-flight execution instead. (#857: this
     /// used to paraphrase the message as "most likely a live <c>aer run</c> pump" — a single cause
     /// the message itself no longer asserts, and the paraphrase is what would have gone stale.)
@@ -59,7 +59,7 @@ public static class CancelCommand
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer cancel' " +
+                $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer cancel' " +
                 "targets a task 'aer run' has already started, and never binds one fresh.");
         }
 

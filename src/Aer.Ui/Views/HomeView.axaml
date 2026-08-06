@@ -96,9 +96,9 @@
       <!-- #212: the text box stays as a visible, hand-editable fallback (never the only way in) —
            Browse is the primary path for a user with no reliable way to type a correct path. -->
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-        <TextBlock Text="Task directory:" VerticalAlignment="Center" />
+        <TextBlock Text="Room directory:" VerticalAlignment="Center" />
         <TextBox x:Name="RoomDirectoryPathBox" Width="420" />
-        <Button x:Name="BrowseTaskDirectoryButton" Click="OnBrowseTaskDirectoryClick"
+        <Button x:Name="BrowseRoomDirectoryButton" Click="OnBrowseRoomDirectoryClick"
                 ToolTip.Tip="Pick a task folder instead of typing its path">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
             <Path Classes="action-icon" Data="{StaticResource Icon.Folder}"

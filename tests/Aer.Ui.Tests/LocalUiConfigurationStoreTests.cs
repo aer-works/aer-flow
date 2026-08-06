@@ -3,7 +3,7 @@ namespace Aer.Ui.Tests;
 
 /// <summary>
 /// UI spec §3.1/§4: Local UI Configuration is a rebuildable convenience, never authoritative — a
-/// task directory's own contents are. These tests exercise <see cref="LocalUiConfigurationStore"/>
+/// room directory's own contents are. These tests exercise <see cref="LocalUiConfigurationStore"/>
 /// against a temp config file, never <see cref="LocalUiConfigurationStore.CreateDefault"/>'s real
 /// per-user path, so a test run never touches (or depends on) this host's actual config.
 /// </summary>

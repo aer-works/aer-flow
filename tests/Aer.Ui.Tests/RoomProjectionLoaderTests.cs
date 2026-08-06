@@ -23,7 +23,7 @@ public class RoomProjectionLoaderTests
     private static readonly StepId Publisher = new("publisher");
 
     [Fact]
-    public async Task Loads_a_bound_snapshot_and_projects_state_from_a_real_task_directory()
+    public async Task Loads_a_bound_snapshot_and_projects_state_from_a_real_room_directory()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-task-{Guid.NewGuid():N}");
@@ -226,20 +226,20 @@ public class RoomProjectionLoaderTests
     }
 
     [Fact]
-    public async Task A_directory_with_no_snapshot_is_reported_as_not_a_task_directory()
+    public async Task A_directory_with_no_snapshot_is_reported_as_not_a_room_directory()
     {
-        var notATaskDirectory = Path.Combine(Path.GetTempPath(), $"ui-not-a-task-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(notATaskDirectory);
+        var notARoomDirectory = Path.Combine(Path.GetTempPath(), $"ui-not-a-task-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(notARoomDirectory);
         try
         {
             var exception = await Assert.ThrowsAsync<InvalidRoomDirectoryException>(
-                () => RoomProjectionLoader.LoadAsync(notATaskDirectory, TestContext.Current.CancellationToken));
+                () => RoomProjectionLoader.LoadAsync(notARoomDirectory, TestContext.Current.CancellationToken));
 
-            Assert.Contains(notATaskDirectory, exception.Message);
+            Assert.Contains(notARoomDirectory, exception.Message);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(notATaskDirectory);
+            DirectoryCleanup.DeleteRecursively(notARoomDirectory);
         }
     }
 

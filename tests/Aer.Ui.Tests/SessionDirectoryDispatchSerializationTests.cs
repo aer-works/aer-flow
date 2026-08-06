@@ -97,7 +97,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     [Fact]
     public async Task ConcurrentRuns_OnTheSameDirectory_NeverDispatchOverlappingWorkers()
     {
-        var (roomDirectory, bindingsFilePath) = await CreateReadyTaskDirectoryAsync();
+        var (roomDirectory, bindingsFilePath) = await CreateReadyRoomDirectoryAsync();
 
         // No await between the two POSTs: both endpoints return 200 before their fire-and-forget
         // dispatch runs, so this genuinely races the two Task.Run bodies against one another.
@@ -136,7 +136,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         // never called /api/rooms/decide at all, despite its name and doc comment claiming run+decide
         // coverage -- decide's lock wrapper (Program.cs) has its own pre-lock ArtifactReference branch
         // nothing exercised. This version actually races the two different endpoints.
-        var (roomDirectory, executionId) = await CreatePausedFailedTaskDirectoryAsync();
+        var (roomDirectory, executionId) = await CreatePausedFailedRoomDirectoryAsync();
         var bindingsFilePath = Path.Combine(roomDirectory, "bindings.json");
 
         // Set directly rather than relying on the /api/rooms/run request below to set it as a side
@@ -172,7 +172,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     [Fact]
     public async Task ConcurrentDecides_OnTheSameDirectory_OnlyOneDispatchesAndTheLoserIsRecorded()
     {
-        var (roomDirectory, executionId) = await CreatePausedFailedTaskDirectoryAsync();
+        var (roomDirectory, executionId) = await CreatePausedFailedRoomDirectoryAsync();
 
         // DecideCommand always loads a bindings file regardless of decision type (Aer.Cli's
         // DecideCommand.cs), read through the daemon's DI-registered BindingsPathHolder -- normally
@@ -230,7 +230,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         // RunAsync swallows the failure internally or lets one escape. That makes this HTTP-level test
         // representative of both cases -- see the commit body for why a second, lock-internal unit
         // test would be redundant rather than additive here.
-        var (roomDirectory, goodBindingsFilePath) = await CreateReadyTaskDirectoryAsync();
+        var (roomDirectory, goodBindingsFilePath) = await CreateReadyRoomDirectoryAsync();
         var badBindingsFilePath = await WriteUnresolvableBindingsAsync(roomDirectory);
 
         var badRunResponse = await _client.PostAsJsonAsync(
@@ -260,8 +260,8 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     [Fact]
     public async Task ConcurrentRuns_OnDifferentDirectories_StillProceedConcurrently()
     {
-        var (directoryA, bindingsA) = await CreateReadyTaskDirectoryAsync();
-        var (directoryB, bindingsB) = await CreateReadyTaskDirectoryAsync();
+        var (directoryA, bindingsA) = await CreateReadyRoomDirectoryAsync();
+        var (directoryB, bindingsB) = await CreateReadyRoomDirectoryAsync();
 
         var runA = _client.PostAsJsonAsync(
             $"{_baseUrl}/api/rooms/run", new RunRoomRequest(directoryA, null, bindingsA), TestContext.Current.CancellationToken);
@@ -294,7 +294,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     {
         var collisionFile = Path.Combine(roomDirectory, SlowCollisionStubAdapter.CollisionFileName);
         Assert.False(File.Exists(collisionFile),
-            "Two dispatches against the same task directory overlapped -- the per-directory lock did not serialise them.");
+            "Two dispatches against the same room directory overlapped -- the per-directory lock did not serialise them.");
     }
 
     private static int ReadCompletionsCount(string roomDirectory)
@@ -311,7 +311,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         return File.GetLastWriteTimeUtc(stamp);
     }
 
-    private static async Task<(string RoomDirectory, string BindingsFilePath)> CreateReadyTaskDirectoryAsync()
+    private static async Task<(string RoomDirectory, string BindingsFilePath)> CreateReadyRoomDirectoryAsync()
     {
         var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
             new WorkflowTemplateId("dispatch-serialization-test"),
@@ -332,12 +332,12 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     /// A single-step workflow whose one attempt has already failed (deterministically, via
     /// <see cref="SlowCollisionStubAdapter.ForceFailureSentinel"/>) and paused -- hand-written
     /// directly into <c>flow.jsonl</c>, the same technique
-    /// <c>DaemonIntegrationTests.CreatePausedTaskDirectoryAsync</c> uses for its own Paused fixture,
+    /// <c>DaemonIntegrationTests.CreatePausedRoomDirectoryAsync</c> uses for its own Paused fixture,
     /// swapping <c>ExecutionSucceeded</c> for <c>ExecutionFailed</c> so the paused outcome is Failed --
     /// <c>ExternalDecisionValidator</c> refuses <c>RetryWithRevision</c> once the paused outcome is
     /// Succeeded, so a fixture built the other way could never legitimately re-dispatch.
     /// </summary>
-    private static async Task<(string RoomDirectory, string ExecutionId)> CreatePausedFailedTaskDirectoryAsync()
+    private static async Task<(string RoomDirectory, string ExecutionId)> CreatePausedFailedRoomDirectoryAsync()
     {
         var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
             new WorkflowTemplateId("dispatch-serialization-paused-test"),

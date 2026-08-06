@@ -64,7 +64,7 @@ public class RunCommandEndToEndTests
     }
 
     [Fact]
-    public async Task Running_again_against_the_same_task_directory_resumes_without_redispatching()
+    public async Task Running_again_against_the_same_room_directory_resumes_without_redispatching()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var roomDirectory = Path.Combine(testRoot, "task");
@@ -162,12 +162,12 @@ public class RunCommandEndToEndTests
     }
 
     // ---------------------------------------------------------------------------------------
-    // #628 — the named workflow file is not read when the task directory is already bound.
+    // #628 — the named workflow file is not read when the room directory is already bound.
     // Resuming is intended (M15 Phase 1, #137); resuming a *different* template silently is not.
     // ---------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task Resuming_a_task_directory_bound_to_a_different_template_is_refused()
+    public async Task Resuming_a_room_directory_bound_to_a_different_template_is_refused()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var roomDirectory = Path.Combine(testRoot, "task");
@@ -202,7 +202,7 @@ public class RunCommandEndToEndTests
     [Fact]
     public async Task The_refusal_happens_before_anything_is_dispatched()
     {
-        // The task directory is bound but has never run — the exact state `aer run` leaves behind
+        // The room directory is bound but has never run — the exact state `aer run` leaves behind
         // when it persists the snapshot (before the bindings file is even parsed) and then throws on
         // a malformed one. That state is what makes this test discriminate on ORDER: every step is
         // still pending, so a refusal placed after the mutation surface would dispatch the whole
@@ -312,7 +312,7 @@ public class RunCommandEndToEndTests
     public async Task An_in_process_resume_that_names_no_workflow_file_is_unaffected()
     {
         // The second control. RunOptions.WorkflowFilePath is nullable precisely so an in-process
-        // caller resuming a known task directory need not produce one (M15 Phase 1, #137) — nothing
+        // caller resuming a known room directory need not produce one (M15 Phase 1, #137) — nothing
         // was named, so there is no disagreement to refuse.
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-{Guid.NewGuid():N}");
         var roomDirectory = Path.Combine(testRoot, "task");
@@ -501,7 +501,7 @@ public class RunCommandEndToEndTests
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteEchoBindingsAsync(testRoot, "hello-live-worker-stdout");
             var options = RunOptionsParser.Parse(
-                [workflowFilePath, "--bindings", bindingsFilePath, "--task-dir", roomDirectory, "--echo-worker"]);
+                [workflowFilePath, "--bindings", bindingsFilePath, "--room-dir", roomDirectory, "--echo-worker"]);
 
             using var consoleOutput = new StringWriter();
             Console.SetOut(consoleOutput);
@@ -530,7 +530,7 @@ public class RunCommandEndToEndTests
             var workflowFilePath = await WriteThreeStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteEchoBindingsAsync(testRoot, "hello-live-worker-stdout");
             var options = RunOptionsParser.Parse(
-                [workflowFilePath, "--bindings", bindingsFilePath, "--task-dir", roomDirectory]);
+                [workflowFilePath, "--bindings", bindingsFilePath, "--room-dir", roomDirectory]);
 
             using var consoleOutput = new StringWriter();
             Console.SetOut(consoleOutput);

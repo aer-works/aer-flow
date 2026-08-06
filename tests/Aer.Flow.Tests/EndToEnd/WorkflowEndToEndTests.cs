@@ -89,7 +89,7 @@ public class WorkflowEndToEndTests
     }
 
     [Fact]
-    public async Task A_second_concurrent_run_against_the_same_task_directory_is_rejected()
+    public async Task A_second_concurrent_run_against_the_same_room_directory_is_rejected()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
         var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");

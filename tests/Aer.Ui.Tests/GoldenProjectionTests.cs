@@ -9,7 +9,7 @@ using Aer.Ui.Tests.TestSupport;
 namespace Aer.Ui.Tests;
 
 /// <summary>
-/// M14's completion gate (issue #122): three recorded task-directory fixtures — a completed run, a
+/// M14's completion gate (issue #122): three recorded room-directory fixtures — a completed run, a
 /// paused run mid-decision, and a failed-and-retried run — each pumped through the real
 /// <c>MutationInterface</c>/<c>CoreDispatcher</c> path every other <c>Aer.Ui.Tests</c> fixture uses
 /// (no live vendor involved, shell-stub workers only, the <c>RunCommandEndToEndTests</c> convention),
@@ -184,7 +184,7 @@ public class GoldenProjectionTests
     }
 
     /// <summary>
-    /// Projects the real task directory through <see cref="RoomProjectionLoader"/> and
+    /// Projects the real room directory through <see cref="RoomProjectionLoader"/> and
     /// <see cref="DagLayoutEngine"/>, canonicalizes it, and compares against the checked-in golden
     /// file — or, with <c>AER_UPDATE_GOLDEN_FILES=1</c> set, (re)writes it. The golden file is
     /// resolved via <see cref="CallerFilePathAttribute"/> against this file's own source location

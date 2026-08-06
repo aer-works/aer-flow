@@ -1,10 +1,10 @@
 namespace Aer.Cli;
 
 /// <summary>
-/// Resolves a task directory to an absolute path at the CLI boundary (#668).
+/// Resolves a room directory to an absolute path at the CLI boundary (#668).
 /// </summary>
 /// <remarks>
-/// A relative <c>--task-dir</c> is meaningful only against the process that read it, and the worker
+/// A relative <c>--room-dir</c> is meaningful only against the process that read it, and the worker
 /// is a different process with a different working directory. AER derived <c>AER_OUTPUT_DIR</c> from
 /// the relative form, the worker resolved it against its own cwd, and wrote its declared output
 /// somewhere AER never looked — reported as <c>Contract not satisfied</c>, after the run was paid

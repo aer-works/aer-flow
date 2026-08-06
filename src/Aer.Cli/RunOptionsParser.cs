@@ -2,7 +2,7 @@ namespace Aer.Cli;
 
 /// <summary>
 /// Parses <c>aer run</c>'s arguments: <c>aer run &lt;workflow-file&gt; --bindings &lt;bindings-file&gt;
-/// [--task-dir &lt;dir&gt;] [--workflow-id &lt;id&gt;] [--echo-worker]</c>. Never throws a bare
+/// [--room-dir &lt;dir&gt;] [--workflow-id &lt;id&gt;] [--echo-worker]</c>. Never throws a bare
 /// <see cref="InvalidOperationException"/> for a malformed invocation — every failure here is a
 /// <see cref="CliArgumentException"/> (CLAUDE.md's error-handling rules).
 /// </summary>
@@ -13,17 +13,17 @@ public static class RunOptionsParser
     /// by <c>Program</c> in the full command list.
     /// </summary>
     public const string Usage =
-        "Usage: aer run <workflow-file> --bindings <bindings-file> [--task-dir <dir>] [--workflow-id <id>] [--echo-worker]";
+        "Usage: aer run <workflow-file> --bindings <bindings-file> [--room-dir <dir>] [--workflow-id <id>] [--echo-worker]";
 
     /// <summary>
     /// #628: <c>&lt;workflow-file&gt;</c> reads as "this is what runs", and under
-    /// <c>--task-dir</c> it often is not. Printed wherever <see cref="Usage"/> is, since a reader
+    /// <c>--room-dir</c> it often is not. Printed wherever <see cref="Usage"/> is, since a reader
     /// who needs the arguments spelled out is exactly the reader whose prior this corrects.
     /// </summary>
     public const string ResumeNote =
-        "aer run resumes a --task-dir that already holds a snapshot, running the workflow that " +
+        "aer run resumes a --room-dir that already holds a snapshot, running the workflow that " +
         "directory was first bound to rather than <workflow-file>. It refuses when the two are " +
-        "different templates. Use a fresh --task-dir to start different work.";
+        "different templates. Use a fresh --room-dir to start different work.";
 
     public static RunOptions Parse(IReadOnlyList<string> args)
     {
@@ -42,7 +42,7 @@ public static class RunOptionsParser
                 case "--bindings":
                     bindingsFilePath = RequireValue(args, ref i, arg);
                     break;
-                case "--task-dir":
+                case "--room-dir":
                     roomDirectoryPath = RequireValue(args, ref i, arg);
                     break;
                 case "--workflow-id":
@@ -81,7 +81,7 @@ public static class RunOptionsParser
 
         // Derived from the workflow file's own name when not given, so `aer run workflow.json`
         // twice in the same directory naturally resumes the same task (§21) rather than each
-        // invocation needing its own explicit --task-dir.
+        // invocation needing its own explicit --room-dir.
         roomDirectoryPath ??= Path.Combine(
             Directory.GetCurrentDirectory(), ".aer", Path.GetFileNameWithoutExtension(workflowFilePath));
 

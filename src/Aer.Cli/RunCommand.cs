@@ -23,7 +23,7 @@ public static class RunCommand
 
     /// <summary>
     /// Parses the workflow template and worker-binding config (binding from the already-persisted
-    /// snapshot instead, when <paramref name="options"/>'s task directory already has one — a
+    /// snapshot instead, when <paramref name="options"/>'s room directory already has one — a
     /// resumed run, not a fresh one), resolves <paramref name="adapters"/> into
     /// <see cref="WorkerBinding"/>s, and runs the single mutation surface to a terminal state.
     /// A resumed run still reads the named template file when one exists, to refuse a directory
@@ -34,17 +34,17 @@ public static class RunCommand
     /// start) and no <c>WorkflowFilePath</c> was given to bind one from.
     /// </exception>
     /// <exception cref="WorkflowDefinitionValidationException">The workflow template is malformed or invalid.</exception>
-    /// <exception cref="SnapshotLoadException">The task directory's persisted snapshot is malformed.</exception>
+    /// <exception cref="SnapshotLoadException">The room directory's persisted snapshot is malformed.</exception>
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
     /// <exception cref="UnknownWorkerAdapterException">
     /// The worker-binding config names an adapter not present in <paramref name="adapters"/>.
     /// </exception>
     /// <exception cref="ResumedTemplateMismatchException">
-    /// <paramref name="options"/>'s task directory is already bound to a snapshot, and the workflow
+    /// <paramref name="options"/>'s room directory is already bound to a snapshot, and the workflow
     /// file named is a different template (#628).
     /// </exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
-    /// Another Flow instance already holds this task directory's lock.
+    /// Another Flow instance already holds this room directory's lock.
     /// </exception>
     /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">See that type's own docs for why (#816).</exception>
     /// <param name="inFlightExecutions">
@@ -151,7 +151,7 @@ public static class RunCommand
     private static async Task RefuseIfTheNamedTemplateIsNotTheBoundOneAsync(
         RunOptions options, WorkflowDefinitionSnapshot snapshot, CancellationToken cancellationToken)
     {
-        // WorkflowFilePath is nullable so an in-process caller resuming a known task directory need
+        // WorkflowFilePath is nullable so an in-process caller resuming a known room directory need
         // not produce one. If a path IS supplied, we check it against the bound snapshot (#653).
         // WorkflowDefinitionParser.LoadFromFileAsync translates missing files into a typed
         // WorkflowDefinitionValidationException (an AerFlowException) — but an EMPTY path would
@@ -179,7 +179,7 @@ public static class RunCommand
     /// </summary>
     private static string RequireWorkflowFilePath(RunOptions options) => options.WorkflowFilePath
         ?? throw new CliArgumentException(
-            $"Task directory '{options.RoomDirectoryPath}' has no bound snapshot yet, and no workflow " +
+            $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot yet, and no workflow " +
             "template file was given to start one fresh.");
 
     private static async Task<WorkflowDefinitionSnapshot> BindAndPersistAsync(

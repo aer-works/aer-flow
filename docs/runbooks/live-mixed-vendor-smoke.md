@@ -45,7 +45,7 @@ The test drives `RunCommand.ExecuteAsync` then `DecideCommand.ExecuteAsync` — 
   (`claude-haiku-4-5-20251001`), `review` bound to the `gemini` adapter (`gemini-3.6-flash-low`) — edit
   either `Model` to point at a different model without touching any code.
 
-Each run uses a fresh temporary task directory, so repeated runs never resume a prior one.
+Each run uses a fresh temporary room directory, so repeated runs never resume a prior one.
 
 ## What "green" means
 

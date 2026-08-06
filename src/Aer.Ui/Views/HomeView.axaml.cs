@@ -23,7 +23,7 @@ public partial class HomeView : UserControl
             await picker.ShowDialog(topLevel);
         }
 
-        if (picker.MaterializedTaskDirectoryPath is { } roomPath)
+        if (picker.MaterializedRoomDirectoryPath is { } roomPath)
         {
             RoomDirectoryPathBox.Text = roomPath;
             if (topLevel != null)
@@ -32,7 +32,7 @@ public partial class HomeView : UserControl
                 // execution happens to succeed. Materializing a workflow used to leave it listed
                 // nowhere: Run registers the task only on a 2xx (RoomClient.RunAsync's
                 // _reopenTaskAsync call), so a run that was refused — "something else is already
-                // running against this directory" — created a real task directory that no surface
+                // running against this directory" — created a real room directory that no surface
                 // knew about. Found by running the app: a freshly created task was reachable only
                 // through the folder picker.
                 await topLevel.RefreshRecordListsAsync();
@@ -40,7 +40,7 @@ public partial class HomeView : UserControl
                 {
                     // A chat/codebase session's initial turn is already dispatched (or about to be)
                     // by the daemon's own fire-and-forget background task -- Open, not Run, so this
-                    // doesn't start a second, competing execution against the same task directory
+                    // doesn't start a second, competing execution against the same room directory
                     // (M24 Phase 1 desktop chat UI, issue #262). Open also routes to the dedicated
                     // Chat view once it detects the interactive room marker, which Run never did.
                     await topLevel.OpenAsync(roomPath);
@@ -69,7 +69,7 @@ public partial class HomeView : UserControl
     /// pattern (write the picked path into the visible text box, never a hidden field), so Open
     /// still reads from <see cref="RoomDirectoryPathBox"/> exactly as it always has.
     /// <para>
-    /// Owner feedback: asked for a default task directory on Home. Recent tasks already have their
+    /// Owner feedback: asked for a default room directory on Home. Recent tasks already have their
     /// own one-click cards above (<see cref="MainWindowViewModel.Home"/>'s <c>RoomCards</c>) — the
     /// best "default" for a task you've already run. What was missing was a starting point for a
     /// task you haven't opened yet: this picker now opens in the same
@@ -78,7 +78,7 @@ public partial class HomeView : UserControl
     /// place a fresh task is actually likely to be.
     /// </para>
     /// </summary>
-    private async void OnBrowseTaskDirectoryClick(object? sender, RoutedEventArgs e)
+    private async void OnBrowseRoomDirectoryClick(object? sender, RoutedEventArgs e)
     {
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { CanPickFolder: true } storageProvider)
         {

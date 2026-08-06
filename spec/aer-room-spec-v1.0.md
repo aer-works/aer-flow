@@ -31,7 +31,7 @@ so the system cannot be in a state it has not recorded.
 
 A **room** is one working directory and everything that happens in it: the workers active there,
 the chat, the running work, the artifacts, and the durable record. In the code at HEAD the room's
-storage form is the *task directory* (`flow.jsonl`, `artifacts/`, bindings) — "task" is the code's
+storage form is the *room directory* (`flow.jsonl`, `artifacts/`, bindings) — "task" is the code's
 noun for what the product calls a room, and #443 tracks converging the identifiers. One directory
 may contain several repositories; the room does not know or care.
 

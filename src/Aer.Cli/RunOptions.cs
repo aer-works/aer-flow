@@ -8,7 +8,7 @@ namespace Aer.Cli;
 /// <paramref name="RoomDirectoryPath"/> has no persisted snapshot yet — a fresh start. So
 /// <c>null</c> is valid for a resume-only call (M15 Phase 1, issue #137): the CLI still requires it
 /// positionally (a terminal invocation names a workflow file whether fresh or resumed), but an
-/// in-process caller resuming a known task directory has no reason to ask the user for one.
+/// in-process caller resuming a known room directory has no reason to ask the user for one.
 /// <para>
 /// Resuming does still <b>read</b> it, to refuse a directory bound to a different template (#628).
 /// A supplied path that does not resolve now refuses loudly with a typed

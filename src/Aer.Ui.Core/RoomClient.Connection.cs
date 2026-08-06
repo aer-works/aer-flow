@@ -395,7 +395,7 @@ public sealed partial class RoomClient
 
     // This WS receive loop is transport, but it mutates *client* state — it calls
     // ShouldApplyProjectionPush / UpdateProjection (in RoomClient.cs) which seed
-    // CurrentTaskDirectoryPath and the live projection.
+    // CurrentRoomDirectoryPath and the live projection.
     //
     // #336 retired the assumption this comment used to record ("a client watches one session at a
     // time, so filtering on arrival is correct"). The switcher shows every session at once, so a

@@ -271,7 +271,7 @@ class DaemonClient {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  /// Runs a built-in template on the daemon and returns the materialized task directory path.
+  /// Runs a built-in template on the daemon and returns the materialized room directory path.
   Future<String> runTemplate({
     required String templateId,
     String? primaryAdapter,

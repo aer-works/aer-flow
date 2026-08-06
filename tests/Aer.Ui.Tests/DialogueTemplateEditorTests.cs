@@ -24,7 +24,7 @@ public class DialogueTemplateEditorTests
         };
 
     private static MainWindow NewWindow() => new(
-        new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-dialogue-config-{Guid.NewGuid():N}", "recent-task-directories.json")),
+        new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-dialogue-config-{Guid.NewGuid():N}", "recent-room-directories.json")),
         Adapters);
 
     private static string TempBindingsPath(string directory) => Path.Combine(directory, "bindings.json");

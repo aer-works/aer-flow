@@ -13,7 +13,7 @@ namespace Aer.Ui.Tests;
 public class RoomClientProjectionFilterTests
 {
     private static RoomClient NewSession() => new(
-        new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-session-filter-{Guid.NewGuid():N}", "recent-task-directories.json")),
+        new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-session-filter-{Guid.NewGuid():N}", "recent-room-directories.json")),
         new Dictionary<string, IWorkerAdapter>(),
         new MainWindowViewModel(),
         bindingsFilePathProvider: () => null,

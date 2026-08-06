@@ -20,7 +20,7 @@ namespace Aer.Ui.Tests;
 public class NonExpertPathGateTests
 {
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-gate-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-gate-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     /// <summary>A stub "dialogue" adapter dispatching a local script that writes a schema-valid transcript plus the declared final output — the worker boundary's shape, none of its vendors.</summary>
     private sealed class StubDialogueScriptAdapter(string scriptPath) : IWorkerAdapter

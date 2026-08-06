@@ -60,17 +60,17 @@ public class BindingsPathHolder
 public sealed partial class RoomClient
 {
     // Partial split (#426, no behaviour change): this file holds the shell (shared connection/
-    // client state + the constructor) and the *per-session core* — SetCurrentTaskDirectory /
+    // client state + the constructor) and the *per-session core* — SetCurrentRoomDirectory /
     // LoadAsync / RunAsync / DecideAsync / CancelExecutionAsync and the ShouldApplyProjectionPush /
     // UpdateProjection / Rebuild* projection helpers. Peripheral clusters live in
     // RoomClient.{Connection,Sessions,Fleet,Remote,Persistence}.cs — same partial class, same
     // fields.
     //
-    // #426 named a triplet here (CurrentTaskDirectoryPath, CurrentPumpTask,
+    // #426 named a triplet here (CurrentRoomDirectoryPath, CurrentPumpTask,
     // _currentInFlightExecutions) as the surface #335 would lift into a per-session type. #335 has
     // landed and did exactly that for the *host* half: the registry, stop source and pump task now
     // live in HostedRun, keyed by session directory in _hostedRuns, so the daemon holds as many as
-    // it is running. CurrentTaskDirectoryPath deliberately stayed single-valued — it is the
+    // it is running. CurrentRoomDirectoryPath deliberately stayed single-valued — it is the
     // *client's* idea of what it is looking at, and desktop multi-session is #336's switcher.
 
     /// <summary>The outcome one load produces: exactly one of the two is non-null (§3's honest-error rule — an invalid directory is a rendered message, never a crash).</summary>
@@ -182,7 +182,7 @@ public sealed partial class RoomClient
     /// Before this these were three single-slot fields, so a second concurrent run overwrote the
     /// first's registry and stop source. The consequences were not subtle: a targeted cancel for
     /// session A fell through to the out-of-process <c>CancelCommand</c> path because
-    /// <see cref="CurrentTaskDirectoryPath"/> had moved to B, and <see cref="RequestHostStop()"/>
+    /// <see cref="CurrentRoomDirectoryPath"/> had moved to B, and <see cref="RequestHostStop()"/>
     /// cancelled whichever run started last — so asking the daemon to stop A stopped B instead.
     /// Whichever pump finished first then nulled the shared fields, breaking cancellation for the
     /// one still running.
@@ -230,8 +230,8 @@ public sealed partial class RoomClient
     public MainWindowViewModel ViewModel { get; }
 
     /// <summary>
-    /// Which task directory *this client instance* is currently viewing — set only by this
-    /// session's own actions (<see cref="SetCurrentTaskDirectory"/>, <see cref="RunAsync"/>,
+    /// Which room directory *this client instance* is currently viewing — set only by this
+    /// session's own actions (<see cref="SetCurrentRoomDirectory"/>, <see cref="RunAsync"/>,
     /// <see cref="StartInteractiveSessionAsync"/>), never by another client's. Aer.Daemon's own
     /// "current task" is a separate, process-wide notion the daemon uses only to decide what a
     /// brand-new WS connection sees before this client has opened anything of its own — see
@@ -299,7 +299,7 @@ public sealed partial class RoomClient
 
     /// <summary>
     /// Decides whether an incoming projection push for <paramref name="incomingDirectoryPath"/>
-    /// should be applied to this client's state, seeding <see cref="CurrentTaskDirectoryPath"/>
+    /// should be applied to this client's state, seeding <see cref="CurrentRoomDirectoryPath"/>
     /// from the first push a fresh client ever sees (typically whatever Aer.Daemon last had
     /// open) and rejecting every later push for a different directory. Before this (issue #262
     /// follow-up), every push was applied unconditionally, so one client opening a different

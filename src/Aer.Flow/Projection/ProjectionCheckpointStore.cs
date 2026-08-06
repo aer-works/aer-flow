@@ -5,7 +5,7 @@ namespace Aer.Flow.Projection;
 
 /// <summary>
 /// Persistence store for task/room projection checkpoints (#903 Scope 1).
-/// Checkpoints are saved under <c>.aer/checkpoint.json</c> inside the task directory.
+/// Checkpoints are saved under <c>.aer/checkpoint.json</c> inside the room directory.
 /// </summary>
 public static class ProjectionCheckpointStore
 {
@@ -56,7 +56,7 @@ public static class ProjectionCheckpointStore
 
     /// <summary>
     /// Persists <paramref name="checkpoint"/> to <c>.aer/checkpoint.json</c> within <paramref name="roomDirectoryPath"/>.
-    /// Assumes the caller holds the task directory's concurrency guard.
+    /// Assumes the caller holds the room directory's concurrency guard.
     /// </summary>
     public static void Save(string roomDirectoryPath, ProjectionCheckpoint checkpoint)
     {
