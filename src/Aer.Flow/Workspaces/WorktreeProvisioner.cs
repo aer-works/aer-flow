@@ -67,6 +67,8 @@ public static class WorktreeProvisioner
         var (exitCode, _, stderr) = RunGit(repository, "worktree", "add", worktreePath, reference);
         if (exitCode != 0)
         {
+            // Serialized against concurrent provisioning by the task's ConcurrencyGuard; this check also
+            // handles a leftover worktree from a prior crashed run whose teardown did not complete.
             if (IsRegisteredWorktreeForRef(repository, worktreePath, reference))
             {
                 return;
@@ -242,6 +244,7 @@ public static class WorktreeProvisioner
         }
     }
 
+    // Note: the match is commit-only (HEAD sha vs ref sha), not ref-name, so two refs pointing at the same commit match identically.
     private static bool IsRegisteredWorktreeForRef(string repository, string worktreePath, string reference)
     {
         var (refExit, refSha, _) = RunGit(repository, "rev-parse", "--verify", $"{reference}^{{commit}}");

@@ -254,6 +254,34 @@ public class WorktreeProvisioningCommandTests
         }
     }
 
+    [Fact]
+    public async Task RunCommand_refuses_with_WorkflowLockedException_and_creates_no_worktree_when_lock_is_held()
+    {
+        var testRoot = Path.Combine(Path.GetTempPath(), $"cli-worktree-locked-{Guid.NewGuid():N}");
+        var repository = Path.Combine(testRoot, "repo");
+        var taskDirectory = Path.Combine(testRoot, "task");
+        try
+        {
+            await SetupGitRepositoryAsync(repository, "notes.txt", "locked-test-content", "main");
+            var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
+            var bindingsFilePath = await WriteWorktreeBindingsAsync(testRoot, repository, "main");
+
+            Directory.CreateDirectory(taskDirectory);
+            using var heldByAnotherInstance = Aer.Flow.Concurrency.ConcurrencyGuard.Acquire(taskDirectory);
+
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            await Assert.ThrowsAsync<Aer.Flow.Concurrency.WorkflowLockedException>(() =>
+                RunCommand.ExecuteAsync(runOptions, Adapters, cancellationToken: TestContext.Current.CancellationToken));
+
+            var worktreePath = Path.Combine(taskDirectory, WorktreeWorkspaces.WorkspacesDirectoryName, "b");
+            Assert.False(Directory.Exists(worktreePath), "Worktree should NOT be created when ConcurrencyGuard is held");
+        }
+        finally
+        {
+            ForceDeleteDirectory(testRoot);
+        }
+    }
+
     private static async Task SetupGitRepositoryAsync(string repository, string filename, string content, string branchName)
     {
         Directory.CreateDirectory(repository);

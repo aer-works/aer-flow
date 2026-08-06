@@ -1,4 +1,5 @@
 using Aer.Adapters;
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Workspaces;
 using Aer.Tests.Shared;
@@ -17,6 +18,30 @@ public sealed class WorktreeWorkspacesTests : IDisposable
         Path.Combine(Path.GetTempPath(), "aer-wtws-" + Guid.NewGuid().ToString("N"));
 
     public WorktreeWorkspacesTests() => Directory.CreateDirectory(_root);
+
+    [Fact]
+    public void Provision_refuses_with_WorkflowLockedException_when_task_ConcurrencyGuard_is_held()
+    {
+        using var heldByAnotherInstance = ConcurrencyGuard.Acquire(_root);
+        var bindings = Bindings(("w", Entry(worktree: new WorktreeWorkspace(_root, "main"))));
+
+        Assert.Throws<WorkflowLockedException>(() => WorktreeWorkspaces.Provision(bindings, _root));
+
+        var worktreePath = Path.Combine(_root, WorktreeWorkspaces.WorkspacesDirectoryName, "w");
+        Assert.False(Directory.Exists(worktreePath));
+    }
+
+    [Fact]
+    public void ProvisionLazily_refuses_with_WorkflowLockedException_when_task_ConcurrencyGuard_is_held()
+    {
+        using var heldByAnotherInstance = ConcurrencyGuard.Acquire(_root);
+        var bindings = Bindings(("w", Entry(worktree: new WorktreeWorkspace(_root, "main"))));
+
+        Assert.Throws<WorkflowLockedException>(() => WorktreeWorkspaces.ProvisionLazily(bindings, _root));
+
+        var worktreePath = Path.Combine(_root, WorktreeWorkspaces.WorkspacesDirectoryName, "w");
+        Assert.False(Directory.Exists(worktreePath));
+    }
 
     [Fact]
     public void Provision_leaves_a_binding_with_no_worktree_untouched()
