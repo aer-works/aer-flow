@@ -37,11 +37,12 @@ if (args.Length >= 1 && args[0] == "hook-check")
 if (args.Length >= 1 && args[0] == "agy-hook-check")
 {
     var deniedTools = Environment.GetEnvironmentVariable(AgyHookCheckCommand.DeniedToolsEnvironmentVariable);
+    var shellPatterns = Environment.GetEnvironmentVariable(AgyHookCheckCommand.ShellPatternsEnvironmentVariable);
     // #679: the outbox reaches this gate for the GRANTED-write bound only. #649's withheld-write
     // exemption remains claude-only and is not extended here.
     var agyOutputDir = Environment.GetEnvironmentVariable("AER_OUTPUT_DIR");
     var agyWorkspaceDir = Environment.GetEnvironmentVariable(HookCheckCommand.WorkspaceEnvironmentVariable);
-    return AgyHookCheckCommand.Execute(Console.In, Console.Out, deniedTools, agyOutputDir, agyWorkspaceDir);
+    return AgyHookCheckCommand.Execute(Console.In, Console.Out, deniedTools, shellPatterns, agyOutputDir, agyWorkspaceDir);
 }
 
 var knownSubcommands = new[] { "run", "dispatch", "cancel", "decide", "supply", "status", "templates" };

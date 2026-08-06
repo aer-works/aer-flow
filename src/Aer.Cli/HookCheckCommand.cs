@@ -49,6 +49,12 @@ public static class HookCheckCommand
     public const string DeniedToolsEnvironmentVariable = "AER_HOOK_DENIED_TOOLS";
 
     /// <summary>
+    /// The environment variable carried for pattern-scoped shell grants (#659).
+    /// </summary>
+    public const string ShellPatternsEnvironmentVariable = "AER_HOOK_SHELL_PATTERNS";
+
+
+    /// <summary>
     /// Exit code 2, fed back to Claude Code as a blocking <c>PreToolUse</c> error (stderr becomes
     /// the reason shown to the model) — the only exit code that mechanism treats as a denial.
     /// </summary>

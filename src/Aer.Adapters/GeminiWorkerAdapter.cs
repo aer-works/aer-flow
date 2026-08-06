@@ -74,12 +74,12 @@ namespace Aer.Adapters;
 /// <b>And the hook only takes it back while it runs.</b> On this vendor an absent or unparseable hook
 /// response reads as an <em>allow</em> — see the fail-open note on <see cref="BuildHooksJson"/> below.
 /// For writes there is no backstop under <c>--mode</c> either (#670), so a hook that cannot start is
-/// a fully ungated worker on every branch of this method. Scoping shell patterns is a second gap in the same
-/// direction, and it is why a grant narrowed by <see cref="PermissionGrant.ShellCommandPatterns"/> is
-/// now refused rather than resolved to an unscoped shell (#624). Refused because AER's hook does not
-/// read a shell command's arguments, <em>not</em> because agy could not express it — the payload
-/// carries them, and #679 already reads a write's target out of it, so #659 is a route rather than a
-/// dead end.
+/// a fully ungated worker on every branch of this method. Scoping shell patterns is in the same
+/// direction: a grant narrowed by <see cref="PermissionGrant.ShellCommandPatterns"/> used to be
+/// refused rather than resolved to an unscoped shell (#624). Since #659 it is <b>enforced</b>, not
+/// refused — the hook now reads the shell command's arguments (as #679 already reads a write's target)
+/// and <c>AgyHookCheckCommand</c> matches the command line against the patterns via
+/// <c>ShellCommandPatternMatcher</c>, denying anything outside them.
 /// </para>
 /// </summary>
 public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
@@ -112,6 +112,11 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
     public const string DeniedToolsVendorTag = "agy";
 
     public const string DeniedToolsVariable = ClaudeWorkerAdapter.DeniedToolsVariable;
+
+    public const string ShellPatternsVendorTag = "agy";
+
+    public const string ShellPatternsVariable = ClaudeWorkerAdapter.ShellPatternsVariable;
+
 
     /// <summary>
     /// The name of the workspace directory AER owns and points every agy worker at, holding the
@@ -227,34 +232,21 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
         return string.Join(',', denied);
     }
 
+    internal static string BuildShellPatterns(PermissionGrant? grant)
+    {
+        return grant?.ShellCommandPatterns is { Count: > 0 } patterns
+            ? string.Join(',', patterns)
+            : string.Empty;
+    }
+
     public bool TryTranslatePermissionGrant(PermissionGrant grant, out string? resolvedValue, out string? gapReason)
     {
         ArgumentNullException.ThrowIfNull(grant);
 
-        // #624, checked before the skip-permissions arm below, which is the one that would otherwise
-        // grant every command. Refusing rather than approximating is what IPermissionGrantTranslator
-        // requires: granting more than requested is as much a bug as granting less.
-        //
-        // Not implemented, rather than impossible — the distinction matters because the first wording
-        // here claimed the second, in text an operator reads. agy's PreToolUse payload carries
-        // `toolCall.args` (agy__hooks.md, whose worked example is run_command with a CommandLine), and
-        // a hook deny is measured to hold under --dangerously-skip-permissions (agy.hook-deny-honoured,
-        // and see this class's own docs above). An argument-inspecting hook could therefore express
-        // this; AER's reads only toolCall.name and says so. #659 carries the route and its real cost:
-        // `git:*` is claude's Bash(...) grammar, agy's is command(prefix|regex) with per-token anchored
-        // regex, and no mapping between the two exists yet.
-        if (grant.RunShellCommands && grant.ShellCommandPatterns is { Count: > 0 })
-        {
-            resolvedValue = null;
-            gapReason = "AER cannot yet scope an agy shell grant to ShellCommandPatterns. agy's only " +
-                "auto-approving shell flag is --dangerously-skip-permissions, which approves every " +
-                "command, and AER's PreToolUse hook does not read a shell command's arguments — so the patterns would " +
-                "be dropped and the worker would receive an unscoped shell in answer to a request to " +
-                "narrow it. Withhold the shell, or clear the patterns and accept an unscoped one " +
-                "deliberately. The Advanced raw permission-scope field is not a way round this: on agy " +
-                "it sets --mode, which cannot express a scoped shell either. Tracked as #659.";
-            return false;
-        }
+        // #659: agy shell grants scoped by PermissionGrant.ShellCommandPatterns are enforced by
+        // AER's PreToolUse hook (AgyHookCheckCommand) via ShellCommandPatternMatcher and the
+        // AER_HOOK_SHELL_PATTERNS environment variable.
+
 
         if (grant.RunShellCommands && grant.NetworkAccess)
         {
@@ -388,6 +380,7 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
             // from "the list never arrived" -- the command collapses absent and empty to the
             // same allow. See #600.
             (DeniedToolsVariable, $"{DeniedToolsVendorTag}:{BuildDeniedTools(invocation.PermissionGrant)}"),
+            (ShellPatternsVariable, $"{ShellPatternsVendorTag}:{BuildShellPatterns(invocation.PermissionGrant)}"),
         };
 
         // agy home redirect (#442): non-shell bindings get HOME and USERPROFILE redirected to an
@@ -442,6 +435,7 @@ public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGra
         var environment = new Dictionary<string, string>
         {
             [DeniedToolsVariable] = $"{DeniedToolsVendorTag}:{BuildDeniedTools(grant)}",
+            [ShellPatternsVariable] = $"{ShellPatternsVendorTag}:{BuildShellPatterns(grant)}",
         };
 
         // Must mirror Resolve's own workspace clause. Load-bearing on this vendor rather than merely

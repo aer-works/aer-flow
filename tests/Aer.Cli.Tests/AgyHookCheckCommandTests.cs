@@ -38,12 +38,12 @@ public class AgyHookCheckCommandTests
         """;
 
     private static string Decide(
-        string stdinText, string? denied, string? outbox = null, string? workspace = null)
+        string stdinText, string? denied, string? outbox = null, string? workspace = null, string? shellPatterns = "agy:")
     {
         using var stdin = new StringReader(stdinText);
         using var stdout = new StringWriter();
 
-        var exitCode = AgyHookCheckCommand.Execute(stdin, stdout, denied, outbox, workspace);
+        var exitCode = AgyHookCheckCommand.Execute(stdin, stdout, denied, shellPatternsRaw: shellPatterns, outboxDirectory: outbox, workspaceDirectory: workspace);
 
         Assert.Equal(AgyHookCheckCommand.ExitCode, exitCode);
 
@@ -52,6 +52,61 @@ public class AgyHookCheckCommandTests
         var raw = stdout.ToString();
         using var doc = JsonDocument.Parse(raw);
         return doc.RootElement.GetProperty("decision").GetString()!;
+    }
+
+    [Fact]
+    public void A_run_command_payload_within_shell_patterns_is_allowed()
+    {
+        var payload = Payload("run_command"); // CommandLine: node --version
+        Assert.Equal("allow", Decide(payload, "agy:", shellPatterns: "agy:node *"));
+    }
+
+    [Fact]
+    public void A_run_command_payload_outside_shell_patterns_is_denied()
+    {
+        var payload = Payload("run_command"); // CommandLine: node --version
+        Assert.Equal("deny", Decide(payload, "agy:", shellPatterns: "agy:git *"));
+    }
+
+    [Fact]
+    public void A_non_run_command_tool_is_unaffected_by_shell_patterns()
+    {
+        var payload = Payload("view_file");
+        Assert.Equal("allow", Decide(payload, "agy:", shellPatterns: "agy:git *"));
+    }
+
+    [Fact]
+    public void Wrong_vendor_shell_patterns_are_denied_fail_closed()
+    {
+        var payload = Payload("run_command");
+        Assert.Equal("deny", Decide(payload, "agy:", shellPatterns: "claude:git *"));
+    }
+
+    [Theory]
+    [InlineData(null)] // the variable was never set
+    [InlineData("")] // present but empty (whitespace-only collapses here too)
+    public void Absent_shell_patterns_are_denied_fail_closed(string? shellPatterns)
+    {
+        // GeminiWorkerAdapter always emits AER_HOOK_SHELL_PATTERNS ("agy:" at minimum) alongside the
+        // denied-tool list, so an absent value means the channel broke, not an unscoped grant — the
+        // same fail-open #679 closed for denied tools. An unscoped grant is Present+empty ("agy:").
+        var payload = Payload("run_command");
+        Assert.Equal("deny", Decide(payload, "agy:", shellPatterns: shellPatterns));
+    }
+
+    [Fact]
+    public void An_unscoped_present_but_empty_shell_pattern_list_allows_run_command()
+    {
+        // "agy:" parses to Present with no patterns — the deliberate unscoped-shell state, which must
+        // still allow run_command (the deny above keys on Absent, not on an empty Present list).
+        var payload = Payload("run_command");
+        Assert.Equal("allow", Decide(payload, "agy:", shellPatterns: "agy:"));
+    }
+
+    [Fact]
+    public void The_shell_patterns_variable_matches_the_adapter_side_contract()
+    {
+        Assert.Equal("AER_HOOK_SHELL_PATTERNS", AgyHookCheckCommand.ShellPatternsEnvironmentVariable);
     }
 
     [Fact]
