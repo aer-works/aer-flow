@@ -127,6 +127,6 @@ public class WorkerAdapterRegistryTests
         // directly means that arrives as "the instrument stopped working" rather than as a claim
         // about the product.
         Assert.True(DispatchDependsOnTheGrant(new ClaudeWorkerAdapter()), "Claude's dispatch must vary with the grant.");
-        Assert.True(DispatchDependsOnTheGrant(new GeminiWorkerAdapter()), "agy's dispatch must vary with the grant.");
+        Assert.True(DispatchDependsOnTheGrant(new AgyWorkerAdapter()), "agy's dispatch must vary with the grant.");
     }
 }

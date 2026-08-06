@@ -61,7 +61,7 @@ public class BuiltInWorkflowTemplatesTests
     [Fact]
     public void Materialize_ReviewRun_ProducesValidTwoStepDefinitionAndBindings()
     {
-        var (definition, bindings) = BuiltInWorkflowTemplates.Materialize("review-run", "claude", "gemini");
+        var (definition, bindings) = BuiltInWorkflowTemplates.Materialize("review-run", "claude", "agy");
 
         Assert.Equal("review-run-template", definition.WorkflowTemplateId.Value);
         Assert.Equal(2, definition.Steps.Count);
@@ -72,13 +72,13 @@ public class BuiltInWorkflowTemplatesTests
 
         Assert.Equal(2, bindings.Count);
         Assert.Equal("claude", bindings["draft-worker"].Adapter);
-        Assert.Equal("gemini", bindings["review-worker"].Adapter);
+        Assert.Equal("agy", bindings["review-worker"].Adapter);
     }
 
     [Fact]
     public void Materialize_ReviewRun_DefaultsReviewerPromptWhenNoSecondaryCustomPromptGiven()
     {
-        var (_, bindings) = BuiltInWorkflowTemplates.Materialize("review-run", "claude", "gemini", "Write a roast");
+        var (_, bindings) = BuiltInWorkflowTemplates.Materialize("review-run", "claude", "agy", "Write a roast");
 
         Assert.Equal(
             "Review draft.md carefully, provide feedback and recommendations, and write to report.md.",
@@ -92,7 +92,7 @@ public class BuiltInWorkflowTemplatesTests
         // the drafter was asked to do -- e.g. asking the drafter for a roast still got the reviewer
         // told to "review draft.md carefully" as a document, not respond to it.
         var (_, bindings) = BuiltInWorkflowTemplates.Materialize(
-            "review-run", "claude", "gemini", "Write a roast", "Write your own roast back");
+            "review-run", "claude", "agy", "Write a roast", "Write your own roast back");
 
         Assert.Equal("Write a roast", bindings["draft-worker"].PromptTemplate);
         Assert.Equal("Write your own roast back", bindings["review-worker"].PromptTemplate);
@@ -105,7 +105,7 @@ public class BuiltInWorkflowTemplatesTests
         try
         {
             var (definition, bindings) = BuiltInWorkflowTemplates.Materialize(
-                "two-vendor-dialogue", "claude", "gemini", "Debate the topic", "Push back on the initiator", tempDir);
+                "two-vendor-dialogue", "claude", "agy", "Debate the topic", "Push back on the initiator", tempDir);
 
             Assert.Equal("two-vendor-dialogue-template", definition.WorkflowTemplateId.Value);
             Assert.Single(definition.Steps);
@@ -121,7 +121,7 @@ public class BuiltInWorkflowTemplatesTests
             Assert.Equal("Debate the topic", config.SeedPrompt);
             Assert.Equal(2, config.Participants.Count);
             Assert.Equal("claude", config.Participants[0].Vendor);
-            Assert.Equal("gemini", config.Participants[1].Vendor);
+            Assert.Equal("agy", config.Participants[1].Vendor);
             Assert.Equal("Push back on the initiator", config.Participants[1].Preamble);
         }
         finally
@@ -139,7 +139,7 @@ public class BuiltInWorkflowTemplatesTests
         var tempDir = Path.Combine(Path.GetTempPath(), "aer_template_test_" + Guid.NewGuid().ToString("N"));
         try
         {
-            await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("review-run", "claude", "gemini", tempDir, cancellationToken: TestContext.Current.CancellationToken);
+            await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("review-run", "claude", "agy", tempDir, cancellationToken: TestContext.Current.CancellationToken);
 
             var workflowPath = Path.Combine(tempDir, "workflow.json");
             var bindingsPath = Path.Combine(tempDir, "bindings.json");
@@ -175,7 +175,7 @@ public class BuiltInWorkflowTemplatesTests
             await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("solo-run", "claude", null, tempDir, "First prompt", cancellationToken: TestContext.Current.CancellationToken);
 
             var ex = await Assert.ThrowsAsync<TaskDirectoryAlreadyExistsException>(() =>
-                BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("review-run", "claude", "gemini", tempDir, "Second prompt", cancellationToken: TestContext.Current.CancellationToken));
+                BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("review-run", "claude", "agy", tempDir, "Second prompt", cancellationToken: TestContext.Current.CancellationToken));
             Assert.Contains(tempDir, ex.Message);
 
             // The rejected second attempt must not have clobbered the first task's definition.

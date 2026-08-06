@@ -125,7 +125,7 @@ public class MainWindowConversationTests
             var (window, transcriptDirectory) = await LoadWithTranscriptOnStepAsync(
                 taskDirectory, Architect,
                 TurnLine(1, "initiator", "claude", "the-seed-prompt", "opening argument") + "\n" +
-                TurnLine(2, "responder", "gemini", "threaded-context", "counter argument") + "\n",
+                TurnLine(2, "responder", "agy", "threaded-context", "counter argument") + "\n",
                 TestContext.Current.CancellationToken);
 
             window.ShowConversation(transcriptDirectory, "architect — conversation");
@@ -139,7 +139,7 @@ public class MainWindowConversationTests
             Assert.Contains("opening argument", firstTexts);
 
             var secondTexts = TextBlocksOf((Panel)turnBorders[1].Child!).Select(block => block.Text).ToList();
-            Assert.Contains("2 · responder (gemini)", secondTexts);
+            Assert.Contains("2 · responder (agy)", secondTexts);
             Assert.Contains("counter argument", secondTexts);
 
             var expander = ((Panel)turnBorders[0].Child!).Children.OfType<Expander>().Single();
@@ -200,7 +200,7 @@ public class MainWindowConversationTests
             // without re-selecting anything.
             await File.AppendAllTextAsync(
                 Path.Combine(transcriptDirectory, TranscriptProjectionLoader.TranscriptFileName),
-                TurnLine(2, "responder", "gemini", "p", "second") + "\n",
+                TurnLine(2, "responder", "agy", "p", "second") + "\n",
                 TestContext.Current.CancellationToken);
             await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
 

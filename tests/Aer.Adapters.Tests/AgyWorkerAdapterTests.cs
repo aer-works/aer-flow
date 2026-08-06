@@ -6,10 +6,10 @@ namespace Aer.Adapters.Tests;
 
 /// <summary>
 /// M20 Phase 4's deliverable: unit tests for the refactored, direct shell-less
-/// <see cref="GeminiWorkerAdapter"/> resolving.
+/// <see cref="AgyWorkerAdapter"/> resolving.
 /// </summary>
 [Collection(LaunchConfigCollection.Name)]
-public class GeminiWorkerAdapterTests
+public class AgyWorkerAdapterTests
 {
     private static readonly WorkerContract ArchitectContract = new(
         "architect", ["goal"], [new ProducedOutput("plan.md")], []);
@@ -19,7 +19,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void Resolves_to_direct_agy_execution_without_shell_wrapper()
     {
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
 
         Assert.Equal("agy", target.Program);
         Assert.Equal("-p", target.Args[0]);
@@ -39,7 +39,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void A_configured_WorkingDirectory_is_forwarded_into_the_resolved_target()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", WorkingDirectory: "/home/user/my-project"), ArchitectContract);
 
         Assert.Equal("/home/user/my-project", target.WorkingDirectory);
@@ -61,7 +61,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void Resolve_sets_OversizePromptWrapper_referencing_AER_PROMPT_FILE()
     {
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
         Assert.NotNull(target.OversizePromptWrapper);
         Assert.Contains("%AER_PROMPT_FILE%", target.OversizePromptWrapper);
     }
@@ -69,7 +69,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void The_rooms_directory_is_bound_with_add_dir_because_agy_ignores_the_process_cwd()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", WorkingDirectory: "/home/user/my-project"), ArchitectContract);
 
         var addDirValues = target.Args
@@ -105,7 +105,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void No_directory_add_dir_is_emitted_when_the_room_has_no_working_directory()
     {
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
 
         var addDirValues = target.Args
             .Select((arg, i) => (arg, i))
@@ -117,13 +117,13 @@ public class GeminiWorkerAdapterTests
 
         Assert.Equal(2, addDirValues.Count);
         Assert.Equal(artifactsRootVar, addDirValues[0]);
-        Assert.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, addDirValues[1], StringComparison.Ordinal);
+        Assert.EndsWith(AgyWorkerAdapter.AgyWorkspaceDirectoryName, addDirValues[1], StringComparison.Ordinal);
     }
 
     [Fact]
     public void An_explicit_permission_scope_overrides_the_default()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionScope: "yolo"), ArchitectContract);
 
         Assert.Equal("yolo", target.Args[3]);
@@ -135,7 +135,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void Resolve_passes_print_timeout_derived_from_the_invocations_own_timeout()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.FromMinutes(20)), ArchitectContract);
 
         // 20 minutes + the 60s margin, as whole seconds.
@@ -150,7 +150,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void Resolve_omits_print_timeout_entirely_when_the_invocation_declares_no_timeout()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Timeout: null), ArchitectContract);
 
         Assert.DoesNotContain("--print-timeout", target.Args);
@@ -169,7 +169,7 @@ public class GeminiWorkerAdapterTests
     public void The_print_timeout_always_expires_strictly_after_AERs_own_timeout(int aerTimeoutSeconds)
     {
         var aerTimeout = TimeSpan.FromSeconds(aerTimeoutSeconds);
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Timeout: aerTimeout), ArchitectContract);
 
         var emitted = ArgValue(target, "--print-timeout");
@@ -194,7 +194,7 @@ public class GeminiWorkerAdapterTests
     [InlineData(7200)]
     public void The_print_timeout_is_a_Go_duration_never_a_dotnet_TimeSpan_rendering(int seconds)
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.FromSeconds(seconds)), ArchitectContract);
 
         var emitted = ArgValue(target, "--print-timeout");
@@ -215,7 +215,7 @@ public class GeminiWorkerAdapterTests
     public void The_print_timeout_rounds_up_and_never_emits_a_non_positive_duration(
         double seconds, string expected)
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.FromSeconds(seconds)), ArchitectContract);
 
         Assert.Equal(expected, ArgValue(target, "--print-timeout"));
@@ -234,7 +234,7 @@ public class GeminiWorkerAdapterTests
         // fails the whole dispatch at argument parsing with exit 2, which is a worse failure than the
         // one being fixed. This asserts the rendering stays parseable even for input the parser should
         // now never hand over.
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.FromSeconds(-9999)), ArchitectContract);
 
         Assert.Matches(@"^\d+s$", ArgValue(target, "--print-timeout"));
@@ -250,7 +250,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void An_enormous_timeout_does_not_overflow_while_adding_the_margin()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Timeout: TimeSpan.MaxValue), ArchitectContract);
 
         Assert.Matches(@"^\d+s$", ArgValue(target, "--print-timeout"));
@@ -278,7 +278,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void A_model_is_passed_through_when_set()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Model: "gemini-3-pro"), ArchitectContract);
 
         Assert.Equal("gemini-3-pro", ArgValue(target, "--model"));
@@ -287,7 +287,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void No_model_flag_is_emitted_when_the_model_is_unset()
     {
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
 
         Assert.DoesNotContain("--model", target.Args);
     }
@@ -295,7 +295,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void An_effort_is_passed_through_when_set()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", Effort: "high"), ArchitectContract);
 
         Assert.Equal("high", ArgValue(target, "--effort"));
@@ -304,7 +304,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void No_effort_flag_is_emitted_when_the_effort_is_unset()
     {
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
 
         Assert.DoesNotContain("--effort", target.Args);
     }
@@ -315,7 +315,7 @@ public class GeminiWorkerAdapterTests
         var contract = new WorkerContract(
             "architect", [], [new ProducedOutput("plan.md"), new ProducedOutput("summary.md")], []);
 
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), contract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), contract);
 
         var prompt = GetPrompt(target);
         var outputVar = OperatingSystem.IsWindows() ? "%AER_OUTPUT_DIR%" : "$AER_OUTPUT_DIR";
@@ -330,7 +330,7 @@ public class GeminiWorkerAdapterTests
         var contract = new WorkerContract(
             "critic", ["plan", "guidelines"], [new ProducedOutput("review.md")], []);
 
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Review the plan."), contract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Review the plan."), contract);
 
         var prompt = GetPrompt(target);
         var inputVar0 = OperatingSystem.IsWindows() ? "%AER_INPUT_0%" : "$AER_INPUT_0";
@@ -344,7 +344,7 @@ public class GeminiWorkerAdapterTests
     {
         var contract = new WorkerContract("architect", [], [new ProducedOutput("plan.md")], []);
 
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), contract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), contract);
 
         Assert.DoesNotContain("Inputs, in the order listed", GetPrompt(target));
     }
@@ -353,7 +353,7 @@ public class GeminiWorkerAdapterTests
     public void Prompt_keeps_newlines_for_readability_on_all_platforms()
     {
         var contract = new WorkerContract("architect", ["goal"], [new ProducedOutput("plan.md")], []);
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), contract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), contract);
 
         Assert.Contains('\n', GetPrompt(target));
     }
@@ -363,7 +363,7 @@ public class GeminiWorkerAdapterTests
     {
         var invocation = new WorkerInvocation("Quote this: \"$HOME\" and `whoami` and 100% path %PATH%.");
 
-        var target = new GeminiWorkerAdapter().Resolve(invocation, ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(invocation, ArchitectContract);
 
         var prompt = GetPrompt(target);
         Assert.Contains("Quote this: \"$HOME\" and `whoami` and 100% path %PATH%.", prompt);
@@ -373,7 +373,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void PromptText_carries_the_same_resolved_prompt_as_the_p_argument()
     {
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan."), ArchitectContract);
 
         Assert.Equal(GetPrompt(target), target.PromptText);
     }
@@ -381,7 +381,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void Null_invocation_or_contract_throws()
     {
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
 
         Assert.Throws<ArgumentNullException>(() => adapter.Resolve(null!, ArchitectContract));
         Assert.Throws<ArgumentNullException>(() => adapter.Resolve(new WorkerInvocation("Draft a plan."), null!));
@@ -400,7 +400,7 @@ public class GeminiWorkerAdapterTests
         bool readFiles, bool writeFiles, string expectedMode)
     {
         var grant = new PermissionGrant(ReadFiles: readFiles, WriteFiles: writeFiles);
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
         Assert.Equal(expectedMode, target.Args[3]);
@@ -410,7 +410,7 @@ public class GeminiWorkerAdapterTests
     public void A_permission_grant_takes_precedence_over_a_raw_permission_scope_when_both_are_set()
     {
         var grant = new PermissionGrant(WriteFiles: true);
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionScope: "yolo", PermissionGrant: grant), ArchitectContract);
 
         Assert.Equal("accept-edits", target.Args[3]);
@@ -421,10 +421,10 @@ public class GeminiWorkerAdapterTests
     {
         var grant = new PermissionGrant(RunShellCommands: true);
 
-        var ex = Assert.Throws<PermissionGrantUnsupportedException>(() => new GeminiWorkerAdapter().Resolve(
+        var ex = Assert.Throws<PermissionGrantUnsupportedException>(() => new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract));
 
-        Assert.Equal("gemini", ex.AdapterName);
+        Assert.Equal("agy", ex.AdapterName);
     }
 
     [Fact]
@@ -432,16 +432,16 @@ public class GeminiWorkerAdapterTests
     {
         var grant = new PermissionGrant(NetworkAccess: true);
 
-        var ex = Assert.Throws<PermissionGrantUnsupportedException>(() => new GeminiWorkerAdapter().Resolve(
+        var ex = Assert.Throws<PermissionGrantUnsupportedException>(() => new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract));
 
-        Assert.Equal("gemini", ex.AdapterName);
+        Assert.Equal("agy", ex.AdapterName);
     }
 
     [Fact]
     public void TryTranslatePermissionGrant_refuses_shell_commands_without_throwing()
     {
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
 
         var succeeded = adapter.TryTranslatePermissionGrant(
             new PermissionGrant(RunShellCommands: true), out var resolved, out var gapReason);
@@ -454,7 +454,7 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void Requesting_shell_and_network_access_together_translates_to_dangerously_skip_permissions()
     {
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var grant = new PermissionGrant(RunShellCommands: true, NetworkAccess: true);
 
         var succeeded = adapter.TryTranslatePermissionGrant(grant, out var resolved, out var gapReason);
@@ -469,7 +469,7 @@ public class GeminiWorkerAdapterTests
     {
         // #659: agy shell grants scoped by PermissionGrant.ShellCommandPatterns translate and emit
         // AER_HOOK_SHELL_PATTERNS to be enforced by the PreToolUse hook (AgyHookCheckCommand).
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var grant = new PermissionGrant(
             ReadFiles: true, WriteFiles: true, RunShellCommands: true,
             ShellCommandPatterns: ["git *"], NetworkAccess: true);
@@ -484,14 +484,14 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void Resolving_a_pattern_scoped_shell_grant_emits_shell_patterns_environment_variable()
     {
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var grant = new PermissionGrant(
             ReadFiles: true, WriteFiles: true, RunShellCommands: true,
             ShellCommandPatterns: ["git *"], NetworkAccess: true);
 
         var target = adapter.Resolve(new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        Assert.Contains(target.Environment!, env => env.Name == GeminiWorkerAdapter.ShellPatternsVariable && env.Value == "agy:git *");
+        Assert.Contains(target.Environment!, env => env.Name == AgyWorkerAdapter.ShellPatternsVariable && env.Value == "agy:git *");
     }
 
     [Fact]
@@ -501,7 +501,7 @@ public class GeminiWorkerAdapterTests
         // the pattern list has anything in it. Without this, the refusal passes just as well on an
         // adapter that rejects every shell grant — which would break the daemon's "auto" permission
         // mode, the one live shape that grants the shell at all.
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var grant = new PermissionGrant(
             ReadFiles: true, WriteFiles: true, RunShellCommands: true,
             ShellCommandPatterns: [], NetworkAccess: true);
@@ -519,7 +519,7 @@ public class GeminiWorkerAdapterTests
         // The second control. Patterns only mean anything alongside a shell grant, so a stray list on
         // a grant that withholds the shell is inert rather than a contradiction — refusing it would
         // reject a harmless binding, and the UI keeps the text box populated when the box is unticked.
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var grant = new PermissionGrant(
             ReadFiles: true, WriteFiles: true, RunShellCommands: false,
             ShellCommandPatterns: ["git:*"], NetworkAccess: false);
@@ -535,7 +535,7 @@ public class GeminiWorkerAdapterTests
     public void Resolving_with_shell_and_network_access_emits_dangerously_skip_permissions_as_standalone_argument()
     {
         var grant = new PermissionGrant(RunShellCommands: true, NetworkAccess: true);
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
         Assert.Equal("agy", target.Program);
@@ -561,7 +561,7 @@ public class GeminiWorkerAdapterTests
     {
         // Unconditional, like #543's claude side: not only when a flow declares a gate. A hook
         // installed only sometimes cannot be relied on by anything downstream.
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan."), ArchitectContract);
 
         var addDirValues = target.Args
@@ -571,20 +571,20 @@ public class GeminiWorkerAdapterTests
             .ToList();
 
         Assert.Contains(addDirValues, dir =>
-            dir.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
+            dir.EndsWith(AgyWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
     }
 
     [Fact]
     public void The_gate_workspace_holds_a_hooks_file_naming_the_agy_hook_check_command()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan."), ArchitectContract);
 
         var workspace = target.Args
             .Select((arg, i) => (arg, i))
             .Where(pair => pair.arg == "--add-dir")
             .Select(pair => target.Args[pair.i + 1])
-            .Single(dir => dir.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
+            .Single(dir => dir.EndsWith(AgyWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
 
         var hooksPath = Path.Combine(workspace, ".agents", "hooks.json");
         Assert.True(File.Exists(hooksPath), $"no hooks.json was written to '{hooksPath}'");
@@ -607,10 +607,10 @@ public class GeminiWorkerAdapterTests
     {
         var grant = new PermissionGrant(ReadFiles: true, WriteFiles: false,
                                         RunShellCommands: true, NetworkAccess: true);
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        var denied = StripVendorTag(EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable)).Split(',');
+        var denied = StripVendorTag(EnvValue(target, AgyWorkerAdapter.DeniedToolsVariable)).Split(',');
 
         Assert.Contains("write_to_file", denied);
         Assert.Contains("replace_file_content", denied);
@@ -630,10 +630,10 @@ public class GeminiWorkerAdapterTests
         // implementation advisor reading agy's tool list against the first draft of this mapping.
         var grant = new PermissionGrant(ReadFiles: false, WriteFiles: true,
                                         RunShellCommands: true, NetworkAccess: true);
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        var denied = StripVendorTag(EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable)).Split(',');
+        var denied = StripVendorTag(EnvValue(target, AgyWorkerAdapter.DeniedToolsVariable)).Split(',');
 
         Assert.Contains("view_file", denied);
         Assert.Contains("grep_search", denied);
@@ -654,10 +654,10 @@ public class GeminiWorkerAdapterTests
         // shell-withheld grant is always also a network-withheld one on this vendor.
         var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true,
                                         RunShellCommands: false, NetworkAccess: false);
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        var denied = StripVendorTag(EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable)).Split(',');
+        var denied = StripVendorTag(EnvValue(target, AgyWorkerAdapter.DeniedToolsVariable)).Split(',');
 
         Assert.Contains("run_command", denied);
         Assert.Contains("manage_task", denied);
@@ -683,10 +683,10 @@ public class GeminiWorkerAdapterTests
     {
         var grant = new PermissionGrant(ReadFiles: true, WriteFiles: true,
                                         RunShellCommands: false, NetworkAccess: false);
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
-        var denied = StripVendorTag(EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable)).Split(',');
+        var denied = StripVendorTag(EnvValue(target, AgyWorkerAdapter.DeniedToolsVariable)).Split(',');
 
         Assert.Contains("search_web", denied);
         Assert.Contains("read_url_content", denied);
@@ -745,11 +745,11 @@ public class GeminiWorkerAdapterTests
         // Always present so the value is AER's own rather than an inherited one. This does NOT
         // make absent distinguishable from empty -- agy-hook-check collapses both to allow, see
         // #600 -- so this asserts only what it can: the variable is set, and set to empty.
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan."), ArchitectContract);
 
         // #600: the tag is what makes this an empty list AER actively sent, rather than an absence.
-        Assert.Equal("agy:", EnvValue(target, GeminiWorkerAdapter.DeniedToolsVariable));
+        Assert.Equal("agy:", EnvValue(target, AgyWorkerAdapter.DeniedToolsVariable));
     }
 
     [Fact]
@@ -757,7 +757,7 @@ public class GeminiWorkerAdapterTests
     {
         // Aer.Adapters cannot reference Aer.Cli, so this name is a plain string contract asserted
         // on both sides. If they drift the hook reads an empty list and allows everything.
-        Assert.Equal("AER_HOOK_DENIED_TOOLS", GeminiWorkerAdapter.DeniedToolsVariable);
+        Assert.Equal("AER_HOOK_DENIED_TOOLS", AgyWorkerAdapter.DeniedToolsVariable);
     }
 
     // Everything above asserts against the C# objects Resolve() builds and the JSON it writes --
@@ -833,7 +833,7 @@ public class GeminiWorkerAdapterTests
         Assert.SkipUnless(OperatingSystem.IsWindows(), "the bare-token rule is cmd's, not sh's");
 
         Assert.Equal("C:/plain/Aer.Cli.dll",
-            GeminiWorkerAdapter.HookAssemblyToken(@"C:\plain\Aer.Cli.dll"));
+            AgyWorkerAdapter.HookAssemblyToken(@"C:\plain\Aer.Cli.dll"));
     }
 
     [Fact]
@@ -842,7 +842,7 @@ public class GeminiWorkerAdapterTests
         Assert.SkipWhen(OperatingSystem.IsWindows(), "sh strips single quotes; cmd does not");
 
         Assert.Equal("'/opt/aer flow/Aer.Cli.dll'",
-            GeminiWorkerAdapter.HookAssemblyToken("/opt/aer flow/Aer.Cli.dll"));
+            AgyWorkerAdapter.HookAssemblyToken("/opt/aer flow/Aer.Cli.dll"));
     }
 
     [Fact]
@@ -856,7 +856,7 @@ public class GeminiWorkerAdapterTests
             string token;
             try
             {
-                token = GeminiWorkerAdapter.HookAssemblyToken(assemblyPath);
+                token = AgyWorkerAdapter.HookAssemblyToken(assemblyPath);
             }
             catch (InvalidOperationException)
             {
@@ -894,7 +894,7 @@ public class GeminiWorkerAdapterTests
             string token;
             try
             {
-                token = GeminiWorkerAdapter.HookAssemblyToken(assemblyPath);
+                token = AgyWorkerAdapter.HookAssemblyToken(assemblyPath);
             }
             catch (InvalidOperationException refusal)
             {
@@ -932,7 +932,7 @@ public class GeminiWorkerAdapterTests
         // No directory component, so the 8.3 remedy has nothing to shorten -- the contract is a
         // loud refusal, never a command that is emitted and then silently reads as an allow.
         var refusal = Assert.Throws<InvalidOperationException>(
-            () => GeminiWorkerAdapter.HookAssemblyToken("Aer Cli.dll"));
+            () => AgyWorkerAdapter.HookAssemblyToken("Aer Cli.dll"));
         Assert.Contains("decision 0029", refusal.Message);
     }
 
@@ -944,14 +944,14 @@ public class GeminiWorkerAdapterTests
     private static (string Decision, string Reason) RunWrittenHookCommand(
         PermissionGrant grant, string stdin)
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
 
         var workspace = target.Args
             .Select((arg, i) => (arg, i))
             .Where(pair => pair.arg == "--add-dir")
             .Select(pair => target.Args[pair.i + 1])
-            .Single(dir => dir.EndsWith(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
+            .Single(dir => dir.EndsWith(AgyWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
 
         using var doc = System.Text.Json.JsonDocument.Parse(
             File.ReadAllText(Path.Combine(workspace, ".agents", "hooks.json")));
@@ -998,7 +998,7 @@ public class GeminiWorkerAdapterTests
         // fail-closed posture as denied tools — so a launcher that forwarded only one var would deny
         // every call, including the granted one this test proves is allowed. Production sends the full
         // environment dict; this mirrors that for the two vars that gate the verdict.
-        foreach (var name in new[] { GeminiWorkerAdapter.DeniedToolsVariable, GeminiWorkerAdapter.ShellPatternsVariable })
+        foreach (var name in new[] { AgyWorkerAdapter.DeniedToolsVariable, AgyWorkerAdapter.ShellPatternsVariable })
         {
             startInfo.Environment[name] = target.Environment!.First(e => e.Name == name).Value;
         }
@@ -1030,11 +1030,11 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void The_denied_tools_value_is_tagged_with_this_adapters_vendor()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("p", PermissionGrant: new PermissionGrant(ReadFiles: true, WriteFiles: false)),
             ArchitectContract);
 
-        var value = target.Environment!.Single(v => v.Name == GeminiWorkerAdapter.DeniedToolsVariable).Value;
+        var value = target.Environment!.Single(v => v.Name == AgyWorkerAdapter.DeniedToolsVariable).Value;
 
         Assert.StartsWith("agy:", value, StringComparison.Ordinal);
     }
@@ -1046,7 +1046,7 @@ public class GeminiWorkerAdapterTests
         var now = new DateTimeOffset(2026, 7, 30, 15, 0, 0, TimeSpan.Zero);
         var testTime = new TestTimeProvider(now);
 
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var classified = adapter.TryClassifyFailure(specimen, testTime, out var classification, out var retryNotBefore);
 
         Assert.True(classified);
@@ -1060,7 +1060,7 @@ public class GeminiWorkerAdapterTests
         var stderr = "Worker exited with non-zero code 1. stderr: Error: Failed to execute tool.";
         var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
 
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
 
         Assert.False(classified);
@@ -1074,7 +1074,7 @@ public class GeminiWorkerAdapterTests
         var stderr = "Worker exited with non-zero code 1. stderr: Error: Individual quota reached. Resets in tomorrow.";
         var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
 
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
 
         Assert.False(classified);
@@ -1087,11 +1087,11 @@ public class GeminiWorkerAdapterTests
     {
         // A duration too large for int must classify false, not throw -- the why (the pump's
         // deliberately catch-free classification path) lives on the TryParse block in
-        // GeminiWorkerAdapter.TryClassifyQuotaExhaustion.
+        // AgyWorkerAdapter.TryClassifyQuotaExhaustion.
         var stderr = "Error: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 99999999999999999999m.";
         var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
 
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
 
         Assert.False(classified);
@@ -1113,7 +1113,7 @@ public class GeminiWorkerAdapterTests
         var now = new DateTimeOffset(2026, 7, 30, 15, 0, 0, TimeSpan.Zero);
         var testTime = new TestTimeProvider(now);
 
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
 
         Assert.True(classified);
@@ -1127,7 +1127,7 @@ public class GeminiWorkerAdapterTests
         var specimen = "jetski: no output produced — a tool required the \"command\" permission that headless mode cannot prompt for, so it was auto-denied. Add an allow-rule under permissions.allow in settings.json (e.g. command(<target>)).";
         var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
 
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var classified = adapter.TryClassifyFailure(specimen, testTime, out var classification, out var retryNotBefore);
 
         Assert.True(classified);
@@ -1142,7 +1142,7 @@ public class GeminiWorkerAdapterTests
     {
         var testTime = new TestTimeProvider(DateTimeOffset.UtcNow);
 
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
         var classified = adapter.TryClassifyFailure(stderr, testTime, out var classification, out var retryNotBefore);
 
         Assert.False(classified);
@@ -1164,25 +1164,25 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void Not_opting_in_to_the_memory_proposal_tool_adds_no_extra_add_dir()
     {
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("p"), ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("p"), ArchitectContract);
 
         Assert.DoesNotContain(target.Args, a => a.Contains("memory-proposal", StringComparison.Ordinal));
     }
 
     /// <summary>
     /// #801: opting in grants an extra `--add-dir` pointing to a workspace with `.agents/mcp_config.json`
-    /// (see <see cref="GeminiWorkerAdapter.MemoryProposalWorkspaceDirectoryName"/>) -- agy's only
+    /// (see <see cref="AgyWorkerAdapter.MemoryProposalWorkspaceDirectoryName"/>) -- agy's only
     /// lever; why is the adapter's own remarks' business, not restated here.
     /// </summary>
-    // record-once-ok: #801 src/Aer.Adapters/GeminiWorkerAdapter.cs
+    // record-once-ok: #801 src/Aer.Adapters/AgyWorkerAdapter.cs
     [Fact]
     public void Opting_in_to_the_memory_proposal_tool_materializes_a_workspace_config_and_grants_it()
     {
-        var target = new GeminiWorkerAdapter().Resolve(
+        var target = new AgyWorkerAdapter().Resolve(
             new WorkerInvocation("p", EnableMemoryProposalTool: true), ArchitectContract);
 
         var expectedWorkspace = Path.Combine(
-            AerPaths.WorkerLaunchConfig, GeminiWorkerAdapter.MemoryProposalWorkspaceDirectoryName);
+            AerPaths.WorkerLaunchConfig, AgyWorkerAdapter.MemoryProposalWorkspaceDirectoryName);
         var configPath = Path.Combine(expectedWorkspace, ".agents", "mcp_config.json");
 
         Assert.Contains(expectedWorkspace, target.Args);
@@ -1201,7 +1201,7 @@ public class GeminiWorkerAdapterTests
     public void Non_shell_grant_injects_HOME_and_USERPROFILE_redirects()
     {
         var nonShellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false);
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan.", PermissionGrant: nonShellGrant), ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan.", PermissionGrant: nonShellGrant), ArchitectContract);
 
         var home = target.Environment!.SingleOrDefault(e => e.Name == "HOME").Value;
         var userProfile = target.Environment!.SingleOrDefault(e => e.Name == "USERPROFILE").Value;
@@ -1216,7 +1216,7 @@ public class GeminiWorkerAdapterTests
     public void Shell_granted_worker_does_not_inject_HOME_or_USERPROFILE_redirects()
     {
         var shellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: true, RunShellCommands: true, NetworkAccess: true);
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Build.", PermissionGrant: shellGrant), ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Build.", PermissionGrant: shellGrant), ArchitectContract);
 
         Assert.DoesNotContain(target.Environment!, e => e.Name == "HOME");
         Assert.DoesNotContain(target.Environment!, e => e.Name == "USERPROFILE");
@@ -1226,7 +1226,7 @@ public class GeminiWorkerAdapterTests
     public void Batch_dispatch_points_home_redirect_under_execution_output_dir()
     {
         var nonShellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false);
-        var target = new GeminiWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan.", PermissionGrant: nonShellGrant), ArchitectContract);
+        var target = new AgyWorkerAdapter().Resolve(new WorkerInvocation("Draft a plan.", PermissionGrant: nonShellGrant), ArchitectContract);
 
         var home = target.Environment!.Single(e => e.Name == "HOME").Value;
         var expectedRef = OperatingSystem.IsWindows() ? "%AER_OUTPUT_DIR%" : "$AER_OUTPUT_DIR";
@@ -1248,7 +1248,7 @@ public class GeminiWorkerAdapterTests
         try
         {
             var nonShellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false);
-            var target = new GeminiWorkerAdapter().Resolve(
+            var target = new AgyWorkerAdapter().Resolve(
                 new WorkerInvocation("Chat turn.", PermissionGrant: nonShellGrant, BindingsFileDirectory: tempSessionDir), ArchitectContract);
 
             var home = target.Environment!.Single(e => e.Name == "HOME").Value;
@@ -1269,9 +1269,48 @@ public class GeminiWorkerAdapterTests
     public void Gate_does_not_carry_the_home_redirect()
     {
         var nonShellGrant = new PermissionGrant(ReadFiles: true, WriteFiles: false, RunShellCommands: false, NetworkAccess: false);
-        var gate = GeminiWorkerAdapter.BuildGate(nonShellGrant);
+        var gate = AgyWorkerAdapter.BuildGate(nonShellGrant);
 
         Assert.False(gate.Environment.ContainsKey("HOME"));
         Assert.False(gate.Environment.ContainsKey("USERPROFILE"));
+    }
+
+    [Fact]
+    public void Unknown_adapter_key_lookup_including_gemini_throws_loud_rename_error()
+    {
+        var config = new Dictionary<string, WorkerBindingConfigEntry>
+        {
+            ["worker"] = new WorkerBindingConfigEntry(
+                Adapter: "gemini",
+                Contract: ArchitectContract,
+                PromptTemplate: "Draft a plan.",
+                Timeout: TimeSpan.FromMinutes(20))
+        };
+
+        var ex = Assert.Throws<UnknownWorkerAdapterException>(() =>
+            WorkerBindingResolver.Resolve(config, WorkerAdapterRegistry.Default));
+
+        Assert.Contains("gemini", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("agy", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WorkerTiers_json_loads_and_resolves_agy_adapter_while_preserving_gemini_model_strings()
+    {
+        var roles = BuiltInWorkflowTemplates.GetRoleTemplates();
+        Assert.NotEmpty(roles);
+
+        // Prove standard and cheap tiers map to agy adapter while keeping gemini-3.6-flash-* model names
+        var tiersJsonPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "Aer.Adapters", "WorkerTiers.json");
+        Assert.True(File.Exists(tiersJsonPath), $"WorkerTiers.json must exist at {tiersJsonPath}");
+
+        var json = File.ReadAllText(tiersJsonPath);
+        Assert.Contains("\"adapter\": \"agy\"", json);
+        Assert.DoesNotContain("\"adapter\": \"gemini\"", json);
+        Assert.Contains("\"model\": \"gemini-3.6-flash-high\"", json);
+        Assert.Contains("\"model\": \"gemini-3.6-flash-low\"", json);
+
+        Assert.True(WorkerAdapterRegistry.Default.TryGetValue("agy", out var agyAdapter));
+        Assert.IsType<AgyWorkerAdapter>(agyAdapter);
     }
 }

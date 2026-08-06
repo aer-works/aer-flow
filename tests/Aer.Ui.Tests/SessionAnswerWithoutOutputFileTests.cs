@@ -49,7 +49,7 @@ public class SessionAnswerWithoutOutputFileTests : IAsyncLifetime
         IReadOnlyDictionary<string, IWorkerAdapter> stubAdapters = new Dictionary<string, IWorkerAdapter>
         {
             ["claude"] = new SessionTurnStubAdapter(),
-            ["gemini"] = new SessionTurnStubAdapter(),
+            ["agy"] = new SessionTurnStubAdapter(),
             [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
         };
 

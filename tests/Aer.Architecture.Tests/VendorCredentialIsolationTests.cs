@@ -121,7 +121,7 @@ public class VendorCredentialIsolationTests
 
         Assert.True(sources.Count > 50, $"Expected the whole of src/ to be scanned, saw {sources.Count} files.");
         Assert.Contains(sources, file => file.Path.EndsWith("ClaudeWorkerAdapter.cs", StringComparison.Ordinal));
-        Assert.Contains(sources, file => file.Path.EndsWith("GeminiWorkerAdapter.cs", StringComparison.Ordinal));
+        Assert.Contains(sources, file => file.Path.EndsWith("AgyWorkerAdapter.cs", StringComparison.Ordinal));
 
         // AER_HOME is a real quoted literal in AerPaths.cs. If the reader is returning empty strings
         // rather than file contents, this fails while the credential scans above would not.

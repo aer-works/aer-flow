@@ -148,7 +148,7 @@ public class ProcessVendorTurnClientTests
                 var scriptPath = Path.Combine(root, "agy.cmd");
                 File.WriteAllText(scriptPath, "@echo %*\r\n");
                 participant = new DialogueParticipant(
-                    "responder", "gemini", Model: null, "preamble", scriptPath,
+                    "responder", "agy", Model: null, "preamble", scriptPath,
                     ["-p", DialogueParticipant.PromptPlaceholder]);
             }
             else
@@ -156,7 +156,7 @@ public class ProcessVendorTurnClientTests
                 var shScriptPath = Path.Combine(root, "agy");
                 File.WriteAllText(shScriptPath, "#!/bin/sh\necho \"$@\"\n");
                 File.SetUnixFileMode(shScriptPath, UnixFileMode.UserExecute | UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", shScriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
+                participant = new DialogueParticipant("responder", "agy", Model: null, "preamble", shScriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
             }
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
@@ -187,7 +187,7 @@ public class ProcessVendorTurnClientTests
                 var scriptPath = Path.Combine(root, "agy.cmd");
                 File.WriteAllText(scriptPath, "@echo %*\r\n");
                 participant = new DialogueParticipant(
-                    "responder", "gemini", Model: null, "preamble", scriptPath,
+                    "responder", "agy", Model: null, "preamble", scriptPath,
                     ["--print-timeout", "10m", "-p", DialogueParticipant.PromptPlaceholder]);
             }
             else
@@ -195,7 +195,7 @@ public class ProcessVendorTurnClientTests
                 var shScriptPath = Path.Combine(root, "agy");
                 File.WriteAllText(shScriptPath, "#!/bin/sh\necho \"$@\"\n");
                 File.SetUnixFileMode(shScriptPath, UnixFileMode.UserExecute | UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", shScriptPath, ["--print-timeout", "10m", "-p", DialogueParticipant.PromptPlaceholder]);
+                participant = new DialogueParticipant("responder", "agy", Model: null, "preamble", shScriptPath, ["--print-timeout", "10m", "-p", DialogueParticipant.PromptPlaceholder]);
             }
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
@@ -378,7 +378,7 @@ public class ProcessVendorTurnClientTests
                     + ":afterparse\r\n"
                     + "if not \"%LOGFILE%\"==\"\" echo conversation=stub-agy-conv-id, extra-log-noise> \"%LOGFILE%\"\r\n"
                     + "echo %*\r\n");
-                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", scriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
+                participant = new DialogueParticipant("responder", "agy", Model: null, "preamble", scriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
             }
             else
             {
@@ -395,7 +395,7 @@ public class ProcessVendorTurnClientTests
                     + "if [ -n \"$logfile\" ]; then echo \"conversation=stub-agy-conv-id, extra-log-noise\" > \"$logfile\"; fi\n"
                     + "echo \"$args\"\n");
                 File.SetUnixFileMode(shScriptPath, UnixFileMode.UserExecute | UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", shScriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
+                participant = new DialogueParticipant("responder", "agy", Model: null, "preamble", shScriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
             }
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
@@ -436,14 +436,14 @@ public class ProcessVendorTurnClientTests
             {
                 var scriptPath = Path.Combine(root, "agy.cmd");
                 File.WriteAllText(scriptPath, "@echo off\r\necho %*\r\n");
-                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", scriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
+                participant = new DialogueParticipant("responder", "agy", Model: null, "preamble", scriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
             }
             else
             {
                 var shScriptPath = Path.Combine(root, "agy");
                 File.WriteAllText(shScriptPath, "#!/bin/sh\necho \"$@\"\n");
                 File.SetUnixFileMode(shScriptPath, UnixFileMode.UserExecute | UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", shScriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
+                participant = new DialogueParticipant("responder", "agy", Model: null, "preamble", shScriptPath, ["-p", DialogueParticipant.PromptPlaceholder]);
             }
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));
@@ -479,14 +479,14 @@ public class ProcessVendorTurnClientTests
             {
                 var scriptPath = Path.Combine(root, "agy.cmd");
                 File.WriteAllText(scriptPath, "@echo %*\r\n");
-                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", scriptPath, args);
+                participant = new DialogueParticipant("responder", "agy", Model: null, "preamble", scriptPath, args);
             }
             else
             {
                 var shScriptPath = Path.Combine(root, "agy");
                 File.WriteAllText(shScriptPath, "#!/bin/sh\necho \"$@\"\n");
                 File.SetUnixFileMode(shScriptPath, UnixFileMode.UserExecute | UnixFileMode.UserRead | UnixFileMode.UserWrite);
-                participant = new DialogueParticipant("responder", "gemini", Model: null, "preamble", shScriptPath, args);
+                participant = new DialogueParticipant("responder", "agy", Model: null, "preamble", shScriptPath, args);
             }
 
             var client = new ProcessVendorTurnClient(TimeSpan.FromMinutes(5));

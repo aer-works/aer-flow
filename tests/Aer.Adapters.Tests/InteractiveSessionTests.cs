@@ -60,9 +60,9 @@ public sealed class InteractiveSessionTests
     }
 
     [Fact]
-    public void GeminiWorkerAdapter_ResolvesSessionFlags_ConversationAndLogFile()
+    public void AgyWorkerAdapter_ResolvesSessionFlags_ConversationAndLogFile()
     {
-        var adapter = new GeminiWorkerAdapter();
+        var adapter = new AgyWorkerAdapter();
 
         // Turn 1: initial -> --log-file
         var invTurn1 = new WorkerInvocation(
@@ -288,17 +288,17 @@ public sealed class InteractiveSessionTests
     }
 
     [Fact]
-    public async Task GeminiWorkerAdapter_DiscoverCapabilities_DoesNotFabricateDataWhenAgyUnavailable()
+    public async Task AgyWorkerAdapter_DiscoverCapabilities_DoesNotFabricateDataWhenAgyUnavailable()
     {
         // agy is a real vendor CLI coincidentally present on some hosts (never assumed present in
         // CI — see CLAUDE.md's live-vendor-smoke-test rule). This only asserts the parts that don't
         // depend on the CLI being installed: it must never throw, and it must never report a
         // model/agent/plugin list it didn't actually observe from `agy models`/`agy agent`/
         // `agy plugin list`.
-        var geminiAdapter = new GeminiWorkerAdapter();
+        var geminiAdapter = new AgyWorkerAdapter();
         var geminiCaps = await geminiAdapter.DiscoverCapabilitiesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("gemini", geminiCaps.Vendor);
+        Assert.Equal("agy", geminiCaps.Vendor);
         Assert.Contains(geminiCaps.Items, item => item.Name == "/compact");
         Assert.Contains(geminiCaps.Items, item => item.Name == "accept-edits" && item.Kind == "mode");
         Assert.DoesNotContain(geminiCaps.Models, m => string.IsNullOrWhiteSpace(m));

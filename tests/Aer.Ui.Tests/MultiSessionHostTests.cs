@@ -69,7 +69,7 @@ public class MultiSessionHostTests : IAsyncLifetime
         IReadOnlyDictionary<string, IWorkerAdapter> stubAdapters = new Dictionary<string, IWorkerAdapter>
         {
             ["claude"] = blocking,
-            ["gemini"] = blocking,
+            ["agy"] = blocking,
             [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
         };
 

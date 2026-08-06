@@ -8,7 +8,7 @@ pixi run aer-dispatch -- \
     --prompt-file <path> \
     --output-name <name> \
     --working-directory <absolute path> \
-    [--adapter gemini] [--model <name>] [--effort <level>] \
+    [--adapter agy] [--model <name>] [--effort <level>] \
     [--read-files|--no-read-files] [--write-files|--no-write-files] \
     [--run-shell-commands|--no-run-shell-commands] [--network-access|--no-network-access] \
     [--timeout-minutes 20] [--dry-run]
@@ -26,7 +26,7 @@ orchestration trial, and got a different bug each time:
 - `WorkflowTemplateVersion` is an `int`, not a semver string.
 - `Steps[].Inputs` and `Contract.OptionalMetadata` are JSON arrays, not objects.
 - `--task-dir` must be absolute. A relative one resolves against the CLI's own cwd, but `agy` runs
-  with cwd set to `WorkingDirectory` (`GeminiWorkerAdapter.cs`: `agy -p` ignores the process working
+  with cwd set to `WorkingDirectory` (`AgyWorkerAdapter.cs`: `agy -p` ignores the process working
   directory entirely). A relative task-dir plus an explicit `WorkingDirectory` silently produces an
   `AER_OUTPUT_DIR` the dispatched process resolves against the wrong root — the run exits 0, the
   step is reported `Failed`, and nothing says why.
@@ -99,8 +99,8 @@ Assembles all three files a dialogue run needs — `workflow.json`, `bindings.js
 `DialogueDispatchEndToEndTests` fixtures and `docs/runbooks/live-dialogue-smoke.md` each time
 ([#813](https://github.com/aer-works/baton/issues/813)).
 
-`<vendor>` is `claude` or `gemini` (mirrors `Aer.Workers.Dialogue.DialogueParticipantPresets.KnownVendors`
-— `gemini` resolves to the `agy` binary). `<role>` defaults to `participant-1`/`participant-2`/... in
+`<vendor>` is `claude` or `agy` (mirrors `Aer.Workers.Dialogue.DialogueParticipantPresets.KnownVendors`
+— `agy` resolves to the `agy` binary). `<role>` defaults to `participant-1`/`participant-2`/... in
 flag order when omitted. At least two `--participant` entries are required. The seed prompt and any
 `--preamble-file` are copied verbatim — this mode never edits or templates author-owned text; an
 unpreambled role gets a mechanical non-empty placeholder instead (`DialogueParticipant.Preamble` must

@@ -80,7 +80,7 @@ namespace Aer.Adapters;
 /// The timeout AER will itself enforce on this worker's executions — the same
 /// <c>WorkerBindingConfigEntry.Timeout</c> that becomes <c>ExecutionRequest.Timeout</c> (#588).
 /// Supplied so an adapter can tell its vendor CLI about a limit the CLI would otherwise apply its own
-/// default to; <c>GeminiWorkerAdapter</c> is the one that needs it today, because <c>agy -p</c> has an
+/// default to; <c>AgyWorkerAdapter</c> is the one that needs it today, because <c>agy -p</c> has an
 /// internal 5-minute print-mode wait that is otherwise completely decoupled from AER's timeout.
 /// <para>
 /// This is per <i>binding entry</i>, not per execution, which is what makes it legitimate here at all:
@@ -96,7 +96,7 @@ namespace Aer.Adapters;
 /// <see langword="true"/> to wire this dispatch to AER's own MCP server (#585, #801) carrying the
 /// <c>memory-edit-proposal</c> tool -- <see cref="ClaudeWorkerAdapter"/> points <c>--mcp-config</c>
 /// at a config naming that server instead of its default empty one;
-/// <see cref="GeminiWorkerAdapter"/> materializes a workspace directory carrying
+/// <see cref="AgyWorkerAdapter"/> materializes a workspace directory carrying
 /// <c>.agents/mcp_config.json</c> and grants it via an extra <c>--add-dir</c>. Default
 /// <see langword="false"/> keeps today's exact argv for every dispatch that does not opt in -- this
 /// is an opt-in per #801's scope, not a default every worker now carries the way the mandatory

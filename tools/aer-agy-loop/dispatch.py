@@ -365,7 +365,7 @@ def build_bindings(
     worker_name: str = "worker",
     prompt_text: str = "",
     output_name: str = "",
-    adapter: str = "gemini",
+    adapter: str = "agy",
     working_directory: Path | None = None,
     timeout_minutes: int = 20,
     model: str | None = None,
@@ -879,7 +879,7 @@ if _catalog_name_drift:
 # `default=True` a template could never turn a permission OFF, which is exactly the direction that
 # matters for a permission grant.
 BUILT_IN = {
-    "adapter": "gemini", "model": None, "effort": None,
+    "adapter": "agy", "model": None, "effort": None,
     "read_files": True, "write_files": True,
     "run_shell_commands": False, "network_access": False,
     "timeout_minutes": 20,
@@ -1169,7 +1169,7 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     parser.add_argument("--template", choices=sorted(TEMPLATES), default=None,
                         help="Role preset supplying adapter/model/effort/permissions/timeout. Explicit flags still win. See --list-templates.")
     parser.add_argument("--list-templates", action="store_true", help="Print each template, what it is for, and what it resolves to, then exit.")
-    parser.add_argument("--adapter", default=None, help="Registered adapter name (default: gemini, or the template's).")
+    parser.add_argument("--adapter", default=None, help="Registered adapter name (default: agy, or the template's).")
     parser.add_argument("--worker-name", default=None, help="Worker role name used in the generated workflow/bindings (default: worker).")
     parser.add_argument("--model", default=None, help="Pin a specific model (e.g. a Gemini thinking-tier model). Omit and no --model flag is sent at all, leaving the vendor CLI's own default in effect -- AER pins nothing.")
     parser.add_argument("--effort", default=None, help="Raw vendor-native effort-level string (e.g. claude: low|medium|high|xhigh|max, agy: low|medium|high). Passed through as-is, no validation.")
@@ -1199,7 +1199,7 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
                         help="Assemble and run a multi-participant dialogue (workflow.json + bindings.json + the DialogueWorkerConfig sidecar) from one seed file plus flags, instead of hand-rolling the three JSONs. See #813.")
     parser.add_argument("--seed-file", default=None, type=Path, help="Path to the dialogue's opening prompt, copied verbatim as DialogueWorkerConfig.SeedPrompt. --dialogue only.")
     parser.add_argument("--participant", dest="participants", action="append", default=[], metavar="VENDOR:MODEL[:ROLE]",
-                        help="One dialogue side, in speaking order. VENDOR is 'claude' or 'gemini'. ROLE defaults to participant-1/participant-2/... in flag order. Repeatable; at least 2 required. --dialogue only.")
+                        help="One dialogue side, in speaking order. VENDOR is 'claude' or 'agy'. ROLE defaults to participant-1/participant-2/... in flag order. Repeatable; at least 2 required. --dialogue only.")
     parser.add_argument("--turn-budget", type=int, default=None, help="DialogueWorkerConfig.TurnBudget. --dialogue only.")
     parser.add_argument("--final-output", default=None, help="DialogueWorkerConfig.FinalOutputName -- the contract output name lane tooling reads back. --dialogue only.")
     parser.add_argument("--preamble-file", dest="preamble_files", action="append", default=[], metavar="ROLE=PATH",

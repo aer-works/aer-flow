@@ -96,13 +96,13 @@ public class DialogueParticipantGatingTests : IDisposable
     public void An_agy_participant_reaches_the_worker_carrying_its_add_dir_hook_directory()
     {
         var authored = WriteConfig(new DialogueParticipant(
-            "responder", "gemini", Model: null, "You argue against.", "agy",
+            "responder", "agy", Model: null, "You argue against.", "agy",
             ["-p", "Read {PROMPT_FILE}", DialogueParticipant.PromptPlaceholder]));
 
         var participant = Resolved(authored).Participants[0];
 
         Assert.Contains("--add-dir", participant.Args);
-        Assert.Contains(participant.Args, arg => arg.Contains(GeminiWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
+        Assert.Contains(participant.Args, arg => arg.Contains(AgyWorkerAdapter.AgyWorkspaceDirectoryName, StringComparison.Ordinal));
     }
 
     /// <summary>

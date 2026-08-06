@@ -58,7 +58,7 @@ public static class Program
         IWorkerAdapter adapter = vendor switch
         {
             "claude" => new ClaudeWorkerAdapter(),
-            "gemini" => new GeminiWorkerAdapter(),
+            "agy" => new AgyWorkerAdapter(),
             _ => throw new ArgumentException($"unknown vendor '{vendor}'"),
         };
 

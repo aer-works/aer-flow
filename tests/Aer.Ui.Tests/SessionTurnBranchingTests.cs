@@ -13,7 +13,7 @@ namespace Aer.Ui.Tests;
 /// none of this touches a vendor CLI (it's pure C# branching over <see cref="SessionMetadata"/>), so
 /// it was always automatable, just never automated. Runs its own daemon instance on a dynamically
 /// OS-assigned port (issue #296) with <see cref="SessionTurnStubAdapter"/> substituted for both
-/// "claude" and "gemini" -- deliberately
+/// "claude" and "agy" -- deliberately
 /// NOT sharing <see cref="DaemonIntegrationTests"/>'s fixture (a different class, its own
 /// <c>InitializeAsync</c>/adapter registry), since several of its tests (capability discovery,
 /// "/compact" item presence) assert on the real adapter registry and would break under a stubbed
@@ -37,7 +37,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         IReadOnlyDictionary<string, IWorkerAdapter> stubAdapters = new Dictionary<string, IWorkerAdapter>
         {
             ["claude"] = new SessionTurnStubAdapter(),
-            ["gemini"] = new SessionTurnStubAdapter(),
+            ["agy"] = new SessionTurnStubAdapter(),
             [NoOpWorkerAdapter.AdapterName] = new NoOpWorkerAdapter(),
         };
 
@@ -146,15 +146,15 @@ public class SessionTurnBranchingTests : IAsyncLifetime
         Assert.Equal("claude", started.CurrentAdapter);
         Assert.False(started.Turns[0].VendorHandoffSynthesized);
 
-        var sendRequest = new SendSessionMessageRequest(SessionId: started.SessionId, Message: "switch to gemini", Adapter: "gemini");
+        var sendRequest = new SendSessionMessageRequest(SessionId: started.SessionId, Message: "switch to gemini", Adapter: "agy");
         var sendResponse = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/send", sendRequest, TestContext.Current.CancellationToken);
         Assert.True(sendResponse.IsSuccessStatusCode);
 
         var afterHandoff = await PollUntilTurnCountAsync(started.SessionId, expectedTurnCount: 2);
 
-        Assert.Equal("gemini", afterHandoff.CurrentAdapter);
+        Assert.Equal("agy", afterHandoff.CurrentAdapter);
         var handoffTurn = afterHandoff.Turns[1];
-        Assert.Equal("gemini", handoffTurn.Vendor);
+        Assert.Equal("agy", handoffTurn.Vendor);
         Assert.True(handoffTurn.VendorHandoffSynthesized);
         Assert.False(handoffTurn.NativeSessionResumed);
     }

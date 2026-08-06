@@ -223,7 +223,7 @@ public class GuidedAuthoringTests
             flow.SetAdapterRegistry(new Dictionary<string, IWorkerAdapter>
             {
                 ["claude"] = new ClaudeWorkerAdapter(),
-                ["gemini"] = new GeminiWorkerAdapter(),
+                ["agy"] = new AgyWorkerAdapter(),
             });
             flow.GrantReadFiles = true;
             flow.GrantWriteFiles = true;
@@ -291,10 +291,10 @@ public class GuidedAuthoringTests
     public async Task A_permission_grant_an_in_use_adapter_cant_honor_blocks_save_with_a_plain_language_message()
     {
         var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
-        flow.SetAdapterRegistry(new Dictionary<string, IWorkerAdapter> { ["gemini"] = new GeminiWorkerAdapter() });
+        flow.SetAdapterRegistry(new Dictionary<string, IWorkerAdapter> { ["agy"] = new AgyWorkerAdapter() });
         flow.AddStepCommand.Execute(null);
         flow.Steps[0].Name = "draft";
-        flow.Steps[0].Kind = GuidedStepKind.Gemini;
+        flow.Steps[0].Kind = GuidedStepKind.Agy;
         flow.Steps[0].Prompt = "Write it.";
         flow.Steps[0].ProducesFileName = "draft.md";
 
@@ -302,7 +302,7 @@ public class GuidedAuthoringTests
 
         Assert.Contains(
             flow.GuidanceMessages,
-            message => message.Contains("gemini", StringComparison.Ordinal) && message.Contains("shell", StringComparison.OrdinalIgnoreCase));
+            message => message.Contains("agy", StringComparison.Ordinal) && message.Contains("shell", StringComparison.OrdinalIgnoreCase));
         Assert.False(flow.CanSave);
         Assert.Null(await flow.SaveAsync(TestContext.Current.CancellationToken));
     }
@@ -433,12 +433,12 @@ public class GuidedAuthoringTests
         var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
         flow.AddStepCommand.Execute(null);
         flow.Steps[0].Name = "draft";
-        flow.Steps[0].Kind = GuidedStepKind.Gemini;
+        flow.Steps[0].Kind = GuidedStepKind.Agy;
         flow.Steps[0].Prompt = "Write it.";
         flow.Steps[0].ProducesFileName = "draft.md";
 
         // Network without shell is coherent (no shell to defeat a withheld category) but refused by
-        // GeminiWorkerAdapter: agy's only auto-approve-network flag (--dangerously-skip-permissions)
+        // AgyWorkerAdapter: agy's only auto-approve-network flag (--dangerously-skip-permissions)
         // also grants shell, so the narrower shape cannot be expressed. Shell + patterns used to reach
         // here too (#624) but #659 now honours it via the hook matcher -- see the acceptance test below.
         flow.GrantReadFiles = true;
@@ -457,7 +457,7 @@ public class GuidedAuthoringTests
         var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
         flow.AddStepCommand.Execute(null);
         flow.Steps[0].Name = "draft";
-        flow.Steps[0].Kind = GuidedStepKind.Gemini;
+        flow.Steps[0].Kind = GuidedStepKind.Agy;
         flow.Steps[0].Prompt = "Write it.";
         flow.Steps[0].ProducesFileName = "draft.md";
 
@@ -484,7 +484,7 @@ public class GuidedAuthoringTests
         flow.Steps[1].Name = "revise";
         foreach (var step in flow.Steps)
         {
-            step.Kind = GuidedStepKind.Gemini;
+            step.Kind = GuidedStepKind.Agy;
             step.Prompt = "Write it.";
         }
         flow.Steps[0].ProducesFileName = "draft.md";
@@ -507,7 +507,7 @@ public class GuidedAuthoringTests
         var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
         flow.AddStepCommand.Execute(null);
         flow.Steps[0].Name = "draft";
-        flow.Steps[0].Kind = GuidedStepKind.Gemini;
+        flow.Steps[0].Kind = GuidedStepKind.Agy;
         flow.Steps[0].Prompt = "Write it.";
         flow.Steps[0].ProducesFileName = "draft.md";
 

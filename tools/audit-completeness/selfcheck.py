@@ -346,7 +346,7 @@ def _pins_resolve():
     for name, tpl in resolved_templates().items():
         # Resolved, not raw: a template that omits `adapter` dispatches to gemini anyway, and reading
         # the raw dict would skip exactly that one.
-        if tpl["adapter"] != "gemini" or not tpl["model"]:
+        if tpl["adapter"] != "agy" or not tpl["model"]:
             continue
         checked.append(name)
         assert tpl["model"] in accepted, (
@@ -410,8 +410,8 @@ def _templates_are_dispatchable():
         "a withheld write still reaches on that adapter (#649) -- refusing it forces every reviewing "
         "template to grant a workspace write it does not need."
     )
-    assert dispatch.grant_refusal({**reviewer, "adapter": "gemini"}) is not None, (
-        "the same grant dispatches on gemini, which cannot satisfy the contract -- see #901."
+    assert dispatch.grant_refusal({**reviewer, "adapter": "agy"}) is not None, (
+        "the same grant dispatches on agy, which cannot satisfy the contract -- see #901."
     )
 
     for label, arm in refusal_arms.items():
@@ -550,7 +550,7 @@ def _dialogue_dry_run():
 
         cmd = [sys.executable, str(DISPATCH_PY), "--dialogue",
                "--seed-file", str(seed_path),
-               "--participant", "gemini:gemini-3.6-flash-high:proposer",
+               "--participant", "agy:gemini-3.6-flash-high:proposer",
                "--participant", "claude:sonnet:reviewer",
                "--turn-budget", "6", "--final-output", "shortlist.md",
                "--preamble-file", f"proposer={preamble_path}",
@@ -594,8 +594,8 @@ def _dialogue_dry_run():
             "the sentinel is retired (#820) -- dispatch.py must not resurrect the key in generated configs")
         participants = config["Participants"]
         assert [p["Role"] for p in participants] == ["proposer", "reviewer"]
-        assert [p["Vendor"] for p in participants] == ["gemini", "claude"], (
-            "Vendor is the DialogueParticipantPresets name ('gemini'), never the resolved Command ('agy')")
+        assert [p["Vendor"] for p in participants] == ["agy", "claude"], (
+            "Vendor is the DialogueParticipantPresets name ('agy'), never the resolved Command ('agy')")
         proposer, reviewer = participants
         assert proposer["Preamble"] == preamble_path.read_text(encoding="utf-8"), (
             "an authored --preamble-file must be copied verbatim")
@@ -726,19 +726,19 @@ def _dialogue_arg_validation():
                 f"unknown-vendor refusal must name the known vendors (missing {vendor!r}):\n"
                 f"{bad_vendor.stderr.strip()[:300]}")
 
-        malformed = dialogue("claude", "gemini:gemini-3.6-flash-low")
+        malformed = dialogue("claude", "agy:gemini-3.6-flash-low")
         assert malformed.returncode == 2, f"VENDOR with no colon should be refused, got exit {malformed.returncode}"
 
         # Second-reader findings on #813's lane: these three previously crashed (AttributeError)
         # or passed silently instead of refusing cleanly.
-        with_worktree = dialogue("claude:sonnet", "gemini:gemini-3.6-flash-low", extra=("--worktree", "some-branch"))
+        with_worktree = dialogue("claude:sonnet", "agy:gemini-3.6-flash-low", extra=("--worktree", "some-branch"))
         assert with_worktree.returncode == 2 and "--worktree" in with_worktree.stderr, (
             f"--dialogue --worktree must refuse cleanly, got exit {with_worktree.returncode}:\n"
             f"{with_worktree.stderr.strip()[:300]}")
 
         negative_budget = subprocess.run(
             [sys.executable, str(DISPATCH_PY), "--dialogue", "--seed-file", str(seed_path),
-             "--participant", "claude:sonnet", "--participant", "gemini:gemini-3.6-flash-low",
+             "--participant", "claude:sonnet", "--participant", "agy:gemini-3.6-flash-low",
              "--turn-budget", "-20", "--final-output", "out.md", "--scratch-root", scratch, "--dry-run"],
             capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=ROOT)
         assert negative_budget.returncode == 2 and "positive" in negative_budget.stderr, (
@@ -747,7 +747,7 @@ def _dialogue_arg_validation():
         empty_preamble_path = Path(scratch) / "empty.md"
         empty_preamble_path.write_text("   \n", encoding="utf-8")
         empty_preamble = dialogue(
-            "claude:sonnet:reviewer", "gemini:gemini-3.6-flash-low",
+            "claude:sonnet:reviewer", "agy:gemini-3.6-flash-low",
             extra=("--preamble-file", f"reviewer={empty_preamble_path}"))
         assert empty_preamble.returncode == 2 and "non-whitespace" in empty_preamble.stderr, (
             f"an empty --preamble-file must be refused, got exit {empty_preamble.returncode}")
@@ -760,7 +760,7 @@ def _dialogue_mode_exclusivity():
         seed_path = Path(scratch) / "seed.md"
         seed_path.write_text("Seed.\n", encoding="utf-8")
         common = ["--seed-file", str(seed_path), "--participant", "claude:sonnet",
-                  "--participant", "gemini:gemini-3.6-flash-low", "--turn-budget", "4",
+                  "--participant", "agy:gemini-3.6-flash-low", "--turn-budget", "4",
                   "--final-output", "out.md", "--scratch-root", scratch, "--dry-run"]
 
         with_lane = subprocess.run(

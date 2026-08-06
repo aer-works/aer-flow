@@ -22,7 +22,7 @@ namespace Aer.Adapters.Tests;
 /// </para>
 /// <para>
 /// Eight classes rather than the original two: three of the failures were in classes never covered.
-/// <see cref="GeminiWorkerAdapterTests"/> is included on the same mechanism rather than its own
+/// <see cref="AgyWorkerAdapterTests"/> is included on the same mechanism rather than its own
 /// observed failure — it writes the other launch config through the same writer.
 /// </para>
 /// </remarks>

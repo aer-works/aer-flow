@@ -1,7 +1,7 @@
 {
   "frontier": { "adapter": "claude", "model": "sonnet", "effort": "high" },
-  "standard": { "adapter": "gemini", "model": "gemini-3.6-flash-high", "effort": null },
-  "cheap":    { "adapter": "gemini", "model": "gemini-3.6-flash-low", "effort": null },
+  "standard": { "adapter": "agy", "model": "gemini-3.6-flash-high", "effort": null },
+  "cheap":    { "adapter": "agy", "model": "gemini-3.6-flash-low", "effort": null },
   "minimal":  { "adapter": "claude", "model": "haiku", "effort": "low" },
   "orchestrator": { "adapter": "claude", "model": null, "effort": null }
 }

@@ -12,16 +12,16 @@ namespace Aer.Ui.Tests;
 /// </summary>
 public class MainWindowBindingsEditorTests
 {
-    // "claude"/"gemini" carry the real adapters (M21 Phase 1): none of these tests ever dispatch
+    // "claude"/"agy" carry the real adapters (M21 Phase 1): none of these tests ever dispatch
     // (Resolve is never called), so this is safe, and it lets the permission-grant-builder tests
-    // exercise the real ClaudeWorkerAdapter/GeminiWorkerAdapter IPermissionGrantTranslator
+    // exercise the real ClaudeWorkerAdapter/AgyWorkerAdapter IPermissionGrantTranslator
     // implementations rather than a stub. "dialogue" stays a NoopWorkerAdapter specifically to cover
     // the "adapter has no structured builder support at all" gap path.
     private static readonly IReadOnlyDictionary<string, IWorkerAdapter> Adapters =
         new Dictionary<string, IWorkerAdapter>
         {
             ["claude"] = new ClaudeWorkerAdapter(),
-            ["gemini"] = new GeminiWorkerAdapter(),
+            ["agy"] = new AgyWorkerAdapter(),
             ["dialogue"] = new NoopWorkerAdapter(),
         };
 
@@ -89,7 +89,7 @@ public class MainWindowBindingsEditorTests
         window.ViewModel.BindingsEditor.AddEntry();
         var entry = Assert.Single(window.ViewModel.BindingsEditor.Entries);
 
-        Assert.Equal(["claude", "dialogue", "gemini"], entry.AdapterCandidates);
+        Assert.Equal(["agy", "claude", "dialogue"], entry.AdapterCandidates);
     }
 
     [AvaloniaFact]
@@ -520,7 +520,7 @@ public class MainWindowBindingsEditorTests
         window.NewBindings();
         window.ViewModel.BindingsEditor.AddEntry();
         var entry = window.ViewModel.BindingsEditor.Entries[0];
-        entry.Adapter = "gemini";
+        entry.Adapter = "agy";
 
         Assert.False(entry.HasPermissionGrantGapWarning);
 
@@ -664,7 +664,7 @@ public class MainWindowBindingsEditorTests
             window.ViewModel.BindingsEditor.AddEntry();
             var entry = window.ViewModel.BindingsEditor.Entries[0];
             entry.WorkerName = "architect";
-            entry.Adapter = "gemini";
+            entry.Adapter = "agy";
             entry.PromptTemplate = "Draft a plan.";
             entry.TimeoutText = "00:05:00";
             entry.GrantNetworkAccess = true;

@@ -227,7 +227,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
 
       String selectedTemplateId = 'chat-session'; // vocabulary-ok: template id key
       String primaryVendor = 'claude';
-      String secondaryVendor = 'gemini'; // vocabulary-ok: vendor key
+      String secondaryVendor = 'agy'; // vocabulary-ok: vendor key
       String? selectedProjectPath;
       List<Map<String, dynamic>> knownProjects = [];
 
@@ -321,7 +321,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                   DropdownButton<String>(
                     value: primaryVendor,
                     isExpanded: true,
-                    items: (availableVendorNames.isEmpty ? ['claude', 'gemini'] : availableVendorNames) // vocabulary-ok: vendor key
+                    items: (availableVendorNames.isEmpty ? ['claude', 'agy'] : availableVendorNames) // vocabulary-ok: vendor key
                         .map((v) => DropdownMenuItem(
                               value: v,
                               child: Row(
@@ -343,7 +343,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                     DropdownButton<String>(
                       value: secondaryVendor,
                       isExpanded: true,
-                      items: (availableVendorNames.isEmpty ? ['claude', 'gemini'] : availableVendorNames) // vocabulary-ok: vendor key
+                      items: (availableVendorNames.isEmpty ? ['claude', 'agy'] : availableVendorNames) // vocabulary-ok: vendor key
                           .map((v) => DropdownMenuItem(
                                 value: v,
                                 child: Row(
@@ -464,7 +464,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
       // Best-effort probe -- the fallback list below still lets the dialog work.
     }
     if (availableVendorNames.isEmpty) {
-      availableVendorNames = ['claude', 'gemini']; // vocabulary-ok: vendor key
+      availableVendorNames = ['claude', 'agy']; // vocabulary-ok: vendor key
     }
     var selectedAdapter = availableVendorNames.first;
 
@@ -849,7 +849,7 @@ Widget _buildVendorIcon(String? adapter, {double size = 18.0}) {
   if (name.contains('claude')) {
     return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.claude));
   }
-  if (name.contains('gemini')) { // vocabulary-ok: vendor key
+  if (name.contains('agy') || name.contains('gemini')) { // vocabulary-ok: vendor key
     return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.gemini));
   }
   return CustomPaint(size: Size(size, size), painter: _VendorGlyphPainter(_VendorGlyph.generic));

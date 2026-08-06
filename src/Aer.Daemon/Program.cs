@@ -1913,7 +1913,7 @@ namespace Aer.Daemon
                 vendorSessionId = metadata.CurrentVendorSessionId ?? (string.Equals(targetAdapter, "claude", StringComparison.OrdinalIgnoreCase) ? Guid.NewGuid().ToString() : null);
             }
 
-            var logFilePath = string.Equals(targetAdapter, "gemini", StringComparison.OrdinalIgnoreCase)
+            var logFilePath = string.Equals(targetAdapter, "agy", StringComparison.OrdinalIgnoreCase)
                 ? Path.Combine(directoryPath, ".aer", "agy-log.txt")
                 : null;
 
@@ -1991,7 +1991,7 @@ namespace Aer.Daemon
             // turn 2. Deleting any pre-existing log file before THIS turn's own dispatch removes the
             // ambiguity entirely: afterward, the file can only exist if THIS turn's own agy process
             // wrote it. See the log-scrape block below for how this is used.
-            if (string.Equals(targetAdapter, "gemini", StringComparison.OrdinalIgnoreCase) && logFilePath != null)
+            if (string.Equals(targetAdapter, "agy", StringComparison.OrdinalIgnoreCase) && logFilePath != null)
             {
                 try
                 {
@@ -2157,8 +2157,8 @@ namespace Aer.Daemon
                 }
             }
 
-            // Capture Gemini conversation ID if turn 1 for Gemini
-            if (string.Equals(targetAdapter, "gemini", StringComparison.OrdinalIgnoreCase) && vendorSessionId == null && logFilePath != null && File.Exists(logFilePath))
+            // Capture agy conversation ID if turn 1 for agy
+            if (string.Equals(targetAdapter, "agy", StringComparison.OrdinalIgnoreCase) && vendorSessionId == null && logFilePath != null && File.Exists(logFilePath))
             {
                 try
                 {
@@ -2189,7 +2189,7 @@ namespace Aer.Daemon
             // pre-dispatch timestamp instead, which does not discriminate when turn 1 and turn 2
             // complete within the same wall-clock second (routine in an in-process test).
             var agyLogFreshThisTurn = false;
-            if (string.Equals(targetAdapter, "gemini", StringComparison.OrdinalIgnoreCase) && logFilePath != null && File.Exists(logFilePath))
+            if (string.Equals(targetAdapter, "agy", StringComparison.OrdinalIgnoreCase) && logFilePath != null && File.Exists(logFilePath))
             {
                 try
                 {

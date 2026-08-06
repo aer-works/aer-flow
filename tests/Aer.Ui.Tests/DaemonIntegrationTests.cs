@@ -906,12 +906,12 @@ public class DaemonIntegrationTests : IAsyncLifetime
 
     [Theory]
     [InlineData("claude")]
-    [InlineData("gemini")]
+    [InlineData("agy")]
     public async Task GetAdapterCapabilities_ReturnsOkWithTheRequestedVendor(string adapter)
     {
         // Neither adapter's DiscoverCapabilitiesAsync shells out in a way that throws when its CLI
         // is missing or unauthenticated -- Claude's is filesystem-only, Gemini's degrades each
-        // subcommand to null on Win32Exception/InvalidOperationException (GeminiWorkerAdapter.cs) --
+        // subcommand to null on Win32Exception/InvalidOperationException (AgyWorkerAdapter.cs) --
         // so this is safe to assert on regardless of what's installed on the host.
         var response = await _client.GetAsync($"{_baseUrl}/api/adapters/capabilities?adapter={adapter}", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);

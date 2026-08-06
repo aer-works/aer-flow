@@ -87,7 +87,7 @@ public class AgyHookCheckCommandTests
     [InlineData("")] // present but empty (whitespace-only collapses here too)
     public void Absent_shell_patterns_are_denied_fail_closed(string? shellPatterns)
     {
-        // GeminiWorkerAdapter always emits AER_HOOK_SHELL_PATTERNS ("agy:" at minimum) alongside the
+        // AgyWorkerAdapter always emits AER_HOOK_SHELL_PATTERNS ("agy:" at minimum) alongside the
         // denied-tool list, so an absent value means the channel broke, not an unscoped grant — the
         // same fail-open #679 closed for denied tools. An unscoped grant is Present+empty ("agy:").
         var payload = Payload("run_command");

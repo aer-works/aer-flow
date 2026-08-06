@@ -4,7 +4,7 @@ namespace Aer.Workers.Dialogue;
 /// One side of the exchange (M17 Phase 2, #165): the vendor CLI to invoke on this participant's
 /// turns, plus how to invoke it. Two of these make up a <see cref="DialogueWorkerConfig"/> — this
 /// is deliberately not the two vendor <c>Aer.Adapters</c> already knows how to invoke via a shell
-/// wrapper (<c>ClaudeWorkerAdapter</c>/<c>GeminiWorkerAdapter</c>): those exist to satisfy Flow's
+/// wrapper (<c>ClaudeWorkerAdapter</c>/<c>AgyWorkerAdapter</c>): those exist to satisfy Flow's
 /// <c>AER_INPUT_&lt;n&gt;</c>/<c>AER_OUTPUT_DIR</c> convention for a top-level dispatch, which has
 /// no meaning for a per-turn call made entirely inside this worker's own process. This
 /// <see cref="Command"/>/<see cref="Args"/> shape is deliberately generic — a real vendor CLI's own

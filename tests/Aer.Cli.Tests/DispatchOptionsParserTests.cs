@@ -11,11 +11,11 @@ public class DispatchOptionsParserTests
     public void Parses_the_name_spec_adapter_task_dir_and_workflow_id()
     {
         var options = DispatchOptionsParser.Parse(
-            ["review", "--spec", "task.md", "--adapter", "gemini", "--task-dir", "out", "--workflow-id", "wf"]);
+            ["review", "--spec", "task.md", "--adapter", "agy", "--task-dir", "out", "--workflow-id", "wf"]);
 
         Assert.Equal("review", options.Name);
         Assert.Equal("task.md", options.SpecFilePath);
-        Assert.Equal("gemini", options.Adapter);
+        Assert.Equal("agy", options.Adapter);
         Assert.Equal("wf", options.WorkflowId);
         Assert.EndsWith("out", options.TaskDirectoryPath);
     }

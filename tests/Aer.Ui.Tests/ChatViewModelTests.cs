@@ -169,11 +169,11 @@ public class ChatViewModelTests
 
         viewModel.PopulateAvailableAdapters([
             new VendorCliStatus("claude", "claude", IsAvailable: false),
-            new VendorCliStatus("gemini", "agy", IsAvailable: true),
+            new VendorCliStatus("agy", "agy", IsAvailable: true),
         ]);
 
-        Assert.Equal(["gemini"], viewModel.AvailableAdapters);
-        Assert.Equal("gemini", viewModel.NewChatAdapter);
+        Assert.Equal(["agy"], viewModel.AvailableAdapters);
+        Assert.Equal("agy", viewModel.NewChatAdapter);
     }
 
     /// <summary>Mirrors the desktop template picker's own fallback (TemplatePickerWindow.PopulateVendors) so the two "start a session" entry points never disagree about what's offered when neither vendor CLI is detected on PATH.</summary>
@@ -184,10 +184,10 @@ public class ChatViewModelTests
 
         viewModel.PopulateAvailableAdapters([
             new VendorCliStatus("claude", "claude", IsAvailable: false),
-            new VendorCliStatus("gemini", "agy", IsAvailable: false),
+            new VendorCliStatus("agy", "agy", IsAvailable: false),
         ]);
 
-        Assert.Equal(["claude", "gemini"], viewModel.AvailableAdapters);
+        Assert.Equal(["claude", "agy"], viewModel.AvailableAdapters);
     }
 
     [Fact]

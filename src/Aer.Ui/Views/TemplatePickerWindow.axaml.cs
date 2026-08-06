@@ -41,7 +41,7 @@ public partial class TemplatePickerWindow : Window
         var available = probed.Where(p => p.IsAvailable).Select(p => p.AdapterName).ToList();
         if (available.Count == 0)
         {
-            available = ["claude", "gemini"]; // vocabulary-ok: adapter contract keys, not display text
+            available = ["claude", "agy"]; // vocabulary-ok: adapter contract keys, not display text
         }
 
         PrimaryVendorCombo.ItemsSource = available;

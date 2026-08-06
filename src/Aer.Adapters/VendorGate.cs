@@ -56,7 +56,7 @@ public sealed record VendorGate(
     public static VendorGate? For(string vendor, PermissionGrant? grant, string? workspace = null) => vendor switch
     {
         "claude" => ClaudeWorkerAdapter.BuildGate(grant, workspace),
-        "gemini" => GeminiWorkerAdapter.BuildGate(grant, workspace),
+        "agy" => AgyWorkerAdapter.BuildGate(grant, workspace),
         _ => null,
     };
 }

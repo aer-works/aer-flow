@@ -142,7 +142,7 @@ public sealed partial class StepItemViewModel : ObservableObject
         {
             var target = (Adapter ?? Worker).ToLowerInvariant();
             if (target.Contains("claude")) return "claude";
-            if (target.Contains("gemini")) return "gemini"; // vocabulary-ok: engine key
+            if (target.Contains("agy") || target.Contains("gemini")) return "agy"; // vocabulary-ok: engine key
             return null;
         }
     }
