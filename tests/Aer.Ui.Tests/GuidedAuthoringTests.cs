@@ -428,7 +428,7 @@ public class GuidedAuthoringTests
     }
 
     [Fact]
-    public void Validate_refuses_grant_shapes_that_gemini_adapter_refuses_at_bind()
+    public void Validate_refuses_grant_shapes_that_agy_adapter_refuses_at_bind()
     {
         var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
         flow.AddStepCommand.Execute(null);
@@ -502,7 +502,7 @@ public class GuidedAuthoringTests
     }
 
     [Fact]
-    public void Gemini_step_with_shell_and_network_grant_validates()
+    public void Agy_step_with_shell_and_network_grant_validates()
     {
         var flow = new NewWorkflowViewModel { WorkflowName = "wf", WorkspaceOverridePath = NewWorkspacePath() };
         flow.AddStepCommand.Execute(null);

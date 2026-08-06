@@ -84,7 +84,7 @@ public sealed partial class ChatViewModel : ObservableObject
     /// </summary>
     public bool IsSessionOpen => TaskDirectoryPath != null;
 
-    /// <summary>Adapters offered by the "start new chat" picker (#290) — populated from <see cref="Aer.Adapters.VendorCliPresence.Probe"/>, same source and same all-unavailable fallback ["claude","gemini"] the existing template picker already uses, so the two entry points never disagree about what's offered.</summary>
+    /// <summary>Adapters offered by the "start new chat" picker (#290) — populated from <see cref="Aer.Adapters.VendorCliPresence.Probe"/>, same source and same all-unavailable fallback ["claude","agy"] the existing template picker already uses, so the two entry points never disagree about what's offered.</summary>
     public ObservableCollection<string> AvailableAdapters { get; } = [];
 
     [ObservableProperty]

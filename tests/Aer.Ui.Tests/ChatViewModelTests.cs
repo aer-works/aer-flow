@@ -178,7 +178,7 @@ public class ChatViewModelTests
 
     /// <summary>Mirrors the desktop template picker's own fallback (TemplatePickerWindow.PopulateVendors) so the two "start a session" entry points never disagree about what's offered when neither vendor CLI is detected on PATH.</summary>
     [Fact]
-    public void PopulateAvailableAdapters_FallsBackToClaudeAndGeminiWhenNoneAreAvailable()
+    public void PopulateAvailableAdapters_FallsBackToClaudeAndAgyWhenNoneAreAvailable()
     {
         var viewModel = new ChatViewModel();
 

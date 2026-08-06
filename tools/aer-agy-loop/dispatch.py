@@ -32,7 +32,7 @@ Usage:
     pixi run aer-dispatch -- --list-templates
     pixi run aer-dispatch -- [--template <name from --list-templates>] \
         --prompt-file <path> --output-name <name> \
-        --working-directory <abs path> [--adapter gemini] [--model <name>] [--effort <level>] \
+        --working-directory <abs path> [--adapter agy] [--model <name>] [--effort <level>] \
         [--read-files|--no-read-files] [--write-files|--no-write-files] \
         [--run-shell-commands|--no-run-shell-commands] [--network-access|--no-network-access] \
         [--timeout-minutes 20] [--scratch-root <abs path>] [--cli-path <path to Aer.Cli.exe>] \
