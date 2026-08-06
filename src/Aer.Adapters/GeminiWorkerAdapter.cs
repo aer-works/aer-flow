@@ -74,12 +74,12 @@ namespace Aer.Adapters;
 /// <b>And the hook only takes it back while it runs.</b> On this vendor an absent or unparseable hook
 /// response reads as an <em>allow</em> — see the fail-open note on <see cref="BuildHooksJson"/> below.
 /// For writes there is no backstop under <c>--mode</c> either (#670), so a hook that cannot start is
-/// a fully ungated worker on every branch of this method. Scoping shell patterns is a second gap in the same
-/// direction, and it is why a grant narrowed by <see cref="PermissionGrant.ShellCommandPatterns"/> is
-/// now refused rather than resolved to an unscoped shell (#624). Refused because AER's hook does not
-/// read a shell command's arguments, <em>not</em> because agy could not express it — the payload
-/// carries them, and #679 already reads a write's target out of it, so #659 is a route rather than a
-/// dead end.
+/// a fully ungated worker on every branch of this method. Scoping shell patterns is in the same
+/// direction: a grant narrowed by <see cref="PermissionGrant.ShellCommandPatterns"/> used to be
+/// refused rather than resolved to an unscoped shell (#624). Since #659 it is <b>enforced</b>, not
+/// refused — the hook now reads the shell command's arguments (as #679 already reads a write's target)
+/// and <c>AgyHookCheckCommand</c> matches the command line against the patterns via
+/// <c>ShellCommandPatternMatcher</c>, denying anything outside them.
 /// </para>
 /// </summary>
 public sealed partial class GeminiWorkerAdapter : IWorkerAdapter, IPermissionGrantTranslator
