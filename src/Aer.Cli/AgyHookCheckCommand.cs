@@ -71,6 +71,12 @@ public static class AgyHookCheckCommand
         HookCheckCommand.DeniedToolsEnvironmentVariable;
 
     /// <summary>
+    /// The environment variable carrying this invocation's shell pattern list (#659).
+    /// </summary>
+    public const string ShellPatternsEnvironmentVariable =
+        HookCheckCommand.ShellPatternsEnvironmentVariable;
+
+    /// <summary>
     /// agy reads the verdict from stdout and the process exit code carries no gating meaning — a
     /// denial and an allow both exit 0. Compare <see cref="HookCheckCommand.DeniedExitCode"/>, where
     /// the exit code <i>is</i> the signal.
@@ -102,15 +108,15 @@ public static class AgyHookCheckCommand
     /// <see cref="Environment"/> directly, so the decision logic is testable without a subprocess.
     /// </summary>
     public static int Execute(
-        TextReader stdin, TextWriter stdout, string? deniedToolsRaw, string? outboxDirectory = null,
-        string? workspaceDirectory = null)
+        TextReader stdin, TextWriter stdout, string? deniedToolsRaw, string? shellPatternsRaw = null,
+        string? outboxDirectory = null, string? workspaceDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(stdin);
         ArgumentNullException.ThrowIfNull(stdout);
 
         try
         {
-            stdout.Write(Decide(stdin, deniedToolsRaw, outboxDirectory, workspaceDirectory));
+            stdout.Write(Decide(stdin, deniedToolsRaw, shellPatternsRaw, outboxDirectory, workspaceDirectory));
         }
         catch
         {
@@ -133,7 +139,8 @@ public static class AgyHookCheckCommand
     }
 
     private static string Decide(
-        TextReader stdin, string? deniedToolsRaw, string? outboxDirectory, string? workspaceDirectory)
+        TextReader stdin, string? deniedToolsRaw, string? shellPatternsRaw,
+        string? outboxDirectory, string? workspaceDirectory)
     {
         // Drain stdin first and unconditionally: agy is the writer on the other end of this pipe,
         // and exiting before reading its full payload risks a blocked write on its side for any
@@ -167,6 +174,14 @@ public static class AgyHookCheckCommand
                       "names it cannot judge, and denied this call rather than allowing it unchecked.");
         }
 
+        var shellPatternList = ShellPatternList.Parse(shellPatternsRaw, VendorTag);
+        if (shellPatternList.Status == ShellPatternListStatus.WrongVendor)
+        {
+            return DenyJson(
+                "AER: the permission gate received another vendor's shell pattern list, whose patterns " +
+                "it cannot judge, and denied this call rather than allowing it unchecked.");
+        }
+
         // #679 removed the early allow for an empty list here as on claude; see
         // HookCheckCommand.Decide for why, and for what an empty list cannot be told apart from.
         var denied = deniedList.Tools;
@@ -178,6 +193,7 @@ public static class AgyHookCheckCommand
         }
 
         string? toolName;
+        string? commandLine = null;
         string? writeTarget = null;
         // Captured here because the JsonDocument is disposed before the denial below is built, and
         // a denial that cannot name what the payload carried is the misdirection #708 was made of.
@@ -196,6 +212,14 @@ public static class AgyHookCheckCommand
             }
 
             toolName = nameProp.GetString();
+            if (toolName == "run_command" && toolCall.TryGetProperty("args", out var args) &&
+                args.ValueKind == JsonValueKind.Object &&
+                args.TryGetProperty("CommandLine", out var cmdProp) &&
+                cmdProp.ValueKind == JsonValueKind.String)
+            {
+                commandLine = cmdProp.GetString();
+            }
+
             writeTarget = ReadWriteTarget(toolCall, toolName);
             argKeys = DescribeArgKeys(toolCall);
         }
@@ -214,6 +238,24 @@ public static class AgyHookCheckCommand
         if (IsWithheld(denied, toolName))
         {
             return DenyJson($"AER: the '{toolName}' tool is withheld by this session's permission grant.");
+        }
+
+        if (toolName == "run_command" && shellPatternList.Patterns.Count > 0)
+        {
+            if (commandLine is null)
+            {
+                return DenyJson(
+                    "AER: the 'run_command' tool is granted with shell command patterns, but this gate " +
+                    "could not read toolCall.args.CommandLine in the hook payload and denied this call " +
+                    "rather than allowing it unchecked.");
+            }
+
+            if (!Aer.Adapters.ShellCommandPatternMatcher.IsAllowed(commandLine, shellPatternList.Patterns))
+            {
+                return DenyJson(
+                    $"AER: the command line '{commandLine}' is denied because it does not match the " +
+                    "shell command patterns allowed by this session's grant.");
+            }
         }
 
         // #679, as on claude -- see HookCheckCommand's equivalent. It matters more here: nothing agy

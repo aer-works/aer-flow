@@ -332,6 +332,12 @@ public sealed class ClaudeWorkerAdapter : IWorkerAdapter, IPermissionGrantTransl
     public const string DeniedToolsVariable = "AER_HOOK_DENIED_TOOLS";
 
     /// <summary>
+    /// The environment variable carrying shell command patterns for pattern-scoped grants (#659).
+    /// </summary>
+    public const string ShellPatternsVariable = "AER_HOOK_SHELL_PATTERNS";
+
+
+    /// <summary>
     /// The environment variable name Claude Code reads for its subagent fan-out depth cap.
     /// </summary>
     /// <remarks>

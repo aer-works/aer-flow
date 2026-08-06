@@ -467,36 +467,31 @@ public class GeminiWorkerAdapterTests
     [Fact]
     public void A_shell_grant_narrowed_by_patterns_is_refused_rather_than_widened_to_every_command()
     {
-        // #624: this adapter cannot express a pattern-scoped shell. Under
-        // --dangerously-skip-permissions the denied tool *names* are the whole boundary (#623), and a
-        // pattern is not a name. The patterns were simply dropped, so an operator narrowing a gemini
-        // worker's shell to `git:*` received an unscoped shell — the widest possible grant, produced
-        // by asking for a narrower one, with no warning at any step.
+        // #659: agy shell grants scoped by PermissionGrant.ShellCommandPatterns translate and emit
+        // AER_HOOK_SHELL_PATTERNS to be enforced by the PreToolUse hook (AgyHookCheckCommand).
         var adapter = new GeminiWorkerAdapter();
         var grant = new PermissionGrant(
             ReadFiles: true, WriteFiles: true, RunShellCommands: true,
-            ShellCommandPatterns: ["git:*"], NetworkAccess: true);
+            ShellCommandPatterns: ["git *"], NetworkAccess: true);
 
         var succeeded = adapter.TryTranslatePermissionGrant(grant, out var resolved, out var gapReason);
 
-        Assert.False(succeeded);
-        Assert.Null(resolved);
-        Assert.NotNull(gapReason);
-        Assert.Contains("ShellCommandPatterns", gapReason!, StringComparison.Ordinal);
+        Assert.True(succeeded);
+        Assert.Equal("--dangerously-skip-permissions", resolved);
+        Assert.Null(gapReason);
     }
 
     [Fact]
-    public void Resolving_a_pattern_scoped_shell_grant_throws_rather_than_dispatching_an_unscoped_one()
+    public void Resolving_a_pattern_scoped_shell_grant_emits_shell_patterns_environment_variable()
     {
-        // The refusal has to reach a dispatch, not only the builder UI that calls the translator
-        // directly. Resolve is the path `aer run` takes.
         var adapter = new GeminiWorkerAdapter();
         var grant = new PermissionGrant(
             ReadFiles: true, WriteFiles: true, RunShellCommands: true,
-            ShellCommandPatterns: ["git:*"], NetworkAccess: true);
+            ShellCommandPatterns: ["git *"], NetworkAccess: true);
 
-        Assert.Throws<PermissionGrantUnsupportedException>(
-            () => adapter.Resolve(new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract));
+        var target = adapter.Resolve(new WorkerInvocation("Draft a plan.", PermissionGrant: grant), ArchitectContract);
+
+        Assert.Contains(target.Environment!, env => env.Name == GeminiWorkerAdapter.ShellPatternsVariable && env.Value == "agy:git *");
     }
 
     [Fact]
