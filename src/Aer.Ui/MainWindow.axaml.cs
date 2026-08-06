@@ -71,8 +71,8 @@ public partial class MainWindow : Window
     /// ask-don't-infer path source, the 2-second poller as the mutation-progress renderer, and
     /// <see cref="OpenAsync"/> as the settle-time re-open.
     /// </summary>
-    private readonly TaskSession _session;
-    internal TaskSession Session => _session;
+    private readonly RoomClient _session;
+    internal RoomClient Session => _session;
 
     private readonly DispatcherTimer _liveRefreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 
@@ -217,7 +217,7 @@ public partial class MainWindow : Window
             Win32Properties.AddWndProcHookCallback(this, WndProcHook);
         }
         DataContext = ViewModel;
-        _session = new TaskSession(
+        _session = new RoomClient(
             configurationStore,
             adapters,
             ViewModel,
@@ -306,7 +306,7 @@ public partial class MainWindow : Window
         // #336: the switcher list is permanently visible, so it no longer gets a section activation to
         // rebuild on. Every projection push updates its row instead — including pushes for sessions
         // this client is not currently viewing, which is exactly the case the detail pane's own
-        // filter (TaskSession.ShouldApplyProjectionPush, #262) deliberately drops.
+        // filter (RoomClient.ShouldApplyProjectionPush, #262) deliberately drops.
         _session.FleetProjectionReceived += (directoryPath, projection) =>
             ViewModel.Tasks.ApplyProjectionPush(directoryPath, projection);
         // Selecting a row *is* opening the record — the switcher has no separate "open" action. Guarded
@@ -614,7 +614,7 @@ public partial class MainWindow : Window
 
         // M24 Phase 1 (issue #262): a directory that materialized an interactive session
         // (.aer/session.json present) routes to the dedicated Chat view instead of the generic
-        // Task view opened above — see TaskSession.LoadSessionMetadataAsync's remarks.
+        // Task view opened above — see RoomClient.LoadSessionMetadataAsync's remarks.
         var sessionMetadata = await _session.LoadSessionMetadataAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (sessionMetadata != null)
         {
@@ -673,16 +673,16 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// The Template Picker's chat/codebase session creation (M24 Phase 1 desktop wiring, issue #262)
-    /// — <see cref="TaskSession.StartInteractiveSessionAsync"/> exposed the same way <see cref="RunAsync"/>
+    /// — <see cref="RoomClient.StartInteractiveSessionAsync"/> exposed the same way <see cref="RunAsync"/>
     /// exposes the run mutation, so a modal window with no session reference of its own can still go
     /// through the daemon-first path instead of materializing directly in-process.
     /// </summary>
-    public Task<TaskSession.SessionStartOutcome> StartInteractiveSessionAsync(StartSessionRequest request, CancellationToken cancellationToken = default)
+    public Task<RoomClient.SessionStartOutcome> StartInteractiveSessionAsync(StartSessionRequest request, CancellationToken cancellationToken = default)
         => _session.StartInteractiveSessionAsync(request, cancellationToken);
 
     /// <summary>
     /// The Chat view's Send button (M24 Phase 1, issue #262): dispatches the next turn via
-    /// <see cref="TaskSession.SendSessionMessageAsync"/> and marks it in flight
+    /// <see cref="RoomClient.SendSessionMessageAsync"/> and marks it in flight
     /// (<see cref="ChatViewModel.BeginSend"/>) — completion is observed by the same live-refresh
     /// poll <see cref="RefreshAsync"/> already drives, not by awaiting this call any further.
     /// </summary>
@@ -1477,7 +1477,7 @@ public partial class MainWindow : Window
     /// The Ctrl+C equivalent (§9's host-initiated stop; M15 Phase 4, issue #140): cancels whichever
     /// pump this window's own Run/Decide action currently has in flight — a no-op when nothing is.
     /// Fire-and-forget by design, mirroring <c>Aer.Cli.Program.cs</c>'s <c>Console.CancelKeyPress</c>
-    /// handler: signalling <see cref="TaskSession.RequestHostStop"/> is only the signal.
+    /// handler: signalling <see cref="RoomClient.RequestHostStop"/> is only the signal.
     /// <see cref="RunAsync"/>/<see cref="DecideAsync"/>'s own awaited pump is what actually drives
     /// §9's intent-first record for every execution still in flight, then the durable
     /// <c>ExecutionCancelled</c> §7's second reflection phase needs, and clears
@@ -1626,7 +1626,7 @@ public partial class MainWindow : Window
     /// naming its declared inputs' resolved producers, then a row of buttons — one per file actually
     /// present in its output directory — each wired to <see cref="ShowArtifactPreviewAsync"/>.
     /// <paramref name="roomDirectoryPath"/> is <see cref="LoadAsync"/>'s own parameter, not
-    /// <see cref="TaskSession.CurrentTaskDirectoryPath"/>: <c>LoadAsync</c> is a supported, directly-callable
+    /// <see cref="RoomClient.CurrentTaskDirectoryPath"/>: <c>LoadAsync</c> is a supported, directly-callable
     /// entry point in its own right (issue #118) that a caller may invoke without ever going through
     /// <see cref="OpenAsync"/> (which is the only place that field is set) — the rendered buttons must
     /// resolve against the directory this exact call just loaded, not a field that might still be
@@ -1862,7 +1862,7 @@ public partial class MainWindow : Window
     /// The snapshot-vs-template diff surface (UI spec §5; M14 Phase 4, issue #121): loads
     /// <paramref name="templateFilePath"/> via <see cref="TemplateProjectionLoader"/> and compares it
     /// against the currently open task's bound snapshot via <see cref="SnapshotTemplateDiffer"/>.
-    /// Requires a task directory to already be open — <see cref="TaskSession.LastSnapshot"/> is only ever set by
+    /// Requires a task directory to already be open — <see cref="RoomClient.LastSnapshot"/> is only ever set by
     /// <see cref="LoadAsync"/>'s success path, never by opening a raw template on its own, since a
     /// template with nothing bound to it has nothing to diff against.
     /// </summary>

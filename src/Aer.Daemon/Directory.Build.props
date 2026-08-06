@@ -1,7 +1,7 @@
 <Project>
 
   <!-- release-please linked-versions migration: Aer.Daemon is one of "desktop" group's two shipped,
-       version-checked-against-each-other artifacts (alongside Aer.Ui — TaskSession compares the
+       version-checked-against-each-other artifacts (alongside Aer.Ui — RoomClient compares the
        daemon's reported /api/version assembly version against the UI's to detect a stale spawned
        daemon and force a respawn on skew), so it carries the real, release-please-patched Version.
        Imports the root file first for shared settings, then overrides just Version. -->

@@ -57,13 +57,13 @@ public class BindingsPathHolder
 /// if the daemon cannot be reached or started. Enforces global mutex single-instance checks, 
 /// local auth tokens, process supervision, and version-skew protection.
 /// </summary>
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     // Partial split (#426, no behaviour change): this file holds the shell (shared connection/
     // client state + the constructor) and the *per-session core* — SetCurrentTaskDirectory /
     // LoadAsync / RunAsync / DecideAsync / CancelExecutionAsync and the ShouldApplyProjectionPush /
     // UpdateProjection / Rebuild* projection helpers. Peripheral clusters live in
-    // TaskSession.{Connection,Sessions,Fleet,Remote,Persistence}.cs — same partial class, same
+    // RoomClient.{Connection,Sessions,Fleet,Remote,Persistence}.cs — same partial class, same
     // fields.
     //
     // #426 named a triplet here (CurrentTaskDirectoryPath, CurrentPumpTask,
@@ -98,7 +98,7 @@ public sealed partial class TaskSession
     private readonly string? _daemonUrl;
 
     /// <summary>#998: whether a failed daemon probe may launch a fresh Aer.Daemon child. The
-    /// desktop app wants true; a test constructing a real <see cref="TaskSession"/> must pass
+    /// desktop app wants true; a test constructing a real <see cref="RoomClient"/> must pass
     /// false or a probe failure spawns a daemon that rewrites the REAL ~/.aer registration.</summary>
     private readonly bool _spawnDaemonOnDemand;
 
@@ -264,7 +264,7 @@ public sealed partial class TaskSession
     /// <summary>Whether the poller should keep observing: a successfully opened task that has not reached §12's terminal fixed point.</summary>
     public bool ShouldLiveRefresh => LastLoadSucceeded && LastWorkflowStatus != WorkflowStatus.Terminal;
 
-    public TaskSession(
+    public RoomClient(
         LocalUiConfigurationStore configurationStore,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
         MainWindowViewModel viewModel,
@@ -453,7 +453,7 @@ public sealed partial class TaskSession
     /// M24 Phase 1's live in-turn streaming — forwarded to <see cref="RunCommand.ExecuteAsync"/>'s
     /// own same-named parameter, and therefore only takes effect on the in-process fallback path
     /// below (a delegate can't cross the HTTP call to a real remote daemon). <c>Aer.Daemon</c>'s own
-    /// <see cref="TaskSession"/> singleton always takes that fallback path (it has no daemon of its
+    /// <see cref="RoomClient"/> singleton always takes that fallback path (it has no daemon of its
     /// own to delegate to), which is exactly the case that needs this.
     /// </param>
     public async Task<MutationOutcome> RunAsync(

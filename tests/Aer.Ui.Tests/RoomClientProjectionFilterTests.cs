@@ -3,16 +3,16 @@ using Aer.Adapters;
 namespace Aer.Ui.Tests;
 
 /// <summary>
-/// Issue #262 follow-up: before <see cref="TaskSession.ShouldApplyProjectionPush"/> existed,
+/// Issue #262 follow-up: before <see cref="RoomClient.ShouldApplyProjectionPush"/> existed,
 /// <c>ReceiveWebSocketDataAsync</c> applied every incoming <c>/api/ws</c> push unconditionally,
 /// regardless of which directory it was for — so one client opening a different task on the same
 /// daemon silently corrupted every other connected client's view. These tests exercise the
 /// filtering decision directly, the same split <see cref="ChatViewModelTests"/> draws for pure
 /// logic that doesn't need Avalonia or a live daemon.
 /// </summary>
-public class TaskSessionProjectionFilterTests
+public class RoomClientProjectionFilterTests
 {
-    private static TaskSession NewSession() => new(
+    private static RoomClient NewSession() => new(
         new LocalUiConfigurationStore(Path.Combine(Path.GetTempPath(), $"aer-ui-session-filter-{Guid.NewGuid():N}", "recent-task-directories.json")),
         new Dictionary<string, IWorkerAdapter>(),
         new MainWindowViewModel(),

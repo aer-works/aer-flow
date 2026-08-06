@@ -8,7 +8,7 @@ namespace Aer.Ui.Core;
 /// <summary>
 /// The Enable Remote Access view's state (M21 Phase 3, issue #234): shows a pairing code and QR,
 /// and toggles the daemon between loopback-only and <c>--remote</c>. There's no live Kestrel
-/// rebind (<see cref="TaskSession.SetRemoteEnabledAsync"/>'s remarks), so every toggle is a real
+/// rebind (<see cref="RoomClient.SetRemoteEnabledAsync"/>'s remarks), so every toggle is a real
 /// shutdown-and-respawn — <see cref="IsBusy"/> covers that multi-second gap.
 /// <para>
 /// <b>QR payload decision of record:</b> a plain <c>aer://pair?host=&lt;host&gt;&amp;code=&lt;code&gt;</c>
@@ -214,7 +214,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     /// pairing code — everything the view needs to render, in one call (activation, and after a
     /// successful toggle).
     /// </summary>
-    public async Task RefreshAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task RefreshAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         IsBusy = true;
         ErrorText = null;
@@ -269,7 +269,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     }
 
     /// <summary>Re-reads the paired-devices list. Called from <see cref="RefreshAsync"/> and again after a successful <see cref="RemovePairedClientAsync"/> so the list reflects the revocation immediately.</summary>
-    public async Task RefreshPairedClientsAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task RefreshPairedClientsAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         var clients = await session.GetPairedClientsAsync(cancellationToken).ConfigureAwait(true);
         if (clients == null) return;
@@ -291,7 +291,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     /// touch <see cref="IsBusy"/> — unlike <see cref="RefreshAsync"/>, this runs silently in the
     /// background every second and shouldn't flicker the toggle button's enabled state.
     /// </summary>
-    public async Task RefreshSidecarStatusAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task RefreshSidecarStatusAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         var status = await session.GetSidecarStatusAsync(cancellationToken).ConfigureAwait(true);
         if (status == null)
@@ -329,7 +329,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     /// "Starting..." immediately rather than briefly showing a stale Ready/tailnet-host, and the next
     /// few polls from <see cref="RefreshSidecarStatusAsync"/> pick up the fresh sign-in link.
     /// </summary>
-    public async Task ForgetSidecarAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task ForgetSidecarAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         IsBusy = true;
         ErrorText = null;
@@ -355,7 +355,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     }
 
     /// <summary>Revokes a paired device's token. Not a <c>[RelayCommand]</c> for the same reason <see cref="ToggleRemoteAsync"/> isn't — the view's code-behind supplies <paramref name="session"/> at call time.</summary>
-    public async Task RemovePairedClientAsync(TaskSession session, string clientId, CancellationToken cancellationToken = default)
+    public async Task RemovePairedClientAsync(RoomClient session, string clientId, CancellationToken cancellationToken = default)
     {
         IsBusy = true;
         ErrorText = null;
@@ -402,7 +402,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     /// a single transient failure right at that moment used to silently wipe a still-legible QR the
     /// user might be mid-scan against.
     /// </summary>
-    public async Task GeneratePairingCodeAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task GeneratePairingCodeAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         if (EffectivePairingHost is not { } pairingHost)
         {
@@ -437,7 +437,7 @@ public sealed partial class RemoteViewModel : ObservableObject
     }
 
     /// <summary>Persists an edited auth key and rebuilds the QR against it immediately, so the field's Save button doesn't need a full <see cref="RefreshAsync"/> round trip to take effect.</summary>
-    public async Task SaveTailscaleAuthKeyAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task SaveTailscaleAuthKeyAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         await session.RecordTailscaleAuthKeyAsync(TailscaleAuthKey, cancellationToken).ConfigureAwait(true);
         if (EffectivePairingHost != null)
@@ -446,8 +446,8 @@ public sealed partial class RemoteViewModel : ObservableObject
         }
     }
 
-    /// <summary>The toggle button's action — public and directly callable (not a <c>[RelayCommand]</c>), the same reason <see cref="HomeViewModel.RefreshAsync"/> takes a <see cref="TaskSession"/> parameter rather than capturing one: this ViewModel is constructed before the session exists (<see cref="MainWindowViewModel"/>'s property-initializer <c>new()</c>), so the view's code-behind supplies it at call time instead.</summary>
-    public async Task ToggleRemoteAsync(TaskSession session)
+    /// <summary>The toggle button's action — public and directly callable (not a <c>[RelayCommand]</c>), the same reason <see cref="HomeViewModel.RefreshAsync"/> takes a <see cref="RoomClient"/> parameter rather than capturing one: this ViewModel is constructed before the session exists (<see cref="MainWindowViewModel"/>'s property-initializer <c>new()</c>), so the view's code-behind supplies it at call time instead.</summary>
+    public async Task ToggleRemoteAsync(RoomClient session)
     {
         IsBusy = true;
         ErrorText = null;
@@ -486,7 +486,7 @@ public sealed partial class RemoteViewModel : ObservableObject
 /// <summary>
 /// One row in the "Paired Devices" list (Phase 6, #243) — same shape as <c>HomeViewModel</c>'s
 /// <c>InboxItemViewModel</c>: a small, purpose-built item ViewModel whose <see cref="RemoveCommand"/>
-/// closes over the parent's already-available <c>TaskSession</c>, so the XAML can bind
+/// closes over the parent's already-available <c>RoomClient</c>, so the XAML can bind
 /// <c>Command="{Binding RemoveCommand}"</c> directly per row instead of the shell wiring a single
 /// static button (there's no way to know which row's button was clicked from a static handler).
 /// </summary>

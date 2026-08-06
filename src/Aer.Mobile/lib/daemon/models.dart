@@ -83,7 +83,7 @@ class ExecutionArtifacts {
 }
 
 /// A projection Aer.Daemon pushes for one task directory. Aer.Daemon still has only one
-/// "current" task server-side (TaskSession.CurrentTaskDirectoryPath) and broadcasts every
+/// "current" task server-side (RoomClient.CurrentTaskDirectoryPath) and broadcasts every
 /// change to every connected WS client regardless of which directory it's for — but this app
 /// filters incoming pushes against InboxScreen's own `_openDirectoryPath` before applying one
 /// (fixed alongside issue #262's chat work; see `_connect`'s listener), so a different client
@@ -212,7 +212,7 @@ class SessionMetadata {
   }
 }
 
-/// One live-streaming event from /api/ws/progress (M24 Phase 1, issue #262) — see TaskSession.cs's
+/// One live-streaming event from /api/ws/progress (M24 Phase 1, issue #262) — see RoomClient.cs's
 /// ProgressFrame doc comment on desktop for why this is a dedicated socket/frame shape rather than
 /// an overload of the /api/ws protocol. Broadcast to every connected progress socket regardless of
 /// directory, same as RoomProjection pushes — callers must filter on directoryPath themselves.

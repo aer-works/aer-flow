@@ -65,7 +65,7 @@ public sealed partial class ChatViewModel : ObservableObject
 
     public bool HasStatusText => !string.IsNullOrEmpty(StatusText);
 
-    /// <summary>The active session mode ("auto"/"default"/"plan"/"custom"), or null until <see cref="TaskSession.GetSessionModeAsync"/> has resolved it (#286) — persistently shown in the chat header, not just reflected transiently after a click.</summary>
+    /// <summary>The active session mode ("auto"/"default"/"plan"/"custom"), or null until <see cref="RoomClient.GetSessionModeAsync"/> has resolved it (#286) — persistently shown in the chat header, not just reflected transiently after a click.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCurrentMode))]
     private string? currentMode;
@@ -162,7 +162,7 @@ public sealed partial class ChatViewModel : ObservableObject
     /// <c>GET /api/sessions/{id}/commands</c> result (M24 Phase 2 follow-up) — recently-used items
     /// first within each list, matching this vendor's own item order otherwise.
     /// </summary>
-    public void LoadCommands(TaskSession.SessionCommandsResult result)
+    public void LoadCommands(RoomClient.SessionCommandsResult result)
     {
         InvokableCommands.Clear();
         InfoCommands.Clear();

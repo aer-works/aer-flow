@@ -14,7 +14,7 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     public Task RecordOpenedAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
         => _configurationStore.RecordOpenedAsync(roomDirectoryPath, cancellationToken);

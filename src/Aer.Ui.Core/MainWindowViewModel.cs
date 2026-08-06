@@ -89,7 +89,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// running underneath, reading as a blank/broken panel rather than an honest empty state.
     /// "Is anything running?" is one of #495's three room questions, answered once (#615): the
     /// change-notification wiring lives on <see cref="RunningExecutions"/> itself because the room
-    /// (<c>TaskSession.RebuildRunningExecutions</c>) clears and refills that collection in place on
+    /// (<c>RoomClient.RebuildRunningExecutions</c>) clears and refills that collection in place on
     /// this same long-lived instance — the collection the room fills IS the stated answer, and this
     /// property only maps it to a bool, so no surface re-counts it (MainWindow's code-behind
     /// previously did, a second copy of the same answer).
@@ -140,7 +140,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             ? "This task has finished — Run starts a fresh task cloned from it."
             : "Start a fresh task from a workflow file, or resume the task open above.";
 
-    /// <summary>In-window message surface for a Run's progress ("Running…") or failure — moved here from a directly-set TextBlock when the orchestration moved to <see cref="TaskSession"/> (M19 Phase 2, #187).</summary>
+    /// <summary>In-window message surface for a Run's progress ("Running…") or failure — moved here from a directly-set TextBlock when the orchestration moved to <see cref="RoomClient"/> (M19 Phase 2, #187).</summary>
     [ObservableProperty]
     private string runStatusText = string.Empty;
 
@@ -238,7 +238,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// Rebuilds <see cref="RoomSteps"/> from a fresh projection (M19 Phase 3, #188). The preview
     /// and conversation delegates are the skin's render targets — the same inversion
-    /// <see cref="TaskSession"/> uses, keeping this assembly Avalonia-free.
+    /// <see cref="RoomClient"/> uses, keeping this assembly Avalonia-free.
     /// </summary>
     public void RebuildTaskSteps(
         RoomProjection projection,

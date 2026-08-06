@@ -199,7 +199,7 @@ public class ChatViewModelTests
         // the informational one, and neither anywhere else.
         var viewModel = new ChatViewModel();
 
-        viewModel.LoadCommands(new TaskSession.SessionCommandsResult(
+        viewModel.LoadCommands(new RoomClient.SessionCommandsResult(
             Vendor: "claude",
             Items:
             [

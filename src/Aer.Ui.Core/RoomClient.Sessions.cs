@@ -14,7 +14,7 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     /// <summary>
     /// Starts an interactive chat/codebase session (M24 Phase 1, issue #262) the same daemon-first,

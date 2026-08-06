@@ -29,7 +29,7 @@ public partial class HomeView : UserControl
             {
                 // A record becomes visible the moment it exists on disk, not when its first
                 // execution happens to succeed. Materializing a workflow used to leave it listed
-                // nowhere: Run registers the task only on a 2xx (TaskSession.RunAsync's
+                // nowhere: Run registers the task only on a 2xx (RoomClient.RunAsync's
                 // _reopenTaskAsync call), so a run that was refused — "something else is already
                 // running against this directory" — created a real task directory that no surface
                 // knew about. Found by running the app: a freshly created task was reachable only

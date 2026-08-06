@@ -26,7 +26,7 @@ import (
 )
 
 // status is the sidecar's own loopback-only status endpoint's payload — polled by Aer.Daemon
-// (spawn-and-poll, the same shape TaskSession.SpawnDaemonProcessAsync already uses to wait for
+// (spawn-and-poll, the same shape RoomClient.SpawnDaemonProcessAsync already uses to wait for
 // Aer.Daemon itself to come up) instead of scraping tsnet's log output for the auth URL.
 type status struct {
 	Ready       bool   `json:"ready"`

@@ -14,7 +14,7 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     /// <summary>Current remote-access state, for the Enable Remote Access view (M21 Phase 3, issue #234).</summary>
     public sealed record RemoteAccessStatus(bool IsRemote, int Port, bool HasRunningTasks);

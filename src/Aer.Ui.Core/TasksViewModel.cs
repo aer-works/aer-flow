@@ -65,7 +65,7 @@ public sealed partial class TasksViewModel : ObservableObject
         $"Really delete {SelectedCount} selected task{(SelectedCount == 1 ? "" : "s")}? This can't be undone.";
 
     /// <summary>Re-fetches the fleet list (activation, after archive/unarchive/delete, and the "Show archived" toggle).</summary>
-    public async Task RefreshAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task RefreshAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         IsBusy = true;
         ErrorText = null;
@@ -130,7 +130,7 @@ public sealed partial class TasksViewModel : ObservableObject
     /// <summary>
     /// Test seam for <see cref="InFleetOrder"/> — same reasoning as <see cref="AddTestItem"/>: the
     /// rule is worth asserting directly, and reaching it through <see cref="RefreshAsync"/> would
-    /// need the sealed <see cref="TaskSession"/> and a live fleet fetch to test a pure sort.
+    /// need the sealed <see cref="RoomClient"/> and a live fleet fetch to test a pure sort.
     /// </summary>
     internal static IEnumerable<RoomFleetItem> InFleetOrderForTests(IEnumerable<RoomFleetItem> items) =>
         InFleetOrder(items);
@@ -174,9 +174,9 @@ public sealed partial class TasksViewModel : ObservableObject
     /// selection-changed callback <see cref="RefreshAsync"/> itself uses, but no-op
     /// archive/unarchive/delete delegates — lets <c>TasksViewModelTests</c> exercise the actual
     /// selection bookkeeping (<see cref="SelectedCount"/>, <see cref="HasSelection"/>, the bulk-delete
-    /// confirm gating) without constructing the sealed <see cref="TaskSession"/> that
+    /// confirm gating) without constructing the sealed <see cref="RoomClient"/> that
     /// <see cref="RefreshAsync"/>'s real row construction needs. Same reasoning as
-    /// <see cref="TaskSession.ShouldApplyProjectionPush"/>'s own internal test seam.
+    /// <see cref="RoomClient.ShouldApplyProjectionPush"/>'s own internal test seam.
     /// </summary>
     internal RoomFleetItemViewModel AddTestItem(RoomFleetItem item)
     {
@@ -216,12 +216,12 @@ public sealed partial class TasksViewModel : ObservableObject
     /// <see cref="ArchiveAsync"/>. Fans out sequentially against the same per-directory
     /// <c>/api/rooms/archive</c> endpoint (delete mutates the shared recents list and archive mutates
     /// the shared fleet index, so concurrent calls could race) rather than a new bulk daemon endpoint,
-    /// per the issue's stated default. Calls <see cref="TaskSession.ArchiveTaskAsync"/> directly in the
+    /// per the issue's stated default. Calls <see cref="RoomClient.ArchiveTaskAsync"/> directly in the
     /// loop and refreshes exactly once at the end -- routing through the existing single-item
     /// <see cref="ArchiveAsync"/> would call <see cref="RefreshAsync"/> after every item, rebuilding
     /// <see cref="Items"/> (and clearing selection) mid-loop.
     /// </summary>
-    public async Task BulkArchiveAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task BulkArchiveAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         var targets = Items.Where(i => i.IsSelected && !i.IsArchived).ToList();
         if (targets.Count == 0)
@@ -262,7 +262,7 @@ public sealed partial class TasksViewModel : ObservableObject
     /// been accepted -- the bulk counterpart of <see cref="DeleteAsync"/>, with the same
     /// sequential-fan-out-then-single-refresh reasoning as <see cref="BulkArchiveAsync"/>.
     /// </summary>
-    public async Task ConfirmBulkDeleteAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task ConfirmBulkDeleteAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         var targets = Items.Where(i => i.IsSelected).ToList();
         if (targets.Count == 0)
@@ -297,7 +297,7 @@ public sealed partial class TasksViewModel : ObservableObject
         }
     }
 
-    private async Task ArchiveAsync(TaskSession session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
+    private async Task ArchiveAsync(RoomClient session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
     {
         var outcome = await session.ArchiveTaskAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (outcome.ErrorMessage != null)
@@ -309,7 +309,7 @@ public sealed partial class TasksViewModel : ObservableObject
         await RefreshAsync(session, cancellationToken).ConfigureAwait(true);
     }
 
-    private async Task UnarchiveAsync(TaskSession session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
+    private async Task UnarchiveAsync(RoomClient session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
     {
         var outcome = await session.UnarchiveTaskAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (outcome.ErrorMessage != null)
@@ -321,7 +321,7 @@ public sealed partial class TasksViewModel : ObservableObject
         await RefreshAsync(session, cancellationToken).ConfigureAwait(true);
     }
 
-    private async Task DeleteAsync(TaskSession session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
+    private async Task DeleteAsync(RoomClient session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
     {
         var outcome = await session.DeleteTaskAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (outcome.ErrorMessage != null)
@@ -338,7 +338,7 @@ public sealed partial class TasksViewModel : ObservableObject
 /// <summary>
 /// One row in the Tasks view (M24 Phase 5, #278) — same closure-over-parent-actions shape as
 /// <see cref="PairedClientItemViewModel"/>: the parent <see cref="TasksViewModel"/> already has the
-/// <see cref="TaskSession"/> this row's actions need, so each action closes over it at construction
+/// <see cref="RoomClient"/> this row's actions need, so each action closes over it at construction
 /// rather than the row needing its own reference. Delete uses an inline two-step confirm
 /// (<see cref="IsConfirmingDelete"/>) rather than a modal dialog — no modal-dialog precedent exists
 /// anywhere in this codebase's Avalonia views (<see cref="TemplatePickerWindow"/>'s in-window

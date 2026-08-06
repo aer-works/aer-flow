@@ -410,7 +410,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     /// Names an adapter no registry entry can resolve -- <see cref="Aer.Adapters.WorkerBindingResolver.Resolve"/>
     /// throws <see cref="Aer.Adapters.UnknownWorkerAdapterException"/> (an <see cref="Aer.Flow.AerFlowException"/>)
     /// synchronously, before <c>RunCommand.ExecuteAsync</c> ever reaches <c>MutationInterface.StartWorkflowAsync</c>
-    /// -- a fast, deterministic way to exercise <see cref="TaskSession.RunAsync"/>'s failure path with no live
+    /// -- a fast, deterministic way to exercise <see cref="RoomClient.RunAsync"/>'s failure path with no live
     /// vendor CLI involved.
     /// </summary>
     private static async Task<string> WriteUnresolvableBindingsAsync(CancellationToken cancellationToken)
@@ -437,7 +437,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         // by any test, is that POSTing a decision actually triggers a *second* broadcast to every
         // connected socket. /api/rooms/decide dispatches on a background Task.Run and returns 200
         // immediately (fire-and-forget, see Program.cs), so a missing broadcast here would look
-        // identical to the phone: 200 OK, card never updates. See TaskSession.DecideAsync's
+        // identical to the phone: 200 OK, card never updates. See RoomClient.DecideAsync's
         // in-process fallback, which reaches the daemon's reopenTaskAsync -> BroadcastStateAsync path.
         const string executionId = "exec-reject-1";
         var roomDirectory = await CreatePausedTaskDirectoryAsync(executionId, TestContext.Current.CancellationToken);
@@ -485,7 +485,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RunTask_TriggersTwoWebSocketBroadcasts_ImmediateAndOnCompletion()
     {
-        // #330: /api/rooms/run is the endpoint the desktop's own TaskSession.RunAsync HTTP branch
+        // #330: /api/rooms/run is the endpoint the desktop's own RoomClient.RunAsync HTTP branch
         // posts to (HomeView.OnStartTemplateClick -> MainWindow.RunAsync) once a template has already
         // been materialized in-process. Unlike its siblings /api/rooms/open and /api/templates/run,
         // this endpoint used to have zero broadcast-related code at all before dispatching the
@@ -534,7 +534,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RunTask_ThatFailsInTheBackground_StillTriggersASecondWebSocketBroadcast()
     {
-        // #330: TaskSession.RunAsync's in-process fallback (what Aer.Daemon's own singleton session
+        // #330: RoomClient.RunAsync's in-process fallback (what Aer.Daemon's own singleton session
         // always uses) used to return straight out of its `catch (AerFlowException ex)` block without
         // ever calling reopenTaskAsync -- so a run that threw partway through never broadcast at all,
         // for either a mobile- or desktop-initiated run. A connected phone would see the pre-run
@@ -1301,7 +1301,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async Task ProgressWebSocket_AcceptsAConnectionWithoutRequiringAnOpenTask()
     {
         // Deliberately kept separate from /api/ws (M24 Phase 1) -- a client subscribing to live
-        // in-turn progress has no TaskSession dependency, unlike the projection socket.
+        // in-turn progress has no RoomClient dependency, unlike the projection socket.
         var token = _client.DefaultRequestHeaders.Authorization!.Parameter!;
         using var socket = new ClientWebSocket();
         await socket.ConnectAsync(new Uri($"{WsBaseUrl}/api/ws/progress?token={token}"), TestContext.Current.CancellationToken);
@@ -1315,9 +1315,9 @@ public class DaemonIntegrationTests : IAsyncLifetime
     public async Task TurnHostStatus_UnhostedRoom_Returns409()
     {
         // #994's absence contract, daemon side: a room the turn host is not hosting answers 409,
-        // which TaskSession.TryGetTurnHostStatusAsync maps to null (absence, not error). Raw
+        // which RoomClient.TryGetTurnHostStatusAsync maps to null (absence, not error). Raw
         // client against THIS class's daemon deliberately — the first draft constructed a real
-        // TaskSession, whose connection path reads the REAL ~/.aer registration and can spawn a
+        // RoomClient, whose connection path reads the REAL ~/.aer registration and can spawn a
         // real daemon on probe failure (#998); its green never touched this daemon at all.
         // Red arm: with the hosted-room scope guard removed from the endpoint, this returns 200.
         var encodedPath = Uri.EscapeDataString(_tempTaskDirectory!);

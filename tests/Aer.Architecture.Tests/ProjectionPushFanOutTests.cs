@@ -6,14 +6,14 @@ namespace Aer.Architecture.Tests;
 /// <para>
 /// The switcher needs every projection push, including pushes for sessions this client is not
 /// currently viewing. The obvious way to get that — widening
-/// <c>TaskSession.ShouldApplyProjectionPush</c> — would silently un-fix #262, where one client
+/// <c>RoomClient.ShouldApplyProjectionPush</c> — would silently un-fix #262, where one client
 /// opening a different task corrupted every other connected client's detail view with that task's
 /// data, mislabeled under whatever directory the victim had open. So the fan-out is expressed as
 /// *two consumers of one frame*: the list is notified unconditionally, and the detail pane keeps
 /// the unchanged directory-equality filter.
 /// </para>
 /// <para>
-/// <c>TaskSessionProjectionFilterTests</c> already proves the filter itself still rejects foreign
+/// <c>RoomClientProjectionFilterTests</c> already proves the filter itself still rejects foreign
 /// directories. What it cannot prove is that the list's notification did not later get nested back
 /// *inside* that filter — which would compile, keep every existing test green, and quietly restore
 /// the stale-switcher bug this issue exists to fix. That is what this asserts.
@@ -21,7 +21,7 @@ namespace Aer.Architecture.Tests;
 /// </summary>
 public class ProjectionPushFanOutTests
 {
-    private const string ReceiveLoopFile = "src/Aer.Ui.Core/TaskSession.Connection.cs";
+    private const string ReceiveLoopFile = "src/Aer.Ui.Core/RoomClient.Connection.cs";
     private const string FanOutCall = "RaiseFleetProjectionReceived(";
     private const string DetailFilter = "if (ShouldApplyProjectionPush(";
 
@@ -47,7 +47,7 @@ public class ProjectionPushFanOutTests
     [Fact]
     public void The_detail_panes_filter_still_compares_directories_rather_than_accepting_everything()
     {
-        var source = File.ReadAllText(Path.Combine(RepoRoot(), "src/Aer.Ui.Core/TaskSession.cs"));
+        var source = File.ReadAllText(Path.Combine(RepoRoot(), "src/Aer.Ui.Core/RoomClient.cs"));
 
         Assert.Contains("incomingDirectoryPath == CurrentTaskDirectoryPath", source, StringComparison.Ordinal);
     }

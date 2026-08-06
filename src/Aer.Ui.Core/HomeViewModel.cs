@@ -44,7 +44,7 @@ public sealed partial class HomeViewModel : ObservableObject
     /// refresh.
     /// </summary>
     public async Task RefreshAsync(
-        TaskSession session, Func<string, Task> openTaskAsync, CancellationToken cancellationToken = default)
+        RoomClient session, Func<string, Task> openTaskAsync, CancellationToken cancellationToken = default)
     {
         var recents = await session.LoadRecentTaskDirectoriesAsync(cancellationToken).ConfigureAwait(true);
 

@@ -14,7 +14,7 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     private (string Url, string Token)? GetDaemonConnectionInfo()
     {
@@ -67,7 +67,7 @@ public sealed partial class TaskSession
             if (response.IsSuccessStatusCode)
             {
                 var meta = await response.Content.ReadFromJsonAsync<DaemonVersionInfo>(cancellationToken: cancellationToken).ConfigureAwait(true);
-                var clientVersion = typeof(TaskSession).Assembly.GetName().Version?.ToString() ?? "1.0.0";
+                var clientVersion = typeof(RoomClient).Assembly.GetName().Version?.ToString() ?? "1.0.0";
 
                 if (meta != null && meta.Version == clientVersion)
                 {
@@ -96,7 +96,7 @@ public sealed partial class TaskSession
             // Connect failed
         }
 
-        // #998: gated because a TaskSession constructed in a test reaches this fallback the
+        // #998: gated because a RoomClient constructed in a test reaches this fallback the
         // moment its probe fails — and the spawned daemon re-registers itself in the REAL
         // ~/.aer, clobbering the operator's registration and leaking a process that holds DLL
         // locks against every later build. The desktop app keeps the default (true).
@@ -394,7 +394,7 @@ public sealed partial class TaskSession
     }
 
     // This WS receive loop is transport, but it mutates *client* state — it calls
-    // ShouldApplyProjectionPush / UpdateProjection (in TaskSession.cs) which seed
+    // ShouldApplyProjectionPush / UpdateProjection (in RoomClient.cs) which seed
     // CurrentTaskDirectoryPath and the live projection.
     //
     // #336 retired the assumption this comment used to record ("a client watches one session at a

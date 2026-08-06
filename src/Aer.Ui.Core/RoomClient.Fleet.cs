@@ -14,7 +14,7 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     /// <summary>
     /// The fleet list (M24 Phase 5, #278): every known task/session directory's lightweight status.

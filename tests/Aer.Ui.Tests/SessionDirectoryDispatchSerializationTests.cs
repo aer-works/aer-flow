@@ -27,7 +27,7 @@ namespace Aer.Ui.Tests;
 /// against two different directories" can -- that would be true even with a perfect lock. What the
 /// lock changes is whether the second call's request is silently lost to Flow's own
 /// <c>ConcurrencyGuard</c> throwing <c>WorkflowLockedException</c> (pre-#590: swallowed by
-/// <c>TaskSession.RunAsync</c>/<c>DecideAsync</c>'s <c>catch (AerFlowException)</c>, invisible to the
+/// <c>RoomClient.RunAsync</c>/<c>DecideAsync</c>'s <c>catch (AerFlowException)</c>, invisible to the
 /// caller since both endpoints already return 200 before dispatch runs) or cleanly waits its turn.
 /// Every test below asserts exactly the number of completions the *serialised* pump can produce, and
 /// separately asserts no dispatch overlapped (the collision file) and, via #828's dispatch-failure log,
@@ -211,7 +211,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         var errorLogPath = Path.Combine(roomDirectory, ".aer", "turn-errors.log");
         var errorLog = await WaitForFileContentAsync(errorLogPath);
         Assert.Contains("/api/rooms/decide", errorLog);
-        // TaskSession.DecideAsync's in-process fallback catches InvalidExternalDecisionException
+        // RoomClient.DecideAsync's in-process fallback catches InvalidExternalDecisionException
         // itself and returns MutationOutcome(ex.Message) rather than throwing (see Program.cs's
         // #828 comment) -- what's recorded is ExternalDecisionValidator's message text, not the
         // exception type name.
@@ -223,7 +223,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     {
         // Exception-safety arm (work item 4): a dispatch that fails must release the per-directory
         // lock so a follow-up dispatch on the same directory still runs. UnknownWorkerAdapterException
-        // is an AerFlowException, caught inside TaskSession.RunAsync's own fallback branch and turned
+        // is an AerFlowException, caught inside RoomClient.RunAsync's own fallback branch and turned
         // into a MutationOutcome rather than an escaping .NET exception -- but Program.cs's
         // turnLock.Release() sits in a `finally` around the ENTIRE `await session.RunAsync(...)` call,
         // not inside a catch keyed to a specific exception type, so it runs identically whether
