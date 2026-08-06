@@ -79,19 +79,18 @@ public static class ShellCommandPatternMatcher
                 continue;
             }
 
-            // Unquoted metacharacters: ; & | ` $( ${ < > ( ) \n \r \
-            if (c is ';' or '&' or '|' or '`' or '<' or '>' or '(' or ')' or '\n' or '\r' or '\\')
+            // Unquoted metacharacters: ; & | ` $ < > ( ) \n \r \
+            // A bare unquoted '$' is denied outright, not merely '$(' / '${'. Besides command
+            // substitution and expansion, a bare '$' before a quote opens ANSI-C quoting ($'...'),
+            // whose backslash-escaped quote (\') is a NON-terminating escape in bash but closes this
+            // scanner's escape-free single-quote branch one character early. A later stray ' rebalances
+            // the parity, hiding a live ';' inside a region the scanner still believes is quoted -- a
+            // confirmed escape from a scoped grant: `git $'\''; rm -rf / #'` executes rm outside `git *`.
+            // Denying '$' outright also covers $VAR, ${...}, $((...)) and $[...]. A scoped command needs
+            // none of these unquoted; a literal dollar can be quoted ("$5") to pass.
+            if (c is ';' or '&' or '|' or '`' or '$' or '<' or '>' or '(' or ')' or '\n' or '\r' or '\\')
             {
                 return false;
-            }
-
-            if (c == '$' && i + 1 < commandLine.Length)
-            {
-                char next = commandLine[i + 1];
-                if (next is '(' or '{')
-                {
-                    return false;
-                }
             }
         }
 

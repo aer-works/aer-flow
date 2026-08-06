@@ -38,6 +38,9 @@ public class ShellCommandPatternMatcherTests
     [InlineData("git status\rwhoami")] // CR
     [InlineData("git status \\")] // line continuation backslash outside quotes
     [InlineData("git log ${USER}")] // variable expansion ${...}
+    [InlineData("git log $HOME")] // bare unquoted $VAR is denied (quote it for a literal)
+    [InlineData("git $'\\''; rm -rf / #'")] // ANSI-C $'...' escape: bash runs `git '` then a live `; rm -rf /`
+    [InlineData("git $'\\x3b' whoami")] // ANSI-C $'...' with an escaped byte -- denied outright via bare $
     public void Security_controls_deny_unquoted_metacharacters_and_non_matching_commands(string commandLine)
     {
         string[] patterns = ["git *"];
