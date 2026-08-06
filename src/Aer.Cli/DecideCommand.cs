@@ -38,7 +38,7 @@ public static class DecideCommand
     /// Another Flow instance already holds this room directory's lock.
     /// </exception>
     /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">
-    /// Another process — most likely a live <c>aer run</c> engine — already holds this task's
+    /// Another process — most likely a live <c>aer run</c> engine — already holds this room's
     /// <c>flow.jsonl</c> open (#816).
     /// </exception>
     /// <param name="inFlightExecutions">
@@ -69,7 +69,7 @@ public static class DecideCommand
         {
             throw new SnapshotLoadException(
                 $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer decide' " +
-                "targets a task 'aer run' has already started, and never binds one fresh.");
+                "targets a room 'aer run' has already started, and never binds one fresh.");
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);

@@ -20,7 +20,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>
     /// Which shell section is active (M19 Phase 2, #187) — pure presentation state (like a text
-    /// box's contents, UI spec §4), never a projected fact. Opening a task navigates to
+    /// box's contents, UI spec §4), never a projected fact. Opening a room navigates to
     /// <see cref="ShellSection.Task"/>; everything else is the user's own navigation.
     /// </summary>
     [ObservableProperty]
@@ -103,7 +103,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>
     /// True for the duration of any mutation call this UI process itself is driving — a Run or a
-    /// decision — the window's own pump holding the task's §15 lock for that call's entire duration.
+    /// decision — the window's own pump holding the room's §15 lock for that call's entire duration.
     /// Every <see cref="PausedSteps"/> entry's <see cref="PausedStepViewModel.IsEnabled"/> mirrors
     /// this, so a second mutation can never be started from this same process while one is already in
     /// flight (a competing *external* process's lock hold instead surfaces as a
@@ -117,14 +117,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool isMutationInFlight;
 
     /// <summary>
-    /// Owner feedback: "does Run make sense on a finished task? or is it a re-run?" — it's a re-run,
+    /// Owner feedback: "does Run make sense on a finished room? or is it a re-run?" — it's a re-run,
     /// but not in place: <c>MutationInterface.StartWorkflowAsync</c>'s pump finds nothing ready and
-    /// nothing in flight for an already-<see cref="Aer.Flow.Domain.WorkflowStatus.Terminal"/> task's
+    /// nothing in flight for an already-<see cref="Aer.Flow.Domain.WorkflowStatus.Terminal"/> room's
     /// own directory and returns the same state unchanged, a safe but silent no-op, so resuming the
     /// same directory was never an option. <c>MainWindow</c>'s Run click handler checks this flag and,
-    /// when true, clones the open task's recorded workflow/bindings files into a fresh sibling
-    /// <c>task-{timestamp}</c> directory (the same naming the "Save &amp; Run" and template flows
-    /// already use) instead of resuming in place — the finished task's own directory and history are
+    /// when true, clones the open room's recorded workflow/bindings files into a fresh sibling
+    /// <c>room-{timestamp}</c> directory (the same naming the "Save &amp; Run" and template flows
+    /// already use) instead of resuming in place — the finished room's own directory and history are
     /// left untouched. Set by <c>MainWindow.RenderProjection</c> from the loaded projection's
     /// <c>State.Status</c>, alongside every other read-only render there.
     /// </summary>
@@ -166,7 +166,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasRoomTurnHostBanner => RoomTurnHostBanner is not null;
 
-    /// <summary>The open task's steps as the drill-in surface (M19 Phase 3, #188) — rebuilt wholesale on every load/refresh by <see cref="RebuildTaskSteps"/>.</summary>
+    /// <summary>The open room's steps as the drill-in surface (M19 Phase 3, #188) — rebuilt wholesale on every load/refresh by <see cref="RebuildRoomSteps"/>.</summary>
     public ObservableCollection<StepItemViewModel> RoomSteps { get; } = [];
 
     /// <summary>The step whose drill-in is open. Re-anchored by step id across rebuilds; defaults needs-you-first (paused, else running, else the first step).</summary>
@@ -176,7 +176,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasSelectedStep => SelectedStep is not null;
 
-    /// <summary>The task-level plain-language headline (the vocabulary map's primary text) — the precise <c>Workflow status:</c> line lives in the Details disclosure.</summary>
+    /// <summary>The room-level plain-language headline (the vocabulary map's primary text) — the precise <c>Workflow status:</c> line lives in the Details disclosure.</summary>
     [ObservableProperty]
     private string roomHeadlineText = "No room open.";
 
@@ -194,14 +194,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// Routes "Ask <worker> to fix it" (#617) to the Chat section with the input drafted — a
     /// message naming the step and quoting the reason text. When no session is open, the new-chat
-    /// bar is pre-filled too — the failing step's adapter and the failed task's own directory — so
+    /// bar is pre-filled too — the failing step's adapter and the failed room's own directory — so
     /// starting the conversation is one click into the right room with the draft already waiting;
     /// found live, where the draft alone landed invisibly behind "No room open." while the tests
     /// (which read the property, not the screen) stayed green. When a session is already open the
     /// draft lands in that session's input instead, and the adapter selection below is inert
     /// there — <see cref="ChatViewModel.NewChatAdapter"/> is consulted only by the start-new-chat
     /// flow, never by an open session's send path, which keeps speaking to whatever vendor the
-    /// session was started with. The open session is always this task's own: the window's
+    /// session was started with. The open session is always this room's own: the window's
     /// navigation resyncs Chat to whichever directory populates <see cref="RoomSteps"/>
     /// (<c>MainWindow.OpenAsync</c>), and the banner test pins that invariant.
     /// </summary>
@@ -250,10 +250,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         var previousSelectedStepId = SelectedStep?.StepId;
 
         RoomSteps.Clear();
-        // reRunAction only for a Terminal task: Run's re-run-as-clone flow (see IsRoomFinished)
+        // reRunAction only for a Terminal room: Run's re-run-as-clone flow (see IsRoomFinished)
         // exists only then. While a sibling branch still runs or waits on a decision, the same
         // click resumes the directory in place — for a Failed step with no pending obligation the
-        // pump returns unchanged, a silent no-op — so the banner hides Try again until the task
+        // pump returns unchanged, a silent no-op — so the banner hides Try again until the room
         // finishes (FailedStepBannerViewModel.CanTryAgain). Gated on the projection parameter, not
         // the IsRoomFinished property, so it cannot depend on the skin's render order.
         var reRunAvailable = projection.State.Status == Aer.Flow.Domain.WorkflowStatus.Terminal;

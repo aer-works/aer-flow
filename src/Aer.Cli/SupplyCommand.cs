@@ -73,7 +73,7 @@ public static class SupplyCommand
         {
             throw new SnapshotLoadException(
                 $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer supply' " +
-                "targets a task 'aer run' has already started, and never binds one fresh.");
+                "targets a room 'aer run' has already started, and never binds one fresh.");
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);

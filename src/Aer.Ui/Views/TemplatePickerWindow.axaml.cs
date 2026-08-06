@@ -152,8 +152,8 @@ public partial class TemplatePickerWindow : Window
 
     /// <summary>
     /// Surfaces a failed Start attempt in-window instead of silently closing (the prior behavior --
-    /// closing on any failure with no message at all -- was especially misleading once task/session
-    /// name collisions started failing closed instead of silently overwriting the earlier task, see
+    /// closing on any failure with no message at all -- was especially misleading once room
+    /// name collisions started failing closed instead of silently overwriting the earlier room, see
     /// <c>RoomDirectoryAlreadyExistsException</c>). Leaves the window open so the user can pick a
     /// different name and retry without re-entering everything else.
     /// </summary>

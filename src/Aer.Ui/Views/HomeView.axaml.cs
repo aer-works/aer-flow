@@ -30,10 +30,10 @@ public partial class HomeView : UserControl
             {
                 // A record becomes visible the moment it exists on disk, not when its first
                 // execution happens to succeed. Materializing a workflow used to leave it listed
-                // nowhere: Run registers the task only on a 2xx (RoomClient.RunAsync's
+                // nowhere: Run registers the room only on a 2xx (RoomClient.RunAsync's
                 // _reopenTaskAsync call), so a run that was refused — "something else is already
                 // running against this directory" — created a real room directory that no surface
-                // knew about. Found by running the app: a freshly created task was reachable only
+                // knew about. Found by running the app: a freshly created room was reachable only
                 // through the folder picker.
                 await topLevel.RefreshRecordListsAsync();
                 if (await InteractiveSessionMaterializer.ReadRoomKindAsync(roomPath) == RoomKind.Interactive)
@@ -65,17 +65,17 @@ public partial class HomeView : UserControl
     }
 
     /// <summary>
-    /// #212: a folder picker for "Open a task" — the same <see cref="AuthorView.OnChooseWorkspaceClick"/>
+    /// #212: a folder picker for "Open a room" — the same <see cref="AuthorView.OnChooseWorkspaceClick"/>
     /// pattern (write the picked path into the visible text box, never a hidden field), so Open
     /// still reads from <see cref="RoomDirectoryPathBox"/> exactly as it always has.
     /// <para>
-    /// Owner feedback: asked for a default room directory on Home. Recent tasks already have their
+    /// Owner feedback: asked for a default room directory on Home. Recent rooms already have their
     /// own one-click cards above (<see cref="MainWindowViewModel.Home"/>'s <c>RoomCards</c>) — the
-    /// best "default" for a task you've already run. What was missing was a starting point for a
-    /// task you haven't opened yet: this picker now opens in the same
+    /// best "default" for a room you've already run. What was missing was a starting point for a
+    /// room you haven't opened yet: this picker now opens in the same
     /// <c>Documents/Baton</c> workspace root <see cref="NewWorkflowViewModel.EffectiveWorkspacePath"/>
     /// writes guided-flow output under, instead of wherever the OS last remembered — that's the one
-    /// place a fresh task is actually likely to be.
+    /// place a fresh room is actually likely to be.
     /// </para>
     /// </summary>
     private async void OnBrowseRoomDirectoryClick(object? sender, RoutedEventArgs e)

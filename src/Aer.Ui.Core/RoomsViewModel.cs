@@ -8,7 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// The Tasks view's state (M24 Phase 5, #278) — every known task/session directory, not just
+/// The Rooms view's state (M24 Phase 5, #278) — every known room directory, not just
 /// Home's capped 10-item recents cards, with archive/unarchive/delete. Deliberately its own child
 /// ViewModel rather than fields on <see cref="MainWindowViewModel"/> (the pattern <see cref="RemoteViewModel"/>/<see cref="ChatViewModel"/>
 /// already establish) — a real fleet management surface is a distinct concern from the mutation/decision
@@ -40,7 +40,7 @@ public sealed partial class RoomsViewModel : ObservableObject
     /// <summary>
     /// Bulk delete's own two-step confirm (issue #288) — the same in-place idiom
     /// <see cref="RoomFleetItemViewModel.IsConfirmingDelete"/> already uses for a single row, scaled
-    /// to "Delete N tasks?" instead of one confirm per item.
+    /// to "Delete N rooms?" instead of one confirm per item.
     /// </summary>
     [ObservableProperty]
     private bool isConfirmingBulkDelete;

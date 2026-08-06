@@ -1,8 +1,8 @@
 namespace Aer.Flow.Concurrency;
 
 /// <summary>
-/// Raised when <see cref="ConcurrencyGuard.Acquire"/> cannot obtain a task's file lock because
-/// another Flow instance already holds it (spec §15's "at most one writer per task namespace"
+/// Raised when <see cref="ConcurrencyGuard.Acquire"/> cannot obtain a room's file lock because
+/// another Flow instance already holds it (spec §15's "at most one writer per room namespace"
 /// guarantee).
 /// </summary>
 public sealed class WorkflowLockedException : AerFlowException

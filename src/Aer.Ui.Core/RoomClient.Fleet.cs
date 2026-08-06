@@ -49,7 +49,7 @@ public sealed partial class RoomClient
         }
     }
 
-    /// <summary>Archives a task/session directory (M24 Phase 5, #278) — hidden from the default fleet list, name still reserved until a real delete.</summary>
+    /// <summary>Archives a room directory (M24 Phase 5, #278) — hidden from the default fleet list, name still reserved until a real delete.</summary>
     public async Task<MutationOutcome> ArchiveRoomAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
@@ -82,7 +82,7 @@ public sealed partial class RoomClient
         }
     }
 
-    /// <summary>Unarchives a task/session directory (M24 Phase 5, #278) — reappears in the default fleet list.</summary>
+    /// <summary>Unarchives a room directory (M24 Phase 5, #278) — reappears in the default fleet list.</summary>
     public async Task<MutationOutcome> UnarchiveRoomAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
@@ -115,7 +115,7 @@ public sealed partial class RoomClient
         }
     }
 
-    /// <summary>Really deletes a task/session directory (M24 Phase 5, #278) — the only action that frees its name for reuse — and strips it from the recents list so a stale recent never 404s on the next open.</summary>
+    /// <summary>Really deletes a room directory (M24 Phase 5, #278) — the only action that frees its name for reuse — and strips it from the recents list so a stale recent never 404s on the next open.</summary>
     public async Task<MutationOutcome> DeleteRoomAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))

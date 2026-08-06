@@ -7,16 +7,16 @@ using Aer.Flow.Templates;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// One task/session directory's lightweight status (M24 Phase 5, #278's fleet list) — friendly
+/// One room directory's lightweight status (M24 Phase 5, #278's fleet list) — friendly
 /// name, a template id or "interactive session" label, a plain status line, paused-step count,
 /// archived state, and the creation/last-updated timestamps (#322) that let a client sort by
 /// recency and render relative times ("2h ago"). Deliberately not a <see cref="RoomProjection"/>:
-/// a fleet list showing every known task/session at once can't afford
+/// a fleet list showing every known room at once can't afford
 /// <see cref="RoomProjectionLoader.LoadAsync"/>'s full per-execution history/artifact-lineage
 /// projection cost for every item.
 /// </summary>
-/// <param name="Created">When this task/session was first created (UTC).</param>
-/// <param name="Updated">When this task/session last changed (UTC) — the key the fleet list orders by.</param>
+/// <param name="Created">When this room was first created (UTC).</param>
+/// <param name="Updated">When this room last changed (UTC) — the key the fleet list orders by.</param>
 /// <param name="IsSession">
 /// Whether this directory is an interactive session (chat-shaped) rather than a workflow (DAG-shaped)
 /// — the structural fact behind <paramref name="TypeLabel"/>, surfaced separately because #336's
@@ -25,7 +25,7 @@ namespace Aer.Ui.Core;
 /// a rendered label; this is the same fact the loader already computes to build that label.
 /// </param>
 /// <param name="LastActivityAt">
-/// Timestamp of the newest event in the task's journal (#640) — used for sorting fleet items by recency of actual activity.
+/// Timestamp of the newest event in the room's journal (#640) — used for sorting fleet items by recency of actual activity.
 /// </param>
 public sealed record RoomFleetItem(
     string RoomDirectoryPath,
@@ -180,7 +180,7 @@ public static class RoomProjectionLoader
     /// present even for a never-run session that has no snapshot yet.
     /// </para>
     /// <para>
-    /// A DAG task's per-step timestamps are now carried in <see cref="LogEntry.WriterUtcTimestamp"/>
+    /// A DAG room's per-step timestamps are now carried in <see cref="LogEntry.WriterUtcTimestamp"/>
     /// on each envelope (#745). Workflow-level timestamps still resolve from filesystem times: <see cref="WorkflowDefinitionSnapshot"/>
     /// has no time field, so <c>snapshot.json</c>'s last-write time is a stable <c>created</c>, and <c>flow.jsonl</c>'s is
     /// the last-event-appended <c>updated</c>. Last-write time is used over creation time because birth time is unreliable on

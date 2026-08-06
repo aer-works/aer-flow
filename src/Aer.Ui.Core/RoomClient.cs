@@ -51,9 +51,9 @@ public class BindingsPathHolder
 }
 
 /// <summary>
-/// One task-facing session's orchestration (M19 Phase 2, issue #187), updated in M20 Phase 2/3 to
+/// One room's orchestration (M19 Phase 2, issue #187), updated in M20 Phase 2/3 to
 /// support client-first daemonization: connects to Aer.Daemon background host process via REST/WebSockets
-/// to execute pumps and stream real-time task projections. Falls back to in-process execution seamlessly
+/// to execute pumps and stream real-time room projections. Falls back to in-process execution seamlessly
 /// if the daemon cannot be reached or started. Enforces global mutex single-instance checks, 
 /// local auth tokens, process supervision, and version-skew protection.
 /// </summary>
@@ -233,7 +233,7 @@ public sealed partial class RoomClient
     /// Which room directory *this client instance* is currently viewing — set only by this
     /// session's own actions (<see cref="SetCurrentRoomDirectory"/>, <see cref="RunAsync"/>,
     /// <see cref="StartInteractiveSessionAsync"/>), never by another client's. Aer.Daemon's own
-    /// "current task" is a separate, process-wide notion the daemon uses only to decide what a
+    /// "current room" is a separate, process-wide notion the daemon uses only to decide what a
     /// brand-new WS connection sees before this client has opened anything of its own — see
     /// <see cref="ShouldApplyProjectionPush"/>, which is what actually keeps two clients pointed
     /// at different directories from corrupting each other's view (pre-M24 defect, filed as part
@@ -261,7 +261,7 @@ public sealed partial class RoomClient
     /// </remarks>
     public Task? CurrentPumpTask => _hostedRuns.Values.FirstOrDefault()?.PumpTask;
 
-    /// <summary>Whether the poller should keep observing: a successfully opened task that has not reached §12's terminal fixed point.</summary>
+    /// <summary>Whether the poller should keep observing: a successfully opened room that has not reached §12's terminal fixed point.</summary>
     public bool ShouldLiveRefresh => LastLoadSucceeded && LastWorkflowStatus != WorkflowStatus.Terminal;
 
     public RoomClient(
@@ -303,7 +303,7 @@ public sealed partial class RoomClient
     /// from the first push a fresh client ever sees (typically whatever Aer.Daemon last had
     /// open) and rejecting every later push for a different directory. Before this (issue #262
     /// follow-up), every push was applied unconditionally, so one client opening a different
-    /// task silently corrupted every other connected client's view with that task's data,
+    /// room silently corrupted every other connected client's view with that room's data,
     /// mislabeled under whatever directory the victim client had open. Extracted from
     /// <see cref="ReceiveWebSocketDataAsync"/> so this decision is unit-testable without a live
     /// daemon connection.

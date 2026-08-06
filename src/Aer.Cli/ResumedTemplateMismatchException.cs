@@ -11,8 +11,8 @@ namespace Aer.Cli;
 /// Resuming from the snapshot rather than the named file is intended (M15 Phase 1, #137): a second
 /// <c>aer run</c> against the same room directory is how a closed terminal or a slept laptop is
 /// recovered from. What was not intended is that it happened silently even when the two disagreed,
-/// so an operator who pointed a fresh workflow at a directory another task had used got that other
-/// task's result — down to its declared outputs and timeout — with no new events written and no
+/// so an operator who pointed a fresh workflow at a directory another room had used got that other
+/// room's result — down to its declared outputs and timeout — with no new events written and no
 /// indication that the file they named was never read.
 /// </para>
 /// <para>

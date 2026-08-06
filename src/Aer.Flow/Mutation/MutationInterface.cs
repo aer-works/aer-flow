@@ -20,7 +20,7 @@ namespace Aer.Flow.Mutation;
 public static class MutationInterface
 {
     /// <summary>
-    /// Acquires the task's §15 concurrency guard, then repeatedly projects <see cref="FlowState"/>,
+    /// Acquires the room's §15 concurrency guard, then repeatedly projects <see cref="FlowState"/>,
     /// resolves every ready step (§11.3, retry-aware per §10), and dispatches all of them to Core
     /// concurrently. Each completion (<c>Task.WhenAny</c>) triggers a fresh round — re-projecting
     /// and dispatching any newly-ready work — while the rest stay in flight. Returns once nothing is
@@ -31,7 +31,7 @@ public static class MutationInterface
     /// process-bound dispatch this call has in flight, so a caller retaining this instance can
     /// cancel one of them via <see cref="InFlightExecutionRegistry.RequestCancellationAsync"/> while
     /// this call is still running — the only way a live execution is reachable at all, since §15's
-    /// guard blocks any second mutation-surface call for the same task until this one returns.
+    /// guard blocks any second mutation-surface call for the same room until this one returns.
     /// Defaults to a fresh, unshared instance when the caller has no need to interact with it.
     /// </param>
     /// <param name="cancellationToken">

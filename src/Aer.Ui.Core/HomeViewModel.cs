@@ -10,16 +10,16 @@ namespace Aer.Ui.Core;
 
 /// <summary>
 /// Home's read model (M19 Phase 2, issue #187): the recent room directories as live status cards,
-/// and the decision inbox — everything across those tasks currently waiting on the human, one item
+/// and the decision inbox — everything across those rooms currently waiting on the human, one item
 /// per paused step, each leading with the artifact to review (information-architecture.md).
 /// Rebuilt from durable contents on every refresh (§3.1, §11) with the same rebuild-from-scratch
 /// discipline as every other projection surface — never reconciled.
 /// <para>
 /// <b>Inbox scan-scope decision of record (the phase's named open question):</b> the inbox scans
-/// <em>all</em> recent room directories, not just the open task — Home exists precisely for the
-/// moment no task is open yet, and an inbox that only knew about the open task would be empty
+/// <em>all</em> recent room directories, not just the open room — Home exists precisely for the
+/// moment no room is open yet, and an inbox that only knew about the open room would be empty
 /// exactly when it matters most. The scan is bounded by the recents list the store already caps,
-/// and it refreshes on Home activation plus the poller's tick while an open task is being
+/// and it refreshes on Home activation plus the poller's tick while an open room is being
 /// observed — not on its own timer.
 /// </para>
 /// </summary>
@@ -34,7 +34,7 @@ public sealed partial class HomeViewModel : ObservableObject
     [ObservableProperty]
     private string inboxSummaryText = "Nothing is waiting on you.";
 
-    /// <summary>True when there is no task history at all — Home's empty state says what to do next (M19 Phase 5, #190) instead of showing a blank page.</summary>
+    /// <summary>True when there is no room history at all — Home's empty state says what to do next (M19 Phase 5, #190) instead of showing a blank page.</summary>
     [ObservableProperty]
     private bool hasNoRooms = true;
 
@@ -97,7 +97,7 @@ public sealed partial class HomeViewModel : ObservableObject
     /// is exactly the two-copies drift the same issue exists to end on the gate surfaces.
     /// Counts come from the card's one status derivation, not re-derived from the raw
     /// WorkflowStatus (#616: the raw switch counted every Terminal run as "finished", so a failed
-    /// or cancelled task inflated the finished count). Failed, Cancelled and Unavailable are
+    /// or cancelled room inflated the finished count). Failed, Cancelled and Unavailable are
     /// deliberately in neither count because the summary sentence doesn't speak of them.
     /// </summary>
     private void UpdateInboxSummary()
@@ -210,7 +210,7 @@ public sealed partial class HomeViewModel : ObservableObject
     }
 }
 
-/// <summary>One recent task as a live status card — the recents list re-projected as Home's primary surface. Plain-language status per ux-principles.md's vocabulary map, with the precise engine state one disclosure away (the Task view).</summary>
+/// <summary>One recent room as a live status card — the recents list re-projected as Home's primary surface. Plain-language status per ux-principles.md's vocabulary map, with the precise engine state one disclosure away (the Room view).</summary>
 public sealed partial class RoomCardViewModel(
     string roomDirectoryPath, string title, string statusText, RoomCardStatus status, Func<string, Task> openRoomAsync)
 {
@@ -225,7 +225,7 @@ public sealed partial class RoomCardViewModel(
     [RelayCommand]
     private Task Open() => openRoomAsync(RoomDirectoryPath);
 
-    /// <summary>The card title is the room directory's leaf name — the human's handle for the task, with the full path detail-on-demand (ux-principles §3).</summary>
+    /// <summary>The card title is the room directory's leaf name — the human's handle for the room, with the full path detail-on-demand (ux-principles §3).</summary>
     public static string TitleFor(string roomDirectoryPath)
         => Path.GetFileName(Path.TrimEndingDirectorySeparator(roomDirectoryPath));
 
@@ -254,7 +254,7 @@ public sealed partial class RoomCardViewModel(
             _ when projection.State.Steps.Any(s => s.Status is StepStatus.Failed or StepStatus.Rejected)
                 => ("Failed", RoomCardStatus.Failed),
             // #461: a cancelled run has no WorkflowStatus of its own — it reaches Terminal like any
-            // other, which is exactly why it used to fall through to "Finished" and tell you a task
+            // other, which is exactly why it used to fall through to "Finished" and tell you a room
             // you had just stopped had completed. Cancellation is only visible in the steps. Ordered
             // after Failed on purpose: if something failed *and* something was cancelled, the
             // failure is the more important truth about the run.
@@ -297,8 +297,8 @@ public enum RoomCardStatus
     Failed,
 
     /// <summary>
-    /// The run was stopped on purpose (#461). Previously absent, which meant a cancelled task fell
-    /// through to <see cref="Finished"/> — the UI told you a task you had just stopped had finished.
+    /// The run was stopped on purpose (#461). Previously absent, which meant a cancelled room fell
+    /// through to <see cref="Finished"/> — the UI told you a room you had just stopped had finished.
     /// Deliberately distinct from <see cref="Failed"/>: "you stopped it" is not "it broke", and a
     /// list that renders them alike reads far more alarming than reality.
     /// </summary>
@@ -309,8 +309,8 @@ public enum RoomCardStatus
 }
 
 /// <summary>
-/// One paused step across the recent tasks, as a decision-inbox item: the plain status, the
-/// artifact preview beside it, and Review — which opens the task at its decision surface, the
+/// One paused step across the recent rooms, as a decision-inbox item: the plain status, the
+/// artifact preview beside it, and Review — which opens the room at its decision surface, the
 /// same mutation path as deciding anywhere else (the inbox is a projection, never a second
 /// authority).
 /// </summary>
@@ -329,7 +329,7 @@ public sealed partial class InboxItemViewModel(
     /// <summary>Which human act this pause demands (#334) — carried so #319 can filter the inbox into "Needs input" / "Ready for review" states without re-deriving it.</summary>
     public PausePointKind Kind { get; } = kind;
 
-    /// <summary>#334: a needs-input turn wants your next message, so the action reads "Reply"; a review gate reads "Review". Both open the task — the label names the act, not a second authority.</summary>
+    /// <summary>#334: a needs-input turn wants your next message, so the action reads "Reply"; a review gate reads "Review". Both open the room — the label names the act, not a second authority.</summary>
     public string ActionLabel => Kind == PausePointKind.NeedsInput ? "Reply" : "Review";
 
     [RelayCommand]

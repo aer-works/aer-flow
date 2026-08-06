@@ -14,10 +14,10 @@ namespace Aer.Daemon;
 /// client bags and every send path — lifted verbatim from <c>Program.cs</c>'s <c>RunDaemonAsync</c>
 /// closure (#425) so it is one addressable unit instead of scattered local functions.
 ///
-/// This is the daemon-side seam #335 makes per-task: today every connected socket receives every
-/// task's projection (<see cref="BroadcastStateAsync"/> fans out to <em>all</em> of
-/// <c>_webSockets</c>). When #335 keys tasks per instance, the routing of which socket feeds which
-/// task's stream lands here, rather than being spread across the endpoints that call it.
+/// This is the daemon-side seam #335 makes per-room: today every connected socket receives every
+/// room's projection (<see cref="BroadcastStateAsync"/> fans out to <em>all</em> of
+/// <c>_webSockets</c>). When #335 keys rooms per instance, the routing of which socket feeds which
+/// room's stream lands here, rather than being spread across the endpoints that call it.
 /// </summary>
 internal sealed class DaemonBroadcast
 {

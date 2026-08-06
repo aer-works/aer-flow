@@ -135,7 +135,7 @@ public static class RunCommand
 
     /// <summary>
     /// #628: resuming the bound snapshot instead of the named file is intended (M15 Phase 1, #137),
-    /// but doing it when the two name different templates ran another task's workflow and reported
+    /// but doing it when the two name different templates ran another room's workflow and reported
     /// its result — the measured case replayed a prior terminal run's declared outputs, timeout and
     /// failure reason, wrote no events, and exited non-zero, which is indistinguishable from a
     /// genuine fresh failure.

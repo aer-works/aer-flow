@@ -7,7 +7,8 @@ namespace Aer.Cli;
 /// there is nothing to label).
 /// </summary>
 /// <param name="RoomDirectoryPath">
-/// An already-started task's durable state directory. <c>aer status</c> never binds a fresh
+/// record-once-ok: #443 src/Aer.Cli/CancelOptions.cs
+/// An already-started room's durable state directory. <c>aer status</c> never binds a fresh
 /// snapshot the way <c>aer run</c> does — it only ever reads one that already exists.
 /// </param>
 /// <param name="Follow">

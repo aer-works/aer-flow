@@ -150,7 +150,7 @@ public sealed partial class RoomClient
     /// (<c>Aer.Daemon/Program.cs</c> bakes the bind address in at startup) — so this shuts the
     /// daemon down and respawns it with/without <c>--remote</c>, reusing the same
     /// shutdown-then-respawn move <see cref="EnsureDaemonConnectedAsync"/> already makes on version
-    /// skew. Refuses while a task is in flight, since bouncing the daemon would orphan it.
+    /// skew. Refuses while a room is in flight, since bouncing the daemon would orphan it.
     /// </summary>
     public async Task<MutationOutcome> SetRemoteEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
     {

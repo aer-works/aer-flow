@@ -2,7 +2,7 @@
 
   <!-- M19 Phase 2 (#187): the remote-ready seam, compiler-enforced. Everything presentation-agnostic
        that Aer.Ui accumulated over M14–M18 — the projection loaders/projectors, the ViewModels, and
-       the task-session orchestration extracted from MainWindow code-behind — lives here, with no
+       the room orchestration extracted from MainWindow code-behind — lives here, with no
        Avalonia reference, so the boundary M14 drew as a decision of record ("presentation-layer,
        deliberately not engine-owned") is now held by the type system rather than discipline.
        Aer.Ui is the Avalonia skin over this project; a future remote host (candidate M20)

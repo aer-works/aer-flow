@@ -5,7 +5,7 @@ namespace Aer.Cli;
 /// on the CLI).
 /// </summary>
 /// <param name="RoomDirectoryPath">
-/// An already-started task's durable state directory — <c>aer cancel</c> never binds a fresh
+/// An already-started room's durable state directory — <c>aer cancel</c> never binds a fresh
 /// snapshot the way <c>aer run</c> does (§11.2's "mutation commands never bind fresh" rule).
 /// </param>
 /// <param name="ExecutionId">The target execution's <c>ExecutionId</c> to request cancellation for.</param>

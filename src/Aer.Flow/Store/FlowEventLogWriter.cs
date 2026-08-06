@@ -65,7 +65,7 @@ public sealed class FlowEventLogWriter : IEventLogWriter, ICoreEventLogWriter, I
             // post-hoc step where a transient holder would already be gone). This turns the #398
             // Windows-CI flake from "used by another process, holder unknown" into a named culprit.
             throw new FlowJournalHeldException(
-                $"'{logFilePath}' is held open by another process — usually this task's live " +
+                $"'{logFilePath}' is held open by another process — usually this room's live " +
                 "'aer run' engine, which keeps the ledger open for its whole run, though any " +
                 "sibling aer command mid-append briefly holds it too. Retry once nothing else " +
                 "holds the ledger; for a decision, the workflow's latest attempt must be Paused " +

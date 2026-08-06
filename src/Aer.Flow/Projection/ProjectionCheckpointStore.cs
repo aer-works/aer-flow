@@ -4,7 +4,7 @@ using Aer.Flow.Store;
 namespace Aer.Flow.Projection;
 
 /// <summary>
-/// Persistence store for task/room projection checkpoints (#903 Scope 1).
+/// Persistence store for room projection checkpoints (#903 Scope 1).
 /// Checkpoints are saved under <c>.aer/checkpoint.json</c> inside the room directory.
 /// </summary>
 public static class ProjectionCheckpointStore

@@ -1,7 +1,7 @@
 namespace Aer.Flow.Artifacts;
 
 /// <summary>
-/// M24 / ADR 0009: Keep/durable marker file for runs/tasks, following the
+/// M24 / ADR 0009: Keep/durable marker file for rooms, following the
 /// <c>RoomLifecycle</c> archived idiom (<c>.aer/keep</c>).
 /// A run marked with keep is exempt from artifact pruning (§973).
 /// </summary>

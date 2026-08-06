@@ -53,7 +53,7 @@ public sealed partial class PausedStepViewModel : ObservableObject
     public IReadOnlyList<SendBackTargetViewModel> SendBackTargets { get; }
 
     /// <summary>
-    /// Whether this step's actions may be invoked — false while the UI's own pump holds the task's
+    /// Whether this step's actions may be invoked — false while the UI's own pump holds the room's
     /// lock for any mutation (this decision or another one), driven by <see cref="MainWindowViewModel.IsMutationInFlight"/>.
     /// A <see cref="RelayCommandAttribute"/> <c>CanExecute</c> predicate, not a plain field, so the
     /// bound buttons' enabled state updates the moment it changes rather than only on the next render.

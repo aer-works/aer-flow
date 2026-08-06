@@ -14,7 +14,7 @@
        worth defending" exclusion) made the tradeoff explicit. -->
   <ItemGroup>
     <!-- M19 Phase 2 (#187): the remote-ready seam — everything presentation-agnostic (projection
-         loaders/projectors, ViewModels, task-session orchestration) lives in Aer.Ui.Core, which
+         loaders/projectors, ViewModels, room orchestration) lives in Aer.Ui.Core, which
          carries no Avalonia reference; this project is the Avalonia skin over it. Aer.Flow /
          Aer.Cli / Aer.Adapters flow transitively through it (the M15 Phase 1 in-process mutation
          seam and M11 Phase 3 adapter-registry seam are unchanged, just re-homed). -->

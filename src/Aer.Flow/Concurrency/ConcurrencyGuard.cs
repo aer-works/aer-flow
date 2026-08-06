@@ -4,9 +4,10 @@ using System.Text.Json;
 namespace Aer.Flow.Concurrency;
 
 /// <summary>
-/// Enforces spec §15: at most one Flow instance may mutate a given task's workflow state at a
+/// record-once-ok: #443 spec/aer-flow-behavioral-spec-v1.0.md
+/// Enforces spec §15: at most one Flow instance may mutate a given room's workflow state at a
 /// time. Backed by a kernel-held advisory file lock (<see cref="FileShare.None"/> on a
-/// <see cref="FileStream"/>) scoped to the task's own directory — deliberately not a sentinel
+/// <see cref="FileStream"/>) scoped to the room's own directory — deliberately not a sentinel
 /// file, whose mere existence would signal "locked" and would survive a crash requiring manual
 /// clearing. The OS releases a <see cref="FileStream"/>'s lock the instant its owning process
 /// exits, crashed or not, so a crashed holder never leaves a stale lock behind.
@@ -63,7 +64,7 @@ public sealed class ConcurrencyGuard : IDisposable
     /// <paramref name="within"/> elapses instead of failing on the first attempt.
     /// <para>
     /// This is opt-in, and <see cref="Acquire"/> deliberately stays fail-fast: for an
-    /// <c>aer run</c> pump, losing the lock means another pump owns this task and waiting for it is
+    /// <c>aer run</c> pump, losing the lock means another pump owns this room and waiting for it is
     /// exactly the wrong behaviour. What this exists for is the opposite case — a holder known to
     /// let go in milliseconds, where failing fast turns a routine overlap into a user-visible
     /// error. #857: the room sweep takes this same lock while escalating a newly-appeared memory
@@ -165,7 +166,7 @@ public sealed class ConcurrencyGuard : IDisposable
             "'aer run' pump, or a background component that takes this directory's lock briefly (a room's " +
             "memory-proposal sweep does this while escalating a new proposal). A live in-flight execution " +
             "can only be reached from the pump process itself (Ctrl+C); 'aer cancel' from a second " +
-            "terminal reaches only idle tasks — a crashed pump's orphaned executions, or pending " +
+            "terminal reaches only idle rooms — a crashed pump's orphaned executions, or pending " +
             "non-process work.";
 
         if (holder != null && !string.IsNullOrWhiteSpace(holder.HolderDescription))

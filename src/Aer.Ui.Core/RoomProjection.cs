@@ -4,7 +4,7 @@ namespace Aer.Ui.Core;
 
 /// <summary>
 /// A room directory's projected state, reconstructed purely from durable data (UI spec §3, §11):
-/// the bound <see cref="WorkflowDefinitionSnapshot"/> a task is permanently attached to, the
+/// the bound <see cref="WorkflowDefinitionSnapshot"/> a room is permanently attached to, the
 /// <see cref="FlowState"/> that snapshot and its Flow Event Store project to, and the fuller
 /// <see cref="ExecutionHistory"/> that state alone doesn't carry (M14 Phase 2, issue #119). The
 /// Snapshot/State pairing is deliberately the same one <c>Aer.Cli.CommandResult</c> uses on the

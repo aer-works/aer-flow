@@ -12,7 +12,7 @@ namespace Aer.Cli;
 /// <summary>
 /// <c>aer cancel</c> (M12 Phase 2): exposes <see cref="MutationInterface.RequestCancellationAsync"/>
 /// on the CLI. Unlike <see cref="RunCommand"/>, this never binds a fresh snapshot — §11.2's rule that
-/// mutation commands only ever act against a task <c>aer run</c> has already started — and, like
+/// mutation commands only ever act against a room <c>aer run</c> has already started — and, like
 /// every mutation entry point, is itself a pump: recording the cancellation intent resumes driving
 /// the rest of the workflow to its next fixed point (§21).
 /// </summary>
@@ -62,7 +62,7 @@ public static class CancelCommand
         {
             throw new SnapshotLoadException(
                 $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer cancel' " +
-                "targets a task 'aer run' has already started, and never binds one fresh.");
+                "targets a room 'aer run' has already started, and never binds one fresh.");
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
@@ -72,7 +72,7 @@ public static class CancelCommand
         var (provisionedConfig, provisionedWorktrees, _) =
             WorktreeWorkspaces.ProvisionLazily(bindingConfig, options.RoomDirectoryPath);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
-        // Lazy (#662): cancel targets a task 'aer run' already started — it does not need to know how
+        // Lazy (#662): cancel targets a room 'aer run' already started — it does not need to know how
         // to dispatch a worker it will never dispatch, so a bindings file naming an unresolvable one
         // must not block cancelling a different, already-dispatched execution.
         var workerBindings = WorkerBindingResolver.ResolveLazily(

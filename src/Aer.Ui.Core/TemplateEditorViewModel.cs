@@ -176,8 +176,8 @@ public sealed partial class TemplateEditorViewModel : ObservableObject
     /// <c>WorkflowTemplateVersion</c> unless the user explicitly set a different version (respected
     /// as-is, exactly like a hand-editor); a no-op save writes nothing and increments nothing; a
     /// brand-new template's first save has no predecessor, so it saves the version as entered.
-    /// Deliberately not gated on any mutation-in-flight flag: a template file is not durable task
-    /// state, no §15 task lock is involved (UI spec §5).
+    /// Deliberately not gated on any mutation-in-flight flag: a template file is not durable room
+    /// state, no §15 room lock is involved (UI spec §5).
     /// </summary>
     public async Task SaveToFileAsync(string templateFilePath, CancellationToken cancellationToken = default)
     {

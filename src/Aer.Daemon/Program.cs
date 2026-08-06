@@ -182,7 +182,7 @@ namespace Aer.Daemon
 
             // The daemon's live projection/progress fan-out over its connected WebSocket
             // clients, extracted to its own type (#425) — the daemon-side seam #335 makes
-            // per-task (today it broadcasts every task's projection to every socket).
+            // per-room (today it broadcasts every room's projection to every socket).
             var broadcast = new DaemonBroadcast();
 
             // Register RoomClient
@@ -910,10 +910,10 @@ namespace Aer.Daemon
                     return Results.BadRequest("DirectoryPath is required.");
                 }
 
-                // #324: a task whose flow.lock is held by another live writer (a running 'aer run'
+                // #324: a room whose flow.lock is held by another live writer (a running 'aer run'
                 // pump, or this daemon's own background run) is readable but not safe to re-point the
                 // daemon at -- and the projected read succeeds regardless of the lock, so without this
-                // gate the caller would silently latch onto a task another client is actively mutating.
+                // gate the caller would silently latch onto a room another client is actively mutating.
                 // Surface it as a message a UI can show rather than a bare failure.
                 if (ConcurrencyGuard.IsHeld(request.DirectoryPath))
                 {
@@ -951,10 +951,10 @@ namespace Aer.Daemon
                 // #330: unlike /api/rooms/open and /api/templates/run, this endpoint -- the one the
                 // desktop's own RoomClient.RunAsync HTTP branch posts to -- never gave already-
                 // connected clients (a paired phone) any immediate sign that a run just started here.
-                // Best-effort and may no-op for a brand-new task (no snapshot.json until the pump
+                // Best-effort and may no-op for a brand-new room (no snapshot.json until the pump
                 // below binds one): the guaranteed broadcast is still the one RunAsync's own
                 // reopenTaskAsync hook fires on completion. This closes the gap for the common case
-                // this projection already exists -- a resumed/re-run task -- immediately instead of
+                // this projection already exists -- a resumed/re-run room -- immediately instead of
                 // only once the whole pump finishes.
                 session.SetCurrentRoomDirectory(request.DirectoryPath);
                 var immediateOutcome = await session.LoadAsync(request.DirectoryPath);
@@ -1713,7 +1713,7 @@ namespace Aer.Daemon
         /// construction: this runs inside a catch, so it must never throw over the top of the
         /// original error.
         ///
-        /// #828: the same gap exists for both task dispatch endpoints -- they answer 200 before
+        /// #828: the same gap exists for both room dispatch endpoints -- they answer 200 before
         /// their fire-and-forget dispatch body runs, and until now a failure there
         /// (e.g. this directory's <c>WorkflowLockedException</c>, swallowed by
         /// <see cref="RoomClient.RunAsync"/>/<see cref="RoomClient.DecideAsync"/>'s own
@@ -1722,7 +1722,7 @@ namespace Aer.Daemon
         /// the chat call site's "message" label to whatever identifies the failed operation.
         /// <paramref name="error"/> is <c>object</c>, not <see cref="Exception"/>, so a
         /// <see cref="RoomClient.MutationOutcome"/>'s <c>ErrorMessage</c> string -- the only place
-        /// most task-endpoint dispatch failures actually surface, since
+        /// most room-endpoint dispatch failures actually surface, since
         /// <see cref="RoomClient.RunAsync"/>/<see cref="RoomClient.DecideAsync"/>'s in-process
         /// fallback catches every <c>AerFlowException</c> itself and returns normally -- can be
         /// recorded without fabricating an exception instance to wrap it in.
@@ -1754,7 +1754,7 @@ namespace Aer.Daemon
         ///
         /// #590: also the daemon's single-writer-per-vendor-session lock. A chat turn persists its
         /// vendor <c>SessionId</c> into <c>bindings.json</c> (<see cref="ExecuteSessionTurnCoreAsync"/>),
-        /// and both task dispatch endpoints dispatch whatever that file says with no lock of their own
+        /// and both room dispatch endpoints dispatch whatever that file says with no lock of their own
         /// (see <see cref="SessionDirectoryDispatchSerializationTests"/> for guard details),
         /// so this in-process lock is the only thing that serializes concurrent dispatches. Keyed by
         /// directory rather than the vendor session id itself because the id is re-minted on handoff
@@ -2078,7 +2078,7 @@ namespace Aer.Daemon
                         // #354: reaching here means the anchor is not observably Paused -- but the old
                         // code treated that as an unconditional "nothing of value exists, delete and
                         // re-run", a two-way test over a multi-state DAG. Re-materializing wipes this
-                        // task's snapshot.json / flow.jsonl / artifacts, so it is only safe when the
+                        // room's snapshot.json / flow.jsonl / artifacts, so it is only safe when the
                         // flow genuinely has no live state to lose or corrupt (see
                         // IsSessionSafeToReMaterialize): nothing Running (the anchor's own rerun is
                         // auto-triggered by §11.3 condition 2 once "chat" succeeds, so there is a

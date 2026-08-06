@@ -77,14 +77,14 @@ public sealed partial class RoomClient
                 }
                 else if (meta != null && !meta.HasRunningRooms)
                 {
-                    // Version skew! Force shutdown running daemon to respawn updated one (safe since no tasks are running)
+                    // Version skew! Force shutdown running daemon to respawn updated one (safe since no rooms are running)
                     await _httpClient.PostAsync($"{_activeDaemonUrl}/api/daemon/shutdown", null, cancellationToken).ConfigureAwait(true);
                     await Task.Delay(500, cancellationToken).ConfigureAwait(true);
                 }
                 else
                 {
-                    // Version skew, but daemon has running tasks in flight. We must not terminate it;
-                    // continue using the running daemon to preserve task integrity.
+                    // Version skew, but daemon has running rooms in flight. We must not terminate it;
+                    // continue using the running daemon to preserve room integrity.
                     _isClientMode = true;
                     await StartWebSocketListenerAsync(_activeDaemonUrl, token, cancellationToken).ConfigureAwait(true);
                     return true;
@@ -402,7 +402,7 @@ public sealed partial class RoomClient
     // frame now has *two* consumers: the list, which wants all of them, and the detail pane, which
     // still wants only the one being viewed. That is deliberately expressed as two consumers of one
     // frame rather than as a loosened filter — ShouldApplyProjectionPush's directory equality is
-    // what fixed #262 (one client opening a different task corrupting every other client's view,
+    // what fixed #262 (one client opening a different room corrupting every other client's view,
     // mislabeled under whatever directory the victim had open), and widening it would resurrect
     // exactly that. Routing pushes at the server so a client is not sent what it will discard is
     // #446; this filter stays afterwards as defence in depth — a subscription bug should cost

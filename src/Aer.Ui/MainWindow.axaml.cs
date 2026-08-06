@@ -404,7 +404,7 @@ public partial class MainWindow : Window
             }
         };
         // M19 Phase 4 (#189): Save & Run without leaving the flow — each run gets a fresh room
-        // directory beside the authored files (one workspace per workflow, tasks inside it), then
+        // directory beside the authored files (one workspace per workflow, rooms inside it), then
         // the shell navigates to the Task view and drives the same RunAsync as the Run button.
         ViewModel.NewWorkflow.RunRequested += async (workflowFilePath, bindingsFilePath) =>
         {
@@ -545,13 +545,13 @@ public partial class MainWindow : Window
     /// <see cref="LoadAsync"/>, then — only on success — records it as the most recently opened
     /// directory and starts/stops live re-projection (M14 Phase 2, issue #119) depending on whether
     /// the projected workflow has reached a terminal state. This is what <see cref="OpenButton"/>
-    /// and a Home task card's Open both call; <see cref="App"/>'s CLI-argument
+    /// and a Home room card's Open both call; <see cref="App"/>'s CLI-argument
     /// launch path calls it too, so a directory opened that way is remembered exactly like one
     /// opened by hand.
     /// <para>
     /// If <paramref name="roomDirectoryPath"/> names a file rather than a directory, it is opened as
     /// a raw <c>WorkflowDefinition</c> template instead (M14 Phase 3, issue #120: the DAG view
-    /// renders both bound tasks and not-yet-instantiated templates). A template is not a task —
+    /// renders both bound rooms and not-yet-instantiated templates). A template is not a room —
     /// there is no execution state to remember a re-projection cadence for, so it is neither
     /// recorded to <see cref="LocalUiConfigurationStore"/> (that store is room-directory recents
     /// specifically, per its Phase 2 decision of record) nor live-refreshed.
@@ -574,7 +574,7 @@ public partial class MainWindow : Window
     /// Fire-and-forget, matching every other event-handler entry point in this file. An unloadable
     /// directory is not an exception — <see cref="LoadAsync"/> renders <c>outcome.ErrorMessage</c>
     /// into the detail pane's status line, and the selection stays where the user put it. Anything
-    /// that does throw here faults this task unobserved, which is the pre-existing shape of every
+    /// that does throw here faults this room unobserved, which is the pre-existing shape of every
     /// <c>_ = SomethingAsync()</c> in this file rather than something new; a general answer for
     /// surfacing background-work failures in the UI belongs with #462, not bolted on here.
     /// </remarks>
@@ -639,7 +639,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// The mutation seam this phase exists to prove (issue #137): a Run action that either starts a
-    /// fresh task from <paramref name="workflowTemplateFilePath"/> + <paramref name="bindingsFilePath"/>,
+    /// fresh room from <paramref name="workflowTemplateFilePath"/> + <paramref name="bindingsFilePath"/>,
     /// or resumes an already-bound <paramref name="roomDirectoryPath"/> after a pause or stop — the
     /// same <c>RunCommand.ExecuteAsync</c> call <c>aer run</c> makes, reused in-process rather than
     /// spawning the installed binary (the seam decision this phase resolves). Bindings are never
@@ -858,13 +858,13 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The Run button's click handler (review follow-up, issue #250): on a task that hasn't
-    /// finished, this is exactly the old unconditional resume-in-place call. On a finished task —
+    /// The Run button's click handler (review follow-up, issue #250): on a room that hasn't
+    /// finished, this is exactly the old unconditional resume-in-place call. On a finished room —
     /// <see cref="MainWindowViewModel.IsTaskFinished"/> — resuming the same directory is a proven
-    /// no-op (see that property's remarks), so this clones the currently-open task's recorded
-    /// <c>.aer/workflow-path</c>/bindings file into a fresh sibling <c>task-{timestamp}</c> directory
+    /// no-op (see that property's remarks), so this clones the currently-open room's recorded
+    /// <c>.aer/workflow-path</c>/bindings file into a fresh sibling <c>room-{timestamp}</c> directory
     /// instead, the same naming <see cref="MainWindow"/>'s "Save &amp; Run" and template flows
-    /// already use, and runs that. The finished task's own directory is left untouched.
+    /// already use, and runs that. The finished room's own directory is left untouched.
     /// </summary>
     private async Task OnRunButtonClickAsync()
     {
@@ -918,7 +918,8 @@ public partial class MainWindow : Window
     /// legitimately do the same) — a no-op save writes nothing and increments nothing, and a
     /// brand-new template's first save has no predecessor to distinguish from, so it saves the
     /// version as entered. Deliberately not gated on <see cref="MainWindowViewModel.IsMutationInFlight"/>:
-    /// a template file is not durable task state, no §15 task lock is involved, and an edit is
+    /// record-once-ok: #443 src/Aer.Ui.Core/TemplateEditorViewModel.cs
+    /// a template file is not durable room state, no §15 room lock is involved, and an edit is
     /// visible only to future instantiations regardless (UI spec §5).
     /// </summary>
     public async Task SaveTemplateAsync(string templateFilePath, CancellationToken cancellationToken = default)
@@ -934,7 +935,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Opens <paramref name="bindingsFilePath"/> into the bindings editor (M16 Phase 4, issue #153)
     /// via <see cref="BindingsProjectionLoader"/> — never a second parser. Bindings are a UI/CLI
-    /// input, never durable task state (UI spec §4, §9; M14 Phase 2's decision of record), so unlike
+    /// input, never durable room state (UI spec §4, §9; M14 Phase 2's decision of record), so unlike
     /// <see cref="OpenAsync"/> there is no read-only counterpart this editor has to stay separate
     /// from: authoring is the only surface a bindings file has in this UI.
     /// </summary>
@@ -1013,7 +1014,7 @@ public partial class MainWindow : Window
             }
         }
 
-        // While the poller is observing an open task, a visible Home stays live too — the cards
+        // While the poller is observing an open room, a visible Home stays live too — the cards
         // and inbox ride the same tick rather than owning a second timer (HomeViewModel's
         // scan-scope decision of record).
         if (ViewModel.IsHomeVisible)
@@ -1164,7 +1165,7 @@ public partial class MainWindow : Window
         return result;
     }
 
-    /// <summary>Clears every read-only projection panel — the error-path counterpart of a successful render, shared by task and template loads.</summary>
+    /// <summary>Clears every read-only projection panel — the error-path counterpart of a successful render, shared by room and template loads.</summary>
     private void ClearProjectionPanels()
     {
         _lastRenderedProjectionFingerprint = null;
@@ -1185,8 +1186,8 @@ public partial class MainWindow : Window
     /// Renders a raw, not-yet-instantiated <see cref="WorkflowDefinition"/> template's DAG
     /// (M14 Phase 3, issue #120; UI spec §5, §10) — the counterpart to <see cref="LoadAsync"/> for
     /// paths that name a file rather than a room directory. There is no <see cref="FlowState"/> to
-    /// overlay (a template is not bound to any task, so it has never executed) and no execution
-    /// history/decisions/supplementary-execution surface either — those are all per-task facts;
+    /// overlay (a template is not bound to any room, so it has never executed) and no execution
+    /// history/decisions/supplementary-execution surface either — those are all per-room facts;
     /// only the graph itself is meaningful for a template.
     /// </summary>
     private async Task LoadTemplateAsync(string templateFilePath, CancellationToken cancellationToken)
@@ -1248,21 +1249,21 @@ public partial class MainWindow : Window
     /// by lines (one per <see cref="DagEdge"/>): solid for an ordinary <c>DependsOn</c> dependency,
     /// dashed for a declared <c>PausePoint.SupersedeTargets</c> entry (UI spec §10; issue #120).
     /// <paramref name="statusByStepId"/> is <c>null</c> for a raw template — nothing to overlay — or
-    /// populated from the bound task's <see cref="FlowState"/> for a real room directory; either way
+    /// populated from the bound room's <see cref="FlowState"/> for a real room directory; either way
     /// every node still renders, just without a status-derived background in the template case.
     /// </summary>
     private void RenderDag(IReadOnlyList<WorkflowStepDefinition> steps, IReadOnlyDictionary<StepId, StepStatus>? statusByStepId)
         => RenderDag(
             DagLayoutEngine.Layout(steps), DagCanvas, statusByStepId,
-            // M19 Phase 3 (#188): a node click opens that step's drill-in — task canvas only; the
-            // template editor's preview has no task state to drill into.
+            // M19 Phase 3 (#188): a node click opens that step's drill-in — room canvas only; the
+            // template editor's preview has no room state to drill into.
             onNodeSelect: stepId => ViewModel.SelectStepById(stepId.Value));
 
     /// <summary>
     /// Re-layouts and renders <see cref="TemplateEditorViewModel.PreviewLayout"/> into
     /// <see cref="TemplateEditorDagCanvas"/> (M16 Phase 2, issue #151) — a dedicated canvas, not the
     /// read-only <see cref="DagCanvas"/>, so the editor's live preview can never collide with an
-    /// independently-opened task or template's read-only rendering (Phase 1's separate-surfaces
+    /// independently-opened room or template's read-only rendering (Phase 1's separate-surfaces
     /// decision, extended to the graph view). <see langword="null"/> (an invalid or empty in-progress
     /// graph) clears the canvas rather than rendering a stale layout.
     /// </summary>
@@ -1322,7 +1323,7 @@ public partial class MainWindow : Window
         foreach (var node in layout.Nodes)
         {
             var status = statusByStepId?.GetValueOrDefault(node.StepId);
-            // A bound task's node carries its status as border + tint (the one status system);
+            // A bound room's node carries its status as border + tint (the one status system);
             // a raw template's node is a plain surface — nothing has executed, nothing to say.
             var (borderBrush, background) = status is { } knownStatus && StatusTokenKeys.TryGetValue(knownStatus, out var keys)
                 ? (Token(keys.Border), Token(keys.Background))
@@ -1494,7 +1495,7 @@ public partial class MainWindow : Window
     /// Window-close semantics with a pump in flight (issue #140): the first <c>Closing</c> is
     /// cancelled and treated as a Stop request instead of a silent abandonment — the CLI's Ctrl+C
     /// equivalent still fires even though there is no terminal to Ctrl+C in. Once the retained pump
-    /// task has actually reached its fixed point (<see cref="RunAsync"/>/<see cref="DecideAsync"/>'s
+    /// room has actually reached its fixed point (<see cref="RunAsync"/>/<see cref="DecideAsync"/>'s
     /// own <c>finally</c> already reflects that in the projection via their trailing
     /// <see cref="OpenAsync"/>), this closes the window for real — a plain, uncancelled close, since
     /// <see cref="_closeConfirmed"/> is now set.
@@ -1580,7 +1581,7 @@ public partial class MainWindow : Window
         catch
         {
             // RunAsync/DecideAsync's own try/catch already renders any AerFlowException as an
-            // in-window message on their own await of this same task; this second await exists only
+            // in-window message on their own await of this same room; this second await exists only
             // to learn that the pump has reached a fixed point, not to re-observe its outcome.
         }
 
@@ -1862,7 +1863,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// The snapshot-vs-template diff surface (UI spec §5; M14 Phase 4, issue #121): loads
     /// <paramref name="templateFilePath"/> via <see cref="TemplateProjectionLoader"/> and compares it
-    /// against the currently open task's bound snapshot via <see cref="SnapshotTemplateDiffer"/>.
+    /// against the currently open room's bound snapshot via <see cref="SnapshotTemplateDiffer"/>.
     /// Requires a room directory to already be open — <see cref="RoomClient.LastSnapshot"/> is only ever set by
     /// <see cref="LoadAsync"/>'s success path, never by opening a raw template on its own, since a
     /// template with nothing bound to it has nothing to diff against.
@@ -1961,7 +1962,7 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Rebuilds Home's task cards and decision inbox from Local UI Configuration + durable task contents (M19 Phase 2, #187) — the successor of the M14 recents panel, now HomeViewModel's own read model.</summary>
+    /// <summary>Rebuilds Home's room cards and decision inbox from Local UI Configuration + durable room contents (M19 Phase 2, #187) — the successor of the M14 recents panel, now HomeViewModel's own read model.</summary>
     private Task RefreshHomeAsync(CancellationToken cancellationToken)
         => ViewModel.Home.RefreshAsync(_session, path => OpenAsync(path), cancellationToken);
 
@@ -1973,12 +1974,12 @@ public partial class MainWindow : Window
     /// <para>
     /// These must refresh together, and the first cut of #336 is why this exists as one call rather
     /// than two adjacent ones. The switcher was populated once at startup and kept live by projection
-    /// pushes thereafter — but a push only ever *updates an existing row*, so a task created after
+    /// pushes thereafter — but a push only ever *updates an existing row*, so a room created after
     /// launch never joined the list at all. Found by running the app, not by a test: a freshly
     /// created session vanished from every surface except the folder picker.
     /// </para>
     /// <para>
-    /// Deliberately not called from the live-refresh poller tick — that fires repeatedly while a task
+    /// Deliberately not called from the live-refresh poller tick — that fires repeatedly while a room
     /// runs, and a full fleet re-fetch per tick would be pure waste. Status changes are exactly what
     /// the push fan-out already carries; this is only for records appearing or disappearing.
     /// </para>
@@ -1992,7 +1993,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Polling, not a <see cref="System.IO.FileSystemWatcher"/> (issue #119's named open question):
     /// simplest thing that works identically across the win/linux/mac CI matrix without depending on
-    /// a given filesystem's watch semantics inside a container. Runs only while a task is open and
+    /// a given filesystem's watch semantics inside a container. Runs only while a room is open and
     /// not yet <see cref="WorkflowStatus.Terminal"/> — once nothing further can change (spec §12),
     /// there is nothing left to observe.
     /// </summary>

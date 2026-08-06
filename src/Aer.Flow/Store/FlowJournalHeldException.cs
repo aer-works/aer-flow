@@ -3,7 +3,7 @@ namespace Aer.Flow.Store;
 /// <summary>
 /// Raised when opening <c>flow.jsonl</c> fails on a sharing violation — an append open (#816)
 /// or, since #398, a read open. For an append, the holder is most likely a live <c>aer run</c>
-/// engine driving this same task, since that command keeps its <see cref="FlowEventLogWriter"/>
+/// engine driving this same room, since that command keeps its <see cref="FlowEventLogWriter"/>
 /// open for the pump's whole duration rather than per call; but any sibling CLI command's own
 /// transient append can lose the same race. A read open can only lose to a handle that shares
 /// nothing at all — the writer's own <c>FileShare.Read</c> admits readers — e.g. a killed

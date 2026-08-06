@@ -4,7 +4,7 @@ namespace Aer.Adapters;
 /// M24 Phase 5 (#278): archive/unarchive as a directory-native marker file, the same idiom
 /// <see cref="InteractiveSessionMaterializer"/> already uses for <c>.aer/workflow-path</c>/
 /// <c>.aer/bindings-path</c> (plain file, existence/content-checked, never a schema field) — applies
-/// uniformly to DAG tasks and interactive sessions without either type needing a metadata record.
+/// uniformly to DAG rooms and interactive sessions without either type needing a metadata record.
 /// Archiving never touches <c>workflow.json</c>, so the existing collision guard
 /// (<see cref="RoomDirectoryAlreadyExistsException"/>) already blocks re-materializing an archived
 /// name — only <see cref="Directory.Delete(string, bool)"/> actually frees a name.

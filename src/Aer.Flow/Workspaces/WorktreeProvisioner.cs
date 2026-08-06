@@ -4,7 +4,7 @@ using System.Diagnostics;
 namespace Aer.Flow.Workspaces;
 
 /// <summary>
-/// Provisions a git worktree as a worker's workspace and tears it down once the task is Terminal —
+/// Provisions a git worktree as a worker's workspace and tears it down once the room is Terminal —
 /// the engine half of #669, so a reviewer can be dispatched at a branch without a human checking it
 /// out anywhere, and without the review and the ongoing work fighting over one tree.
 ///
@@ -48,7 +48,7 @@ public static class WorktreeProvisioner
     /// <summary>
     /// Creates a git worktree of <paramref name="repository"/> at <paramref name="reference"/> at the
     /// absolute <paramref name="worktreePath"/> — the value the worker's WorkingDirectory then points
-    /// at. The caller owns the path so a task with several workers gives each its own tree (one
+    /// at. The caller owns the path so a room with several workers gives each its own tree (one
     /// worktree per worker, never shared). Validates the spec first (<see cref="ValidateSpec"/>); a git
     /// failure (an unknown ref, a ref already checked out elsewhere) throws
     /// <see cref="WorktreeProvisioningException"/>.
@@ -67,7 +67,7 @@ public static class WorktreeProvisioner
         var (exitCode, _, stderr) = RunGit(repository, "worktree", "add", worktreePath, reference);
         if (exitCode != 0)
         {
-            // Serialized against concurrent provisioning by the task's ConcurrencyGuard; this check also
+            // Serialized against concurrent provisioning by the room's ConcurrencyGuard; this check also
             // handles a leftover worktree from a prior crashed run whose teardown did not complete.
             if (IsRegisteredWorktreeForRef(repository, worktreePath, reference))
             {
@@ -81,8 +81,8 @@ public static class WorktreeProvisioner
     }
 
     /// <summary>
-    /// Removes the worktree at <paramref name="worktreePath"/> once the task is Terminal. <b>Never
-    /// throws</b> — a teardown fault must not fail a task that has already completed. Two of the three
+    /// Removes the worktree at <paramref name="worktreePath"/> once the room is Terminal. <b>Never
+    /// throws</b> — a teardown fault must not fail a room that has already completed. Two of the three
     /// outcomes are not a removal: a tree carrying <b>uncommitted changes is kept</b> (discarding a
     /// worker's only output is worse than leaving a directory behind), and a removal <b>blocked by a
     /// still-held file</b> — a live build process holding an output, observed repeatedly on this host —
@@ -326,7 +326,7 @@ public enum WorktreeTeardownOutcome
 
 /// <summary>
 /// The result of a <see cref="WorktreeProvisioner.Teardown"/> — surfaced, never thrown, so a teardown
-/// fault cannot fail a task that already reached Terminal. <paramref name="Detail"/> is null for a
+/// fault cannot fail a room that already reached Terminal. <paramref name="Detail"/> is null for a
 /// clean removal and carries the reason otherwise.
 /// </summary>
 public sealed record WorktreeTeardownResult(WorktreeTeardownOutcome Outcome, string WorktreePath, string? Detail);

@@ -257,13 +257,13 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Start Room or Task'),
+            title: const Text('Start a Room'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Select Task Type:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Select Room Type:', style: TextStyle(fontWeight: FontWeight.bold)),
                   ...templates.map((t) {
                     final map = caseInsensitive(t as Map<String, dynamic>);
                     final id = map['id'].toString();
@@ -309,7 +309,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                   const SizedBox(height: 12),
                   TextField(
                     controller: roomNameController,
-                    decoration: const InputDecoration(labelText: 'Room / Task Name (Optional)', hintText: 'e.g. my-room'),
+                    decoration: const InputDecoration(labelText: 'Room Name (Optional)', hintText: 'e.g. my-room'),
                   ),
                   const SizedBox(height: 12),
                   TextField(

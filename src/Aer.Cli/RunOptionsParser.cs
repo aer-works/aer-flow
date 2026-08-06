@@ -80,7 +80,7 @@ public static class RunOptionsParser
         }
 
         // Derived from the workflow file's own name when not given, so `aer run workflow.json`
-        // twice in the same directory naturally resumes the same task (§21) rather than each
+        // twice in the same directory naturally resumes the same room (§21) rather than each
         // invocation needing its own explicit --room-dir.
         roomDirectoryPath ??= Path.Combine(
             Directory.GetCurrentDirectory(), ".aer", Path.GetFileNameWithoutExtension(workflowFilePath));

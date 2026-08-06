@@ -83,7 +83,7 @@ public sealed partial class RoomClient
     /// fallback here: <c>ExecuteSessionTurnAsync</c> only exists in <c>Aer.Daemon.Program</c>, and
     /// <c>POST /api/sessions/send</c> itself only confirms the turn was dispatched onto the
     /// daemon's own background task, not that it completed -- the caller observes completion by
-    /// polling <see cref="LoadSessionMetadataAsync"/> the same way every other live task state in
+    /// polling <see cref="LoadSessionMetadataAsync"/> the same way every other live room state in
     /// this app is observed (<c>MainWindow</c>'s existing 2-second poll).
     /// </summary>
     public async Task<MutationOutcome> SendSessionMessageAsync(SendSessionMessageRequest request, CancellationToken cancellationToken = default)

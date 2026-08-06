@@ -14,7 +14,7 @@ namespace Aer.Ui.Core;
 /// New/Open-in-editor/Save bindings actions own all file I/O (the same state-in-VM/IO-in-window
 /// split). This editor only ever touches bindings *files* (UI spec §4, §9) — bindings are
 /// deliberately not template data and are never persisted in a room directory (M14 Phase 2's
-/// decision of record), so nothing here reaches a bound task either.
+/// decision of record), so nothing here reaches a bound room either.
 /// <para>
 /// <b>Dirty-tracking decision of record:</b> unlike <see cref="TemplateEditorViewModel"/>, this
 /// cannot compare baseline-vs-candidate by record <c>==</c>, because a template save's candidate is

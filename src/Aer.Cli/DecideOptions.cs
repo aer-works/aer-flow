@@ -7,7 +7,7 @@ namespace Aer.Cli;
 /// on the CLI). Mirrors <see cref="CancelOptions"/>'s shape: a mutation command never binds a fresh
 /// snapshot (§11.2).
 /// </summary>
-/// <param name="RoomDirectoryPath">An already-started task's durable state directory.</param>
+/// <param name="RoomDirectoryPath">An already-started room's durable state directory.</param>
 /// <param name="ExecutionId">
 /// The execution this decision resolves — the reference the pause-aware output
 /// (<see cref="FlowStateReporter"/>) reports so a terminal user knows what to pass here. Ordinarily

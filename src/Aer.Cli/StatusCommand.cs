@@ -55,14 +55,14 @@ public static class StatusCommand
         var snapshotPath = Path.Combine(options.RoomDirectoryPath, SnapshotFileName);
         var logPath = Path.Combine(options.RoomDirectoryPath, LogFileName);
 
-        // Never Directory.CreateDirectory here (unlike RunCommand): a status probe against a task
+        // Never Directory.CreateDirectory here (unlike RunCommand): a status probe against a room
         // that was never started must report the same typed failure, not conjure the directory
         // into existence as a side effect of looking at it.
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
                 $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer status' " +
-                "projects a task 'aer run' has already started, and never binds one fresh.");
+                "projects a room 'aer run' has already started, and never binds one fresh.");
         }
 
         try

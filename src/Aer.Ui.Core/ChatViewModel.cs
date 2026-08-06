@@ -26,7 +26,7 @@ public sealed record ChatCapabilityItemViewModel(string Name, string Kind, strin
 /// <c>POST /api/sessions/send</c> only confirms a turn was dispatched — the daemon runs it on a
 /// fire-and-forget background task and the response carries no updated metadata at all
 /// (<c>Aer.Daemon.Program</c>'s handler). Completion is observed the same way every other live
-/// task state already is in this app: <c>MainWindow</c>'s existing 2-second poll
+/// room state already is in this app: <c>MainWindow</c>'s existing 2-second poll
 /// (<c>_liveRefreshTimer</c>) reloads <see cref="SessionMetadata"/> and calls
 /// <see cref="LoadFromMetadata"/> again, whose <see cref="Aer.Adapters.SessionTurn"/> count moving
 /// past <see cref="_turnsCountAtSendTime"/> is what flips <see cref="IsSending"/> back off — no
@@ -99,7 +99,7 @@ public sealed partial class ChatViewModel : ObservableObject
     private int _turnsCountAtSendTime;
     private string? _pendingUserMessage;
 
-    /// <summary>Rebuilds <see cref="Messages"/> from a freshly loaded/polled <see cref="SessionMetadata"/> — the chat view's counterpart of <see cref="MainWindowViewModel.RebuildTaskSteps"/>.</summary>
+    /// <summary>Rebuilds <see cref="Messages"/> from a freshly loaded/polled <see cref="SessionMetadata"/> — the chat view's counterpart of <see cref="MainWindowViewModel.RebuildRoomSteps"/>.</summary>
     public void LoadFromMetadata(SessionMetadata metadata, string roomDirectoryPath)
     {
         SessionId = metadata.SessionId;
