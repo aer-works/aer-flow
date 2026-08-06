@@ -495,9 +495,9 @@ def step9_pinned_models_exist():
     with open(tiers_path, encoding="utf-8") as f:
         tier_map = json.load(f)
     for tier_name, tier in tier_map.items():
-        # gemini/agy tiers only -- the claude pins are CLI aliases this step's SCOPE excludes. A tier
+        # agy tiers only -- the claude pins are CLI aliases this step's SCOPE excludes. A tier
         # that omits `model` (the vendor's own default) pins nothing to check.
-        if tier.get("adapter") in ("gemini", "agy") and tier.get("model"):
+        if tier.get("adapter") == "agy" and tier.get("model"):
             pins.append((f"WorkerTiers.json[{tier_name!r}]", tier["model"]))
     if not pins:
         print("    !! WorkerTiers.json defines no gemini tier with a model pin -- the catalog has been"

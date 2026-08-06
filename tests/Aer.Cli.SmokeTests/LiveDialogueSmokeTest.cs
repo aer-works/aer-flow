@@ -115,7 +115,7 @@ public class LiveDialogueSmokeTest
                     "You are debating in favor of the position. Respond in one sentence.",
                     "claude-haiku-4-5-20251001"),
                 DialogueParticipantPresets.For(
-                    "gemini", "responder",
+                    "agy", "responder",
                     "You are debating against the position. Respond in one sentence.",
                     "gemini-3.6-flash-low"),
             ]);

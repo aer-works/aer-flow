@@ -19,7 +19,7 @@ namespace Aer.Workers.Dialogue;
 /// vendor currently plays that side.
 /// </param>
 /// <param name="Vendor">
-/// The vendor this participant is bound to (e.g. <c>"claude"</c>, <c>"gemini"</c>) — recorded on
+/// The vendor this participant is bound to (e.g. <c>"claude"</c>, <c>"agy"</c>) — recorded on
 /// every turn, opaque to this worker beyond that (the same "adapter alone interprets it" reasoning
 /// <c>Aer.Adapters.WorkerInvocation.PermissionScope</c> already establishes).
 /// </param>

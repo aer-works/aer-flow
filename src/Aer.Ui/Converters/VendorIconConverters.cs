@@ -9,7 +9,7 @@ namespace Aer.Ui.Converters;
 /// <summary>
 /// M22 review follow-up (issue #250): adapter name → vendor glyph, the same one-mapping-every-surface
 /// discipline <see cref="StatusIconMap"/> established for step status. Recognizes only the vendors
-/// <c>VendorCliPresence</c> actually probes for (<c>claude</c>, <c>gemini</c>) — no icon for a vendor
+/// <c>VendorCliPresence</c> actually probes for (<c>claude</c>, <c>agy</c>) — no icon for a vendor
 /// this build can't dispatch to.
 /// </summary>
 internal static class VendorIconMap
@@ -17,14 +17,14 @@ internal static class VendorIconMap
     public static string? GeometryKeyFor(string? vendorKey) => vendorKey?.ToLowerInvariant() switch
     {
         "claude" => "Icon.Vendor.Claude",
-        "agy" or "gemini" => "Icon.Vendor.Gemini", // vocabulary-ok: vendor key
+        "agy" => "Icon.Vendor.Gemini", // vocabulary-ok: vendor key
         _ => "Icon.Dot",
     };
 
     public static string? ColorKeyFor(string? vendorKey) => vendorKey?.ToLowerInvariant() switch
     {
         "claude" => "Vendor.Claude",
-        "agy" or "gemini" => "Vendor.Gemini", // vocabulary-ok: vendor key
+        "agy" => "Vendor.Gemini", // vocabulary-ok: vendor key
         _ => "Color.TextSecondary",
     };
 }

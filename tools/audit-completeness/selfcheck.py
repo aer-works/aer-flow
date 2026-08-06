@@ -380,7 +380,7 @@ def _templates_are_dispatchable():
     #
     # `write_files: False` is refused under every shell setting *on an adapter whose withheld writes
     # cannot reach the outbox* -- which since #649 is a per-adapter answer, not a universal one. The
-    # arms below inherit `BUILT_IN["adapter"] == "gemini"`, and that is load-bearing rather than
+    # arms below inherit `BUILT_IN["adapter"] == "agy"`, and that is load-bearing rather than
     # incidental: the same grants dispatch on claude, which the pair above asserts directly. So
     # `grant_refusal` no longer adds up to "writes are always required", and the three conditions
     # cannot be collapsed into one predicate even in principle. The conditions are kept apart for their messages, not their verdicts. Asserted

@@ -276,7 +276,7 @@
                 </StackPanel>
                 <!-- M21 Phase 1 (permission-scope model): the builder is the default, primary path
                      (Blank rows start here) — four grant categories plus a shell-command pattern
-                     allowlist, translated per-vendor by ClaudeWorkerAdapter/GeminiWorkerAdapter.
+                     allowlist, translated per-vendor by ClaudeWorkerAdapter/AgyWorkerAdapter.
                      "Advanced" switches to the pre-existing raw PermissionScope text box for vendor
                      vocabulary the structured model can't express yet. -->
                 <StackPanel Orientation="Horizontal" Spacing="8">
