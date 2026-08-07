@@ -191,9 +191,6 @@
                   <TextBlock Classes="caption secondary" Text="archived"
                              IsVisible="{Binding IsArchived}" />
                 </StackPanel>
-                <TextBlock Classes="caption"
-                           Text="{Binding PausedStepCount, StringFormat='{}{0} awaiting a decision'}"
-                           IsVisible="{Binding HasPausedSteps}" />
               </StackPanel>
             </DataTemplate>
           </ListBox.ItemTemplate>

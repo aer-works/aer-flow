@@ -111,21 +111,23 @@ public sealed partial class RoomsViewModel : ObservableObject
     private void OnItemSelectionChanged() => SelectedCount = Items.Count(i => i.IsSelected);
 
     /// <summary>
-    /// The fleet list's one ordering rule (#336): most recently updated first, ties broken by name so
-    /// the order is *stable* rather than merely sorted — two sessions touched in the same second must
-    /// not swap places on an unrelated refresh, which in a permanently-visible switcher would move a
-    /// row out from under the pointer.
+    /// The fleet list's ordering rule: rooms that need you first (J3, #1051), then most recently
+    /// updated, ties broken by name so the order is *stable* rather than merely sorted — two sessions
+    /// touched in the same second must not swap places on an unrelated refresh, which in a
+    /// permanently-visible switcher would move a row out from under the pointer. Matches the phone's
+    /// waiting-on-you-first order.
     /// </summary>
     /// <remarks>
-    /// This previously ordered by <c>FriendlyName</c> descending, which silently discarded the
-    /// recency order the daemon had already applied (<c>Aer.Daemon.Program</c>'s
+    /// The recency key (#336) previously ordered by <c>FriendlyName</c> descending, which silently
+    /// discarded the recency order the daemon had already applied (<c>Aer.Daemon.Program</c>'s
     /// <c>OrderByDescending(i =&gt; i.Updated)</c>) and contradicted <see cref="RoomFleetItem.Updated"/>'s
-    /// own contract ("the key the fleet list orders by"). The phone showed recency and the desktop
-    /// showed reverse-alphabetical for the same fleet. Sorting here rather than trusting the
+    /// own contract ("the key the fleet list orders by"). Sorting here rather than trusting the
     /// transport keeps local (non-daemon) loads and push-updated rows in the same order as remote ones.
     /// </remarks>
     private static IEnumerable<RoomFleetItem> InFleetOrder(IEnumerable<RoomFleetItem> items) =>
-        items.OrderByDescending(i => i.LastActivityAt ?? i.Updated).ThenBy(i => i.FriendlyName, StringComparer.OrdinalIgnoreCase);
+        items.OrderByDescending(i => i.Status == RoomCardStatus.NeedsYou)
+            .ThenByDescending(i => i.LastActivityAt ?? i.Updated)
+            .ThenBy(i => i.FriendlyName, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Test seam for <see cref="InFleetOrder"/> — same reasoning as <see cref="AddTestItem"/>: the
@@ -363,6 +365,7 @@ public sealed partial class RoomFleetItemViewModel : ObservableObject
         TypeLabel = item.TypeLabel;
         IsSession = item.IsSession;
         statusText = item.StatusText;
+        status = item.Status;
         pausedStepCount = item.PausedStepCount;
         IsArchived = item.IsArchived;
         LastActivityAt = item.LastActivityAt;
@@ -417,10 +420,9 @@ public sealed partial class RoomFleetItemViewModel : ObservableObject
     /// <summary>
     /// This row's status as a mark-bearing state rather than a string (#461's vocabulary), so the
     /// switcher draws the same silhouette for the same state as Home's cards do — decision 0006's
-    /// rule 2 is only worth anything if every surface honours it. Null until a projection push
-    /// (<see cref="ApplyProjection"/>) sets it: the fleet now carries a canonical
-    /// <see cref="RoomFleetItem.Status"/> too (#1049), but wiring this row's mark from it on load is
-    /// slice 2b (the desktop switcher half of J3), so on-load it deliberately stays unknown for now.
+    /// rule 2 is only worth anything if every surface honours it. Seeded on load from the fleet's
+    /// canonical <see cref="RoomFleetItem.Status"/> (#1051), then kept live by projection pushes
+    /// (<see cref="ApplyProjection"/>). Null only for a never-run room the fleet reports no state for.
     /// </summary>
     [ObservableProperty]
     private RoomCardStatus? status;

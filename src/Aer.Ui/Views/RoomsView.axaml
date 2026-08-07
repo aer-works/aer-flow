@@ -66,8 +66,6 @@
                                IsVisible="{Binding IsArchived}" />
                   </StackPanel>
                   <TextBlock Classes="secondary" Text="{Binding StatusText}" />
-                  <TextBlock Classes="caption" Text="{Binding PausedStepCount, StringFormat='{}{0} step(s) awaiting a decision'}"
-                             IsVisible="{Binding HasPausedSteps}" />
                   <TextBlock Classes="caption" Text="{Binding RoomDirectoryPath}" />
                   <TextBlock Classes="caption secondary" Foreground="{DynamicResource Status.Failed}"
                              TextWrapping="Wrap" Text="{Binding RowErrorText}"
