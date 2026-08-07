@@ -112,8 +112,45 @@ public static class MemoryProposalResolution
         var citation = new HeldWorkCitation(
             @ref.Value, approve ? ApprovedEventType : RejectedEventType);
 
-        return await RoomMutationInterface.ResolveHeldWorkLockedAsync(
+        var resolvedState = await RoomMutationInterface.ResolveHeldWorkLockedAsync(
             @ref, citation, existingEvents, state, writer, cancellationToken).ConfigureAwait(false);
+
+        if (item.Shape == MemoryProposalEscalation.MemoryProposalShape)
+        {
+            // #1039: consume the capture file now that the proposal is resolved on the journal.
+            // MemoryProposalEscalation dedups on HeldWork.ContainsKey(@ref), which the projector only
+            // holds while the resolve event is in the journal. Once #1025's retention sweep compacts
+            // that event away, an un-consumed proposal-*.json is re-found by the per-wake escalation
+            // and re-dispatched -- re-surfacing an already-decided proposal (and re-recording a memory
+            // version on re-approval). Deleting the file makes the path-derived ref genuinely one-shot,
+            // which is the execution-scoped-ref premise the compaction design rests on, rather than
+            // relying on the journal never being compacted.
+            //
+            // AFTER the resolve append, never before: a crash in the gap leaves the file on disk with
+            // the item already Resolved in the journal, so the ContainsKey guard still skips it until
+            // compaction -- no worse than the pre-#1039 behaviour.
+            TryDeleteResolvedCaptureFile(@ref.Value);
+        }
+
+        return resolvedState;
+    }
+
+    private static void TryDeleteResolvedCaptureFile(string captureFilePath)
+    {
+        try
+        {
+            File.Delete(captureFilePath);
+        }
+        catch (Exception ex)
+        {
+            // Deliberate, narrow exception to this repo's "log and rethrow, or map to a structured
+            // result" error-handling rule: the resolve already landed on the journal -- the operator's
+            // action succeeded and its result is already being returned -- so rethrowing would misreport
+            // an applied mutation as failed. A failed delete is degraded-but-safe (the pre-compaction
+            // ContainsKey guard still covers re-dispatch), so this one path logs and continues.
+            Console.Error.WriteLine(
+                $"MemoryProposalResolution: failed to delete resolved capture file '{captureFilePath}': {ex.Message}");
+        }
     }
 
     // Path-derived attribution is an honest stopgap: proposals do not yet carry a producerId

@@ -175,55 +175,43 @@ public class RoomJournalCompactorTests
         Assert.NotEqual(before, after);
     }
 
+    /// <summary>
+    /// Generic-shape (non-memory-proposal) invariant: journal compaction must not break
+    /// <see cref="RoomMutationInterface"/>'s own dispatch dedup. After a resolved run is compacted away,
+    /// a genuinely fresh dispatch is admitted and re-dispatching that same fresh ref is still rejected.
+    /// The memory-proposal path's compaction safety is pinned separately in
+    /// <c>MemoryProposalEscalationTests.A_resolved_proposal_is_not_re_dispatched_after_the_journal_is_compacted</c>
+    /// via the capture-file consume; this arm keeps coverage of the plain dispatch guard through compaction.
+    /// </summary>
     [Fact]
-    public async Task Compacted_room_with_resolved_run_allows_new_execution_dispatch_and_maintains_dedup()
+    public async Task After_compaction_a_fresh_generic_dispatch_is_admitted_and_its_duplicate_still_rejected()
     {
-        var workflowDir = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "aer_wf_test_" + Guid.NewGuid().ToString("n")));
-        var refResolved = new HeldWorkRef(workflowDir);
-        var dispatchResolved = new RoomEvent.HeldWorkDispatched(refResolved, "shape-1", TimeSpan.FromMinutes(5), "human");
-        var resolveResolved = new RoomEvent.HeldWorkResolved(refResolved, new HeldWorkCitation("Resolved", "ok"));
-
-        var roomDir = await CreateTestRoomAsync(dispatchResolved, resolveResolved);
+        var resolvedDir = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "aer_wf_resolved_" + Guid.NewGuid().ToString("n")));
+        var refResolved = new HeldWorkRef(resolvedDir);
+        var roomDir = await CreateTestRoomAsync(
+            new RoomEvent.HeldWorkDispatched(refResolved, "generic-shape", TimeSpan.FromMinutes(5), "human"),
+            new RoomEvent.HeldWorkResolved(refResolved, new HeldWorkCitation("Resolved", "ok")));
         try
         {
+            Assert.True(await RoomJournalCompactor.CompactAsync(roomDir, TestContext.Current.CancellationToken));
+
             var roomLogPath = Path.Combine(roomDir, "room.jsonl");
-
-            var compacted = await RoomJournalCompactor.CompactAsync(roomDir, TestContext.Current.CancellationToken);
-            Assert.True(compacted);
-
             var reader = new RoomEventLogReader(roomLogPath);
             await using var writer = new RoomEventLogWriter(roomLogPath);
 
-            var compactedEvents = await reader.ReadAllRoomEventsAsync(TestContext.Current.CancellationToken);
-            var roomStateCompacted = RoomProjector.Project(compactedEvents);
-            Assert.False(roomStateCompacted.HeldWork.ContainsKey(refResolved));
+            var freshDir = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "aer_wf_fresh_" + Guid.NewGuid().ToString("n")));
+            var refFresh = new HeldWorkRef(freshDir);
 
-            var newWorkflowDir = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "aer_wf_test_new_" + Guid.NewGuid().ToString("n")));
-            var refNew = new HeldWorkRef(newWorkflowDir);
-
-            var stateAfterNewDispatch = await RoomMutationInterface.DispatchHeldWorkAsync(
-                roomDir,
-                refNew,
-                "shape-2",
-                TimeSpan.FromMinutes(5),
-                "human",
-                reader,
-                writer,
-                TestContext.Current.CancellationToken);
-
-            Assert.True(stateAfterNewDispatch.HeldWork.ContainsKey(refNew));
-            Assert.False(stateAfterNewDispatch.HeldWork.ContainsKey(refResolved));
+            var afterDispatch = await RoomMutationInterface.DispatchHeldWorkAsync(
+                roomDir, refFresh, "generic-shape", TimeSpan.FromMinutes(5), "human",
+                reader, writer, TestContext.Current.CancellationToken);
+            Assert.True(afterDispatch.HeldWork.ContainsKey(refFresh));
+            Assert.False(afterDispatch.HeldWork.ContainsKey(refResolved));
 
             await Assert.ThrowsAsync<InvalidRoomMutationException>(() =>
                 RoomMutationInterface.DispatchHeldWorkAsync(
-                    roomDir,
-                    refNew,
-                    "shape-2",
-                    TimeSpan.FromMinutes(5),
-                    "human",
-                    reader,
-                    writer,
-                    TestContext.Current.CancellationToken));
+                    roomDir, refFresh, "generic-shape", TimeSpan.FromMinutes(5), "human",
+                    reader, writer, TestContext.Current.CancellationToken));
         }
         finally
         {

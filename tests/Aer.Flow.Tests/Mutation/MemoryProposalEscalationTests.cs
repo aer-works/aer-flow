@@ -267,6 +267,82 @@ public class MemoryProposalEscalationForRoomTests : IDisposable
         Assert.Empty(state.HeldWork);
     }
 
+    /// <summary>
+    /// #1039 / #1025 (the load-bearing invariant the retention sweep rests on). The escalation loop
+    /// dedups on <c>HeldWork.ContainsKey(@ref)</c>, and the projector only holds a resolved ref while
+    /// its resolve event is still in the journal. Journal compaction (what #1025 automates) drops that
+    /// event — so the dedup key vanishes. Resolving a proposal therefore now CONSUMES its capture file
+    /// (<see cref="MemoryProposalResolution"/>), making the path-derived ref genuinely one-shot: after
+    /// compaction there is no file left to re-escalate.
+    /// <para>
+    /// The weaker "re-dispatch a fresh ref after compaction" test this replaces passed whether or not
+    /// the file was consumed, because it never touched the resolved ref's own path. The positive-control
+    /// arm here restores the capture file and asserts the same post-compaction sweep DOES re-dispatch it,
+    /// so the primary arm's "no re-dispatch" is a real observation and not a vacuous pass.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_resolved_proposal_is_not_re_dispatched_after_the_journal_is_compacted()
+    {
+        var room = Path.Combine(_tempDirectory, "room-compact");
+        Directory.CreateDirectory(room);
+        WriteCapture(room, "exec1", "proposal-1.json");
+        var captureFile = Path.GetFullPath(
+            Path.Combine(room, "artifacts", "execution_exec1", "memory-proposals", "proposal-1.json"));
+        var @ref = new HeldWorkRef(captureFile);
+        var roomLogPath = Path.Combine(room, "room.jsonl");
+
+        // Dispatch it, then resolve it. Reject (approve: false) skips the memory apply but still
+        // consumes the capture file — exactly the path whose durability we are pinning.
+        {
+            var reader = new RoomEventLogReader(roomLogPath);
+            await using var writer = new RoomEventLogWriter(roomLogPath);
+            var dispatched = await MemoryProposalEscalation.EscalateNewProposalsForRoomAsync(
+                room, "operator", reader, writer, TestContext.Current.CancellationToken);
+            Assert.Equal(HeldWorkStatus.Dispatched, dispatched.HeldWork[@ref].Status);
+
+            var resolved = await MemoryProposalResolution.ResolveAsync(
+                room, @ref, approve: false, reader, writer, TestContext.Current.CancellationToken);
+            Assert.Equal(HeldWorkStatus.Resolved, resolved.HeldWork[@ref].Status);
+        }
+
+        // The consume-on-resolve fix removes the capture file.
+        Assert.False(File.Exists(captureFile));
+
+        // Compaction drops the resolved dispatch/resolve pair, so the dedup key is gone from the journal.
+        Assert.True(await RoomJournalCompactor.CompactAsync(room, TestContext.Current.CancellationToken));
+        {
+            var reader = new RoomEventLogReader(roomLogPath);
+            var afterCompaction = RoomProjector.Project(
+                await reader.ReadAllRoomEventsAsync(TestContext.Current.CancellationToken));
+            Assert.False(afterCompaction.HeldWork.ContainsKey(@ref));
+        }
+
+        // Primary arm: with the file consumed, the post-compaction sweep finds nothing to re-dispatch.
+        {
+            var reader = new RoomEventLogReader(roomLogPath);
+            await using var writer = new RoomEventLogWriter(roomLogPath);
+            var reSwept = await MemoryProposalEscalation.EscalateNewProposalsForRoomAsync(
+                room, "operator", reader, writer, TestContext.Current.CancellationToken);
+            Assert.Empty(reSwept.HeldWork);
+        }
+
+        // Positive control: restore the capture file (the un-consumed pre-#1039 state) and the SAME
+        // post-compaction sweep re-dispatches it — proving this test can observe a re-dispatch, so the
+        // primary arm's absence of one is the fix at work, not an inert assertion.
+        {
+            await File.WriteAllTextAsync(
+                captureFile,
+                """{"Operation":"add","TargetPath":"fact.md","Content":"x","Rationale":"y"}""",
+                TestContext.Current.CancellationToken);
+            var reader = new RoomEventLogReader(roomLogPath);
+            await using var writer = new RoomEventLogWriter(roomLogPath);
+            var reSweptWithFile = await MemoryProposalEscalation.EscalateNewProposalsForRoomAsync(
+                room, "operator", reader, writer, TestContext.Current.CancellationToken);
+            Assert.Equal(HeldWorkStatus.Dispatched, reSweptWithFile.HeldWork[@ref].Status);
+        }
+    }
+
     public void Dispose()
     {
         DirectoryCleanup.DeleteRecursively(_tempDirectory);
