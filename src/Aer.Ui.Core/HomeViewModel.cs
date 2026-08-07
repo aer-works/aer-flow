@@ -225,9 +225,9 @@ public sealed partial class RoomCardViewModel(
     [RelayCommand]
     private Task Open() => openRoomAsync(RoomDirectoryPath);
 
-    /// <summary>The card title is the room directory's leaf name — the human's handle for the room, with the full path detail-on-demand (ux-principles §3).</summary>
+    /// <summary>The card title is the room directory's leaf name — the human's handle for the room, with the full path detail-on-demand (ux-principles §3). Forwards to <see cref="RoomProjectionLoader.FriendlyNameFor"/>, the one canonical derivation, so Home cards, the switcher, and the chat header can never show a room three different names (#461/#976).</summary>
     public static string TitleFor(string roomDirectoryPath)
-        => Path.GetFileName(Path.TrimEndingDirectorySeparator(roomDirectoryPath));
+        => RoomProjectionLoader.FriendlyNameFor(roomDirectoryPath);
 
     public static RoomCardViewModel FromProjection(
         string roomDirectoryPath, RoomProjection projection, Func<string, Task> openRoomAsync)

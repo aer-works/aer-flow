@@ -43,6 +43,24 @@ public class ChatViewModelTests
     }
 
     [Fact]
+    public void LoadFromMetadata_HeaderIsTheCanonicalRoomName_AndWorkerChipIsTheVendor()
+    {
+        // Guards the header wiring in ChatViewModel.LoadFromMetadata: the room resolves through the
+        // shared RoomProjectionLoader.FriendlyNameFor (so it matches the switcher row), and the chip is
+        // the vendor. Asserts both the concrete value and the shared-helper equality.
+        var viewModel = new ChatViewModel();
+        var metadata = MetadataWithTurns(
+            new SessionTurn(1, "claude", "Hello", "Hi there", DateTimeOffset.UtcNow, false, false));
+
+        viewModel.LoadFromMetadata(metadata, "/tmp/aer-flow");
+
+        Assert.Equal(RoomProjectionLoader.FriendlyNameFor("/tmp/aer-flow"), viewModel.HeadlineText);
+        Assert.Equal("aer-flow", viewModel.HeadlineText);
+        Assert.Equal("claude", viewModel.WorkerChipText);
+        Assert.True(viewModel.HasWorker);
+    }
+
+    [Fact]
     public void BeginSend_ShowsThePendingMessageUntilLoadFromMetadataObservesTheCompletedTurn()
     {
         var viewModel = new ChatViewModel();
@@ -111,6 +129,8 @@ public class ChatViewModelTests
         Assert.Null(viewModel.RoomDirectoryPath);
         Assert.Empty(viewModel.Messages);
         Assert.Equal("No room open.", viewModel.HeadlineText);
+        Assert.Null(viewModel.WorkerChipText);
+        Assert.False(viewModel.HasWorker);
         Assert.False(viewModel.IsSending);
         Assert.Null(viewModel.CurrentMode);
         Assert.False(viewModel.HasCurrentMode);

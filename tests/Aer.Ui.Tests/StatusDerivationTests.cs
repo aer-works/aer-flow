@@ -44,6 +44,22 @@ public class StatusDerivationTests
         Assert.Equal("Cancelled", PlainLanguage.ForWorkflow(projection));
     }
 
+    [Fact]
+    public void Every_surface_derives_a_rooms_name_from_the_one_canonical_helper()
+    {
+        // The naming counterpart of this file's status-derivation guards: Home cards
+        // (RoomCardViewModel.TitleFor) and the switcher/chat header (RoomProjectionLoader.FriendlyNameFor)
+        // must resolve a room to the SAME name — one derivation, never a re-implemented copy (#461/#976).
+        // A trailing separator discriminates the canonical trim from a naive Path.GetFileName (which
+        // would return ""), so a future divergence that drops the trim turns this red.
+        const string withTrailingSeparator = "/tmp/aer-flow/";
+
+        Assert.Equal("aer-flow", RoomProjectionLoader.FriendlyNameFor(withTrailingSeparator));
+        Assert.Equal(
+            RoomProjectionLoader.FriendlyNameFor(withTrailingSeparator),
+            RoomCardViewModel.TitleFor(withTrailingSeparator));
+    }
+
     public static TheoryData<WorkflowStatus, StepStatus[]> HeadlineCases() => new()
     {
         { WorkflowStatus.Paused, new[] { StepStatus.Paused } },
