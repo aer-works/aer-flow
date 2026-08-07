@@ -541,6 +541,41 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Rooms-as-root landing (#1055, <c>docs/design/02-screens.md</c>: "Same root. Both surfaces open
+    /// on rooms. 'Needs you' is a filter, not the front door"). The desktop lands in the work rather
+    /// than the Home dashboard: the switcher is needs-you-first ordered (#1054), so its top row is the
+    /// most important room — open it into the detail pane, exactly the daily-driver mockup (a room
+    /// selected in the list, its content in the main pane).
+    /// <para>
+    /// <see cref="App"/> orchestrates startup and calls this <em>after</em> <see cref="InitializeAsync"/>
+    /// has populated the switcher — and only on a bare launch. When a launch argument names a room
+    /// (<c>aer-ui &lt;room-directory&gt;</c>), App opens that directory instead and never calls this, so the
+    /// two opens are sequenced rather than racing to mutate the session's current room. Keeping the
+    /// landing out of <see cref="InitializeAsync"/> is what makes that ordering possible.
+    /// </para>
+    /// <para>
+    /// Deliberately a no-op in two cases. When the fleet is empty, <see cref="MainWindowViewModel.CurrentSection"/>
+    /// stays <see cref="ShellSection.Home"/> so the first-run empty state is untouched — replacing that
+    /// with the design's "Point Baton at a folder" is its own slice and touches journey J8. When a
+    /// record is already open, this must never yank it out from under the user. The switcher's fleet is
+    /// daemon-only (<c>RoomClient.GetFleetAsync</c>), so this reads whatever <see cref="RoomsViewModel"/>
+    /// was already populated with rather than fetching again.
+    /// </para>
+    /// </summary>
+    internal async Task LandOnTopRoomAsync(CancellationToken cancellationToken = default)
+    {
+        if (_session.CurrentRoomDirectoryPath is not null)
+        {
+            return;
+        }
+
+        if (ViewModel.Rooms.Items.Count > 0)
+        {
+            await OpenAsync(ViewModel.Rooms.Items[0].RoomDirectoryPath, cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// The full "open a room directory" action (UI spec §3.1): loads and renders it via
     /// <see cref="LoadAsync"/>, then — only on success — records it as the most recently opened
     /// directory and starts/stops live re-projection (M14 Phase 2, issue #119) depending on whether

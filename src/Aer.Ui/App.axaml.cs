@@ -29,24 +29,41 @@ public partial class App : Application
             var window = new MainWindow();
             desktop.MainWindow = window;
 
-            // Local UI Configuration's recents list (UI spec §3.1, §4) is populated regardless of
-            // whether a launch argument was given, so the window is useful on a bare launch too.
-            _ = window.InitializeAsync();
-
-            // A launch argument (aer-ui <room-directory>) still opens that directory directly, going
-            // through OpenAsync now rather than the bare LoadAsync the Phase 1 walking skeleton used
-            // (#118) — this is what makes a directory opened this way get remembered in the recents
-            // list exactly like one opened by hand (Phase 2, #119). A missing/extra argument leaves
-            // the window showing its default placeholder text rather than failing to launch, since a
-            // GUI app has no stderr/exit-code convention to fail into the way Aer.Cli does.
-            var args = desktop.Args ?? [];
-            if (args.Length == 1)
-            {
-                _ = window.OpenAsync(args[0]);
-            }
+            _ = RunStartupAsync(window, desktop.Args ?? []);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Sequences the window's startup so the two ways a room can be opened never race. First
+    /// <see cref="MainWindow.InitializeAsync"/> populates Local UI Configuration's recents (UI spec
+    /// §3.1, §4) and the switcher, so the window is useful on a bare launch too. Then exactly one of:
+    /// <list type="bullet">
+    /// <item>a launch argument (<c>aer-ui &lt;room-directory&gt;</c>) opens that directory directly through
+    /// <see cref="MainWindow.OpenAsync"/> — which is what makes a directory opened this way get
+    /// remembered in the recents list exactly like one opened by hand (#118/#119); or</item>
+    /// <item>on a bare launch, <see cref="MainWindow.LandOnTopRoomAsync"/> lands on the top room
+    /// (rooms-as-root, #1055).</item>
+    /// </list>
+    /// They are mutually exclusive and awaited in order: an explicit room argument is authoritative and
+    /// the auto-landing does not also fire, so the two never compete to set the session's current room
+    /// (#1055 second-reader). A missing/extra argument leaves the window on its rooms-as-root landing
+    /// rather than failing to launch — a GUI app has no stderr/exit-code convention to fail into the way
+    /// Aer.Cli does.
+    /// </summary>
+    private static async Task RunStartupAsync(MainWindow window, string[] args)
+    {
+        await window.InitializeAsync();
+
+        if (args.Length == 1)
+        {
+            await window.OpenAsync(args[0]);
+        }
+        else
+        {
+            await window.LandOnTopRoomAsync();
+        }
     }
 
     public void MenuShow_Click(object? sender, System.EventArgs e)
