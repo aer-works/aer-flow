@@ -305,6 +305,63 @@ public class RoomsViewModelTests
         Assert.Equal("bravo", ordered[1].FriendlyName);
     }
 
+    // ---- #1051: waiting-on-you first (J3), matching the phone ----
+
+    [Fact]
+    public void Rooms_that_need_you_sort_before_others_even_when_less_recently_active()
+    {
+        // Waiting-on-you is the PRIMARY key: a needs-you room outranks a more recently active room
+        // that does not need you. Discriminates the needs-you key from the recency key beneath it.
+        var needsYouButOlder = NewItem("/tasks/needs") with
+        {
+            LastActivityAt = DateTimeOffset.UnixEpoch.AddHours(1),
+            Status = RoomCardStatus.NeedsYou,
+        };
+        var finishedButNewer = NewItem("/tasks/finished") with
+        {
+            LastActivityAt = DateTimeOffset.UnixEpoch.AddHours(9),
+            Status = RoomCardStatus.Finished,
+        };
+
+        var ordered = RoomsViewModel.InFleetOrderForTests([finishedButNewer, needsYouButOlder]).ToList();
+
+        Assert.Equal("/tasks/needs", ordered[0].RoomDirectoryPath);
+        Assert.Equal("/tasks/finished", ordered[1].RoomDirectoryPath);
+    }
+
+    [Fact]
+    public void Among_rooms_that_need_you_the_more_recently_active_still_comes_first()
+    {
+        // The needs-you key partitions; it does not flatten recency inside a partition.
+        var olderNeedsYou = NewItem("/tasks/older") with
+        {
+            LastActivityAt = DateTimeOffset.UnixEpoch.AddHours(2),
+            Status = RoomCardStatus.NeedsYou,
+        };
+        var newerNeedsYou = NewItem("/tasks/newer") with
+        {
+            LastActivityAt = DateTimeOffset.UnixEpoch.AddHours(8),
+            Status = RoomCardStatus.NeedsYou,
+        };
+
+        var ordered = RoomsViewModel.InFleetOrderForTests([olderNeedsYou, newerNeedsYou]).ToList();
+
+        Assert.Equal("/tasks/newer", ordered[0].RoomDirectoryPath);
+        Assert.Equal("/tasks/older", ordered[1].RoomDirectoryPath);
+    }
+
+    [Fact]
+    public void A_row_seeds_its_mark_from_the_fleets_status_on_load_not_only_after_a_push()
+    {
+        // The switcher must draw the correct silhouette immediately; before #1051 the row's Status
+        // was null until ApplyProjection fired on the first projection push.
+        var viewModel = new RoomsViewModel();
+
+        var row = viewModel.AddTestItem(NewItem("/tasks/needs") with { Status = RoomCardStatus.NeedsYou });
+
+        Assert.Equal(RoomCardStatus.NeedsYou, row.Status);
+    }
+
     // ---- #336: the detail router's discriminator ----
 
     [Fact]
