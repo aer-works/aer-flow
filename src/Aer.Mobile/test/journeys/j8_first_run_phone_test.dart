@@ -16,10 +16,9 @@ import 'package:aer_mobile/rooms_screen.dart';
 /// [RoomsScreen] widget over an empty task list (a [MockClient] returning `[]`, the same approach
 /// `rooms_screen_test.dart` uses) and asserts the empty surface offers a real first action.
 ///
-/// This is a RED-spec. It fails today on purpose: the empty [RoomsScreen] renders only the bare
-/// message "No tasks or sessions yet." with no way to start work — the #337-class dead-end J8
-/// exists to close. When the empty state gains a start-work action (a button or FAB), this goes
-/// green and J8's phone leg is kept. J8 overall still reads "Fails" in spec/journeys.md until every
+/// The empty [RoomsScreen] must offer a real way to start work, not just report "No rooms yet." and
+/// stop — the #337-class dead-end J8 exists to close. When the empty state gains a start-work action
+/// (a button or FAB), this passes and J8's phone leg is kept. J8 overall passes only once every
 /// leg — this one and the desktop leg — passes.
 ///
 /// (The phone's first-run *pre-pairing* screen already routes to pairing via `main.dart`; the
@@ -37,8 +36,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: RoomsScreen(client: client)));
     await tester.pumpAndSettle();
 
-    // The dead-end as it stands: the surface tells you it's empty and stops there.
-    expect(find.text('No rooms or sessions yet.'), findsOneWidget);
+    // The surface still names its empty state...
+    expect(find.text('No rooms yet.'), findsOneWidget);
 
     // J8's bar: a truly empty surface must present a real primary next step — a way to start work —
     // not merely report emptiness. Operationalised as a primary action control (a prominent button
@@ -55,7 +54,7 @@ void main() {
     expect(
       primaryAction,
       findsWidgets,
-      reason: 'The empty RoomsScreen shows only "No rooms or sessions yet." with no primary action '
+      reason: 'The empty RoomsScreen shows only "No rooms yet." with no primary action '
           'to start work — J8 requires a real first action on an empty surface (#337).',
     );
   });
