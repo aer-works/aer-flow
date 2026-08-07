@@ -155,6 +155,11 @@ public class MemoryProposalResolutionTests : IDisposable
 
         Assert.Equal(HeldWorkStatus.Resolved, state.HeldWork[@ref].Status);
         Assert.Equal("the fact", await File.ReadAllTextAsync(Path.Combine(_memoryRoot, "fact.md"), TestContext.Current.CancellationToken));
+
+        // #1039: the capture file is consumed on resolve. The memory write above landing proves the
+        // apply read the file first, so the delete runs after apply on the approve path (delete is
+        // shape-gated, not approve-gated — this is the approve-side counterpart to the reject coverage).
+        Assert.False(File.Exists(@ref.Value));
     }
 
     /// <summary>

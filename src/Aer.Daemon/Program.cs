@@ -176,6 +176,9 @@ namespace Aer.Daemon
             builder.Services.AddSingleton<IOccupantTurnRunner, RoleTemplateOccupantRunner>();
             builder.Services.AddHostedService<RoomTurnHost>();
 
+            // #1025: room retention sweep (journal compaction)
+            builder.Services.AddHostedService<RoomRetentionSweep>();
+
             // Thread-safe container for bindings path
             var bindingsPathHolder = new BindingsPathHolder();
             builder.Services.AddSingleton(bindingsPathHolder);

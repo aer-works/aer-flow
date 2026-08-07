@@ -1,4 +1,5 @@
 using Aer.Flow.Domain;
+using Aer.Flow.Mutation;
 using Aer.Flow.Projection;
 using Aer.Flow.Store;
 using Aer.Tests.Shared;
@@ -172,5 +173,49 @@ public class RoomJournalCompactorTests
         Assert.True(await RoomJournalCompactor.CompactAsync(roomDir, TestContext.Current.CancellationToken));
         var after = await File.ReadAllTextAsync(Path.Combine(roomDir, "room.jsonl"), TestContext.Current.CancellationToken);
         Assert.NotEqual(before, after);
+    }
+
+    /// <summary>
+    /// Generic-shape (non-memory-proposal) invariant: journal compaction must not break
+    /// <see cref="RoomMutationInterface"/>'s own dispatch dedup. After a resolved run is compacted away,
+    /// a genuinely fresh dispatch is admitted and re-dispatching that same fresh ref is still rejected.
+    /// The memory-proposal path's compaction safety is pinned separately in
+    /// <c>MemoryProposalEscalationTests.A_resolved_proposal_is_not_re_dispatched_after_the_journal_is_compacted</c>
+    /// via the capture-file consume; this arm keeps coverage of the plain dispatch guard through compaction.
+    /// </summary>
+    [Fact]
+    public async Task After_compaction_a_fresh_generic_dispatch_is_admitted_and_its_duplicate_still_rejected()
+    {
+        var resolvedDir = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "aer_wf_resolved_" + Guid.NewGuid().ToString("n")));
+        var refResolved = new HeldWorkRef(resolvedDir);
+        var roomDir = await CreateTestRoomAsync(
+            new RoomEvent.HeldWorkDispatched(refResolved, "generic-shape", TimeSpan.FromMinutes(5), "human"),
+            new RoomEvent.HeldWorkResolved(refResolved, new HeldWorkCitation("Resolved", "ok")));
+        try
+        {
+            Assert.True(await RoomJournalCompactor.CompactAsync(roomDir, TestContext.Current.CancellationToken));
+
+            var roomLogPath = Path.Combine(roomDir, "room.jsonl");
+            var reader = new RoomEventLogReader(roomLogPath);
+            await using var writer = new RoomEventLogWriter(roomLogPath);
+
+            var freshDir = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "aer_wf_fresh_" + Guid.NewGuid().ToString("n")));
+            var refFresh = new HeldWorkRef(freshDir);
+
+            var afterDispatch = await RoomMutationInterface.DispatchHeldWorkAsync(
+                roomDir, refFresh, "generic-shape", TimeSpan.FromMinutes(5), "human",
+                reader, writer, TestContext.Current.CancellationToken);
+            Assert.True(afterDispatch.HeldWork.ContainsKey(refFresh));
+            Assert.False(afterDispatch.HeldWork.ContainsKey(refResolved));
+
+            await Assert.ThrowsAsync<InvalidRoomMutationException>(() =>
+                RoomMutationInterface.DispatchHeldWorkAsync(
+                    roomDir, refFresh, "generic-shape", TimeSpan.FromMinutes(5), "human",
+                    reader, writer, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
     }
 }
