@@ -38,7 +38,8 @@ public sealed record RoomFleetItem(
     DateTimeOffset Updated,
     bool IsSession = false,
     DateTimeOffset? LastActivityAt = null,
-    string? SessionId = null);
+    string? SessionId = null,
+    RoomCardStatus? Status = null);
 
 /// <summary>
 /// The seam this phase exists to prove (issue #118): opens a real room directory using exactly
@@ -171,11 +172,20 @@ public static class RoomProjectionLoader
         var state = StateProjector.Project(events, snapshot, checkpoint);
         var pausedStepCount = state.Steps.Count(s => s.Status == StepStatus.Paused);
 
+        // Reuse the ONE status derivation (#616/#976 — never a second copy) so the fleet reads
+        // "Waiting for your reply" for a chat turn and "Waiting for your review" for a real gate,
+        // instead of raw WorkflowStatus. DeriveStatus reads only State + Snapshot; the empty
+        // history/lineage here are the same minimal projection StatusDerivationTests builds.
+        var (statusText, status) = RoomCardViewModel.DeriveStatus(new RoomProjection(
+            snapshot, state,
+            new ExecutionHistory(new Dictionary<StepId, IReadOnlyList<ExecutionAttempt>>(), [], []),
+            new ArtifactLineage([])));
+
         // Fallback for a room with no journal events/timestamps yet: prefer created timestamp
         // (scoped strictly to the pre-first-event window).
         var lastActivityAt = newestEventTimestamp ?? created;
 
-        return new RoomFleetItem(roomDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived, created, updated, isSession, lastActivityAt, sessionId);
+        return new RoomFleetItem(roomDirectoryPath, friendlyName, typeLabel, statusText, pausedStepCount, isArchived, created, updated, isSession, lastActivityAt, sessionId, status);
     }
 
     /// <summary>

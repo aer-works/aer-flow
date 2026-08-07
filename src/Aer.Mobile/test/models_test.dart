@@ -81,7 +81,9 @@ void main() {
       'PausedStepCount': 0,
       'IsArchived': false,
       'SessionId': 'sess-123',
+      'Status': 'NeedsYou',
     });
     expect(item.sessionId, 'sess-123');
+    expect(item.status, 'NeedsYou');
   });
 }

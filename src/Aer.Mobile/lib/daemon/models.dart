@@ -274,6 +274,11 @@ class RoomFleetItem {
   /// its presence is also how a row tells a session from a workflow without parsing typeLabel.
   final String? sessionId;
 
+  /// The canonical RoomCardStatus (J3, slice 2a) as a string — 'NeedsYou' / 'Running' / 'Finished' /
+  /// 'Failed' / 'Cancelled' / 'Unavailable', or null for a never-run room. Drives the waiting-on-you
+  /// first sort; `statusText` already carries the human line ("Waiting for your reply" vs "review").
+  final String? status;
+
   RoomFleetItem({
     required this.roomDirectoryPath,
     required this.friendlyName,
@@ -283,6 +288,7 @@ class RoomFleetItem {
     required this.isArchived,
     this.lastActivityAt,
     this.sessionId,
+    this.status,
   });
 
   factory RoomFleetItem.fromJson(Map<String, dynamic> json) {
@@ -296,6 +302,7 @@ class RoomFleetItem {
       isArchived: j['isarchived'] == true,
       lastActivityAt: j['lastactivityat'] != null ? DateTime.tryParse(j['lastactivityat'].toString()) : null,
       sessionId: (j['sessionid']?.toString().isEmpty ?? true) ? null : j['sessionid'].toString(),
+      status: (j['status']?.toString().isEmpty ?? true) ? null : j['status'].toString(),
     );
   }
 }

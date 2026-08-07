@@ -141,7 +141,10 @@ public class RoomProjectionLoaderTests
             var fleetItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
             Assert.Equal(Path.GetFileName(roomDirectory), fleetItem.FriendlyName);
             Assert.Equal(snapshot.WorkflowTemplateId.Value, fleetItem.TypeLabel);
-            Assert.Equal(WorkflowStatus.Terminal.ToString(), fleetItem.StatusText);
+            // #1049: the fleet carries the canonical DeriveStatus text/state now, not raw WorkflowStatus.
+            // A completed run reads "Finished" (RoomCardStatus.Finished), not "Terminal".
+            Assert.Equal("Finished", fleetItem.StatusText);
+            Assert.Equal(RoomCardStatus.Finished, fleetItem.Status);
             Assert.Equal(0, fleetItem.PausedStepCount);
             Assert.False(fleetItem.IsArchived);
 
