@@ -174,22 +174,28 @@
                  Background="Transparent" BorderThickness="0">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:RoomFleetItemViewModel">
-              <StackPanel Spacing="2" Margin="0,2">
-                <TextBlock Classes="body-strong" Text="{Binding FriendlyName}"
-                           TextTrimming="CharacterEllipsis" />
-                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-                  <!-- Decision 0006 rule 2: mark *and* word, never hue alone. The same marks Home's
-                       cards draw, from the same derivation — a second surface showing the same fact
-                       with its own vocabulary is how #461's "cancelled reads as Finished" came back. -->
-                  <Path Data="{Binding Status, Converter={StaticResource StatusToIconGeometryConverter}}"
-                        Stroke="{Binding Status, Converter={StaticResource StatusToIconBrushConverter}}"
-                        Fill="{Binding Status, Converter={StaticResource StatusToIconFillConverter}}"
-                        StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
-                        Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center" />
-                  <TextBlock Classes="caption secondary" Text="{Binding StatusText}"
+              <!-- Daily-driver row (docs/design/mockups/02-screens.html #daily): the state mark is a
+                   *leading* glyph, with the name and a smaller state sub-line stacked to its right —
+                   `mark · name · state`. The mark tops-aligns to sit beside the name line, not the
+                   state line below it. -->
+              <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}" Margin="0,2">
+                <!-- Decision 0006 rule 2: mark *and* word, never hue alone. The same marks Home's
+                     cards draw, from the same derivation — a second surface showing the same fact
+                     with its own vocabulary is how #461's "cancelled reads as Finished" came back. -->
+                <Path Data="{Binding Status, Converter={StaticResource StatusToIconGeometryConverter}}"
+                      Stroke="{Binding Status, Converter={StaticResource StatusToIconBrushConverter}}"
+                      Fill="{Binding Status, Converter={StaticResource StatusToIconFillConverter}}"
+                      StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
+                      Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Top" Margin="0,3,0,0" />
+                <StackPanel Spacing="1">
+                  <TextBlock Classes="body-strong" Text="{Binding FriendlyName}"
                              TextTrimming="CharacterEllipsis" />
-                  <TextBlock Classes="caption secondary" Text="archived"
-                             IsVisible="{Binding IsArchived}" />
+                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                    <TextBlock Classes="caption secondary" Text="{Binding StatusText}"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="caption secondary" Text="archived"
+                               IsVisible="{Binding IsArchived}" />
+                  </StackPanel>
                 </StackPanel>
               </StackPanel>
             </DataTemplate>
