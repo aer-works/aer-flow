@@ -44,12 +44,12 @@ public class ArtifactPrunerTests
     [Fact]
     public async Task PruneAsync_moves_completed_terminal_run_artifacts_to_pruned_location()
     {
-        var taskDir = Path.Combine(Path.GetTempPath(), $"prune-test-{Guid.NewGuid():N}");
+        var roomDir = Path.Combine(Path.GetTempPath(), $"prune-test-{Guid.NewGuid():N}");
         try
         {
-            Directory.CreateDirectory(taskDir);
-            var snapshotPath = Path.Combine(taskDir, "snapshot.json");
-            var logPath = Path.Combine(taskDir, "flow.jsonl");
+            Directory.CreateDirectory(roomDir);
+            var snapshotPath = Path.Combine(roomDir, "snapshot.json");
+            var logPath = Path.Combine(roomDir, "flow.jsonl");
 
             await SnapshotBinder.PersistAsync(SingleStepSnapshot(), snapshotPath, TestContext.Current.CancellationToken);
 
@@ -60,7 +60,7 @@ public class ArtifactPrunerTests
                 new FlowEvent.ExecutionSucceeded(execId)
             );
 
-            var artifactsRoot = Path.Combine(taskDir, ArtifactManager.ArtifactsDirectoryName);
+            var artifactsRoot = Path.Combine(roomDir, ArtifactManager.ArtifactsDirectoryName);
             var execDir = ArtifactManager.AllocateOutputDirectory(artifactsRoot, execId);
             var artifactFile = Path.Combine(execDir, "output.txt");
             await File.WriteAllTextAsync(artifactFile, "artifact-data", TestContext.Current.CancellationToken);
@@ -69,7 +69,7 @@ public class ArtifactPrunerTests
             Assert.True(Directory.Exists(execDir));
             Assert.True(File.Exists(artifactFile));
 
-            var result = await ArtifactPruner.PruneAsync(taskDir, TestContext.Current.CancellationToken);
+            var result = await ArtifactPruner.PruneAsync(roomDir, TestContext.Current.CancellationToken);
 
             Assert.True(result);
             Assert.False(Directory.Exists(execDir));
@@ -81,19 +81,19 @@ public class ArtifactPrunerTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDir);
+            DirectoryCleanup.DeleteRecursively(roomDir);
         }
     }
 
     [Fact]
     public async Task PruneAsync_untouches_running_or_paused_runs()
     {
-        var taskDir = Path.Combine(Path.GetTempPath(), $"prune-running-{Guid.NewGuid():N}");
+        var roomDir = Path.Combine(Path.GetTempPath(), $"prune-running-{Guid.NewGuid():N}");
         try
         {
-            Directory.CreateDirectory(taskDir);
-            var snapshotPath = Path.Combine(taskDir, "snapshot.json");
-            var logPath = Path.Combine(taskDir, "flow.jsonl");
+            Directory.CreateDirectory(roomDir);
+            var snapshotPath = Path.Combine(roomDir, "snapshot.json");
+            var logPath = Path.Combine(roomDir, "flow.jsonl");
 
             await SnapshotBinder.PersistAsync(SingleStepSnapshot(), snapshotPath, TestContext.Current.CancellationToken);
 
@@ -103,11 +103,11 @@ public class ArtifactPrunerTests
                 new FlowEvent.ExecutionRequestAccepted(TestRequest(execId))
             );
 
-            var artifactsRoot = Path.Combine(taskDir, ArtifactManager.ArtifactsDirectoryName);
+            var artifactsRoot = Path.Combine(roomDir, ArtifactManager.ArtifactsDirectoryName);
             var execDir = ArtifactManager.AllocateOutputDirectory(artifactsRoot, execId);
             await File.WriteAllTextAsync(Path.Combine(execDir, "output.txt"), "in-flight", TestContext.Current.CancellationToken);
 
-            var result = await ArtifactPruner.PruneAsync(taskDir, TestContext.Current.CancellationToken);
+            var result = await ArtifactPruner.PruneAsync(roomDir, TestContext.Current.CancellationToken);
 
             Assert.False(result);
             Assert.True(Directory.Exists(execDir));
@@ -116,19 +116,19 @@ public class ArtifactPrunerTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDir);
+            DirectoryCleanup.DeleteRecursively(roomDir);
         }
     }
 
     [Fact]
     public async Task PruneAsync_untouches_keep_marked_runs()
     {
-        var taskDir = Path.Combine(Path.GetTempPath(), $"prune-keep-{Guid.NewGuid():N}");
+        var roomDir = Path.Combine(Path.GetTempPath(), $"prune-keep-{Guid.NewGuid():N}");
         try
         {
-            Directory.CreateDirectory(taskDir);
-            var snapshotPath = Path.Combine(taskDir, "snapshot.json");
-            var logPath = Path.Combine(taskDir, "flow.jsonl");
+            Directory.CreateDirectory(roomDir);
+            var snapshotPath = Path.Combine(roomDir, "snapshot.json");
+            var logPath = Path.Combine(roomDir, "flow.jsonl");
 
             await SnapshotBinder.PersistAsync(SingleStepSnapshot(), snapshotPath, TestContext.Current.CancellationToken);
 
@@ -139,14 +139,14 @@ public class ArtifactPrunerTests
                 new FlowEvent.ExecutionSucceeded(execId)
             );
 
-            await KeepMarker.MarkKeepAsync(taskDir, TestContext.Current.CancellationToken);
-            Assert.True(KeepMarker.IsKept(taskDir));
+            await KeepMarker.MarkKeepAsync(roomDir, TestContext.Current.CancellationToken);
+            Assert.True(KeepMarker.IsKept(roomDir));
 
-            var artifactsRoot = Path.Combine(taskDir, ArtifactManager.ArtifactsDirectoryName);
+            var artifactsRoot = Path.Combine(roomDir, ArtifactManager.ArtifactsDirectoryName);
             var execDir = ArtifactManager.AllocateOutputDirectory(artifactsRoot, execId);
             await File.WriteAllTextAsync(Path.Combine(execDir, "output.txt"), "kept-artifact", TestContext.Current.CancellationToken);
 
-            var result = await ArtifactPruner.PruneAsync(taskDir, TestContext.Current.CancellationToken);
+            var result = await ArtifactPruner.PruneAsync(roomDir, TestContext.Current.CancellationToken);
 
             Assert.False(result);
             Assert.True(Directory.Exists(execDir));
@@ -155,19 +155,19 @@ public class ArtifactPrunerTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDir);
+            DirectoryCleanup.DeleteRecursively(roomDir);
         }
     }
 
     [Fact]
     public async Task PruneAsync_is_idempotent_on_repeated_calls()
     {
-        var taskDir = Path.Combine(Path.GetTempPath(), $"prune-idempotent-{Guid.NewGuid():N}");
+        var roomDir = Path.Combine(Path.GetTempPath(), $"prune-idempotent-{Guid.NewGuid():N}");
         try
         {
-            Directory.CreateDirectory(taskDir);
-            var snapshotPath = Path.Combine(taskDir, "snapshot.json");
-            var logPath = Path.Combine(taskDir, "flow.jsonl");
+            Directory.CreateDirectory(roomDir);
+            var snapshotPath = Path.Combine(roomDir, "snapshot.json");
+            var logPath = Path.Combine(roomDir, "flow.jsonl");
 
             await SnapshotBinder.PersistAsync(SingleStepSnapshot(), snapshotPath, TestContext.Current.CancellationToken);
 
@@ -178,14 +178,14 @@ public class ArtifactPrunerTests
                 new FlowEvent.ExecutionSucceeded(execId)
             );
 
-            var artifactsRoot = Path.Combine(taskDir, ArtifactManager.ArtifactsDirectoryName);
+            var artifactsRoot = Path.Combine(roomDir, ArtifactManager.ArtifactsDirectoryName);
             var execDir = ArtifactManager.AllocateOutputDirectory(artifactsRoot, execId);
             await File.WriteAllTextAsync(Path.Combine(execDir, "data.bin"), "data", TestContext.Current.CancellationToken);
 
-            var firstRun = await ArtifactPruner.PruneAsync(taskDir, TestContext.Current.CancellationToken);
+            var firstRun = await ArtifactPruner.PruneAsync(roomDir, TestContext.Current.CancellationToken);
             Assert.True(firstRun);
 
-            var secondRun = await ArtifactPruner.PruneAsync(taskDir, TestContext.Current.CancellationToken);
+            var secondRun = await ArtifactPruner.PruneAsync(roomDir, TestContext.Current.CancellationToken);
             Assert.False(secondRun);
 
             var prunedDir = ArtifactManager.ResolvePrunedOutputDirectory(artifactsRoot, execId);
@@ -193,7 +193,7 @@ public class ArtifactPrunerTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDir);
+            DirectoryCleanup.DeleteRecursively(roomDir);
         }
     }
 
@@ -245,12 +245,12 @@ public class ArtifactPrunerTests
     [Fact]
     public async Task PruneAsync_refuses_while_the_task_lock_is_held()
     {
-        var taskDir = Path.Combine(Path.GetTempPath(), $"prune-locked-{Guid.NewGuid():N}");
+        var roomDir = Path.Combine(Path.GetTempPath(), $"prune-locked-{Guid.NewGuid():N}");
         try
         {
-            Directory.CreateDirectory(taskDir);
-            var snapshotPath = Path.Combine(taskDir, "snapshot.json");
-            var logPath = Path.Combine(taskDir, "flow.jsonl");
+            Directory.CreateDirectory(roomDir);
+            var snapshotPath = Path.Combine(roomDir, "snapshot.json");
+            var logPath = Path.Combine(roomDir, "flow.jsonl");
 
             await SnapshotBinder.PersistAsync(SingleStepSnapshot(), snapshotPath, TestContext.Current.CancellationToken);
 
@@ -261,14 +261,14 @@ public class ArtifactPrunerTests
                 new FlowEvent.ExecutionSucceeded(execId)
             );
 
-            var artifactsRoot = Path.Combine(taskDir, ArtifactManager.ArtifactsDirectoryName);
+            var artifactsRoot = Path.Combine(roomDir, ArtifactManager.ArtifactsDirectoryName);
             var execDir = ArtifactManager.AllocateOutputDirectory(artifactsRoot, execId);
             await File.WriteAllTextAsync(Path.Combine(execDir, "output.txt"), "held", TestContext.Current.CancellationToken);
 
-            using var heldByAnotherInstance = ConcurrencyGuard.Acquire(taskDir);
+            using var heldByAnotherInstance = ConcurrencyGuard.Acquire(roomDir);
 
             await Assert.ThrowsAsync<WorkflowLockedException>(
-                () => ArtifactPruner.PruneAsync(taskDir, TestContext.Current.CancellationToken));
+                () => ArtifactPruner.PruneAsync(roomDir, TestContext.Current.CancellationToken));
 
             // Nothing moved: the run's active directory is exactly where it was.
             Assert.True(Directory.Exists(execDir));
@@ -277,7 +277,7 @@ public class ArtifactPrunerTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDir);
+            DirectoryCleanup.DeleteRecursively(roomDir);
         }
     }
 

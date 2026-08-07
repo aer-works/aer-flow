@@ -86,7 +86,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
     {
         var request = new StartSessionRequest(
             Adapter: "claude",
-            TaskName: "stub-session-" + Guid.NewGuid().ToString("N"),
+            RoomName: "stub-session-" + Guid.NewGuid().ToString("N"),
             InitialMessage: initialMessage,
             SafetyCeiling: safetyCeiling);
 
@@ -217,7 +217,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
     {
         var request = new StartSessionRequest(
             Adapter: "claude",
-            TaskName: "stub-session-" + Guid.NewGuid().ToString("N"),
+            RoomName: "stub-session-" + Guid.NewGuid().ToString("N"),
             SafetyCeiling: safetyCeiling);
 
         var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
@@ -360,7 +360,7 @@ public class SessionTurnBranchingTests : IAsyncLifetime
             Assert.Equal(i + 1, final.Turns[i].TurnIndex);
         }
 
-        var artifactsDir = Path.Combine(final.TaskDirectoryPath, "artifacts");
+        var artifactsDir = Path.Combine(final.RoomDirectoryPath, "artifacts");
         Assert.True(Directory.Exists(artifactsDir));
         var executionDirs = Directory.GetDirectories(artifactsDir);
         Assert.Equal(executionDirs.Length, executionDirs.Distinct().Count());

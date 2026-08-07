@@ -3,16 +3,16 @@ using Aer.Flow;
 namespace Aer.Cli;
 
 /// <summary>
-/// Raised by <see cref="RunCommand.ExecuteAsync"/> when the task directory already holds a bound
+/// Raised by <see cref="RunCommand.ExecuteAsync"/> when the room directory already holds a bound
 /// snapshot and the workflow file named on the command line is a different template (#628).
 /// </summary>
 /// <remarks>
 /// <para>
 /// Resuming from the snapshot rather than the named file is intended (M15 Phase 1, #137): a second
-/// <c>aer run</c> against the same task directory is how a closed terminal or a slept laptop is
+/// <c>aer run</c> against the same room directory is how a closed terminal or a slept laptop is
 /// recovered from. What was not intended is that it happened silently even when the two disagreed,
-/// so an operator who pointed a fresh workflow at a directory another task had used got that other
-/// task's result — down to its declared outputs and timeout — with no new events written and no
+/// so an operator who pointed a fresh workflow at a directory another room had used got that other
+/// room's result — down to its declared outputs and timeout — with no new events written and no
 /// indication that the file they named was never read.
 /// </para>
 /// <para>
@@ -27,18 +27,18 @@ public sealed class ResumedTemplateMismatchException : AerFlowException
 
     public string NamedTemplateId { get; }
 
-    public string TaskDirectoryPath { get; }
+    public string RoomDirectoryPath { get; }
 
     public ResumedTemplateMismatchException(
-        string boundTemplateId, string namedTemplateId, string taskDirectoryPath)
+        string boundTemplateId, string namedTemplateId, string roomDirectoryPath)
         : base(
-            $"Task directory '{taskDirectoryPath}' is already bound to workflow template " +
+            $"Room directory '{roomDirectoryPath}' is already bound to workflow template " +
             $"'{boundTemplateId}', but the workflow file given names '{namedTemplateId}'. Resuming " +
             "would run the bound template and report its result, not the one asked for. Use a fresh " +
-            $"task directory for '{namedTemplateId}', or pass the template the directory is bound to.")
+            $"room directory for '{namedTemplateId}', or pass the template the directory is bound to.")
     {
         BoundTemplateId = boundTemplateId;
         NamedTemplateId = namedTemplateId;
-        TaskDirectoryPath = taskDirectoryPath;
+        RoomDirectoryPath = roomDirectoryPath;
     }
 }

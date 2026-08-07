@@ -8,7 +8,7 @@ namespace Aer.Ui.Core;
 /// step's longest-path distance from a root (a step with no <c>DependsOn</c>); <see cref="Column"/>
 /// is its position among same-<see cref="Rank"/> steps, in declaration order. Deliberately carries no
 /// projected <see cref="StepStatus"/>: overlaying status onto an already-laid-out node is a rendering
-/// concern (<c>MainWindow.RenderDag</c>), kept separate so the same layout serves both a bound task
+/// concern (<c>MainWindow.RenderDag</c>), kept separate so the same layout serves both a bound room
 /// (status available) and a raw, not-yet-instantiated template (status view spec §5).
 /// </summary>
 public sealed record DagNode(

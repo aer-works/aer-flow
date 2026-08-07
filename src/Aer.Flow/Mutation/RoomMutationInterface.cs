@@ -30,11 +30,11 @@ public static class RoomMutationInterface
         // Rooted only: the ref is read later by processes with different working directories
         // (the daemon's watch set, a status reader), and a relative path silently resolves
         // against whichever one is reading -- the same class of bug dispatch.py's own header
-        // records for relative task dirs.
-        if (!Path.IsPathRooted(@ref.LaneDirectoryPath))
+        // records for relative room dirs.
+        if (!Path.IsPathRooted(@ref.AsWorkflowDirectoryPath()))
         {
             throw new InvalidRoomMutationException(
-                $"HeldWorkRef '{@ref}' is not an absolute path; a relative lane directory would resolve against the reading process's working directory.");
+                $"HeldWorkRef '{@ref}' is not an absolute path; a relative workflow directory would resolve against the reading process's working directory.");
         }
 
         using var guard = ConcurrencyGuard.Acquire(roomDirectoryPath);

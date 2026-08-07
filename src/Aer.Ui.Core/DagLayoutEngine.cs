@@ -5,8 +5,8 @@ namespace Aer.Ui.Core;
 /// <summary>
 /// Computes a <see cref="DagLayout"/> from a workflow's step declarations — the same
 /// <c>IReadOnlyList&lt;WorkflowStepDefinition&gt;</c> shape both <see cref="WorkflowDefinition"/>
-/// (a raw template) and <see cref="WorkflowDefinitionSnapshot"/> (a bound task) expose, so one
-/// layout serves both (UI spec §10's "graph view over both bound tasks and raw templates", issue
+/// (a raw template) and <see cref="WorkflowDefinitionSnapshot"/> (a bound room) expose, so one
+/// layout serves both (UI spec §10's "graph view over both bound rooms and raw templates", issue
 /// #120). A pure function of that list alone: given identical steps, it produces identical
 /// <see cref="DagLayout.Nodes"/>/<see cref="DagLayout.Edges"/> ordering every time (UI spec §11) —
 /// output order is always driven by walking the input <paramref name="steps"/> list and each step's

@@ -3,14 +3,15 @@ using System.Text.Json;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// Local UI Configuration (UI spec §3.1, §4): a remembered list of recently opened task
+/// Local UI Configuration (UI spec §3.1, §4): a remembered list of recently opened room
 /// directories, plus (M15 Phase 1, issue #137) the last worker-bindings file and workflow template
-/// file a Run action used — bindings are never persisted in a task directory (M14 Phase 2's
+/// record-once-ok: #443 src/Aer.Ui.Core/BindingsEditorViewModel.cs
+/// file a Run action used — bindings are never persisted in a room directory (M14 Phase 2's
 /// decision of record) and a template is only ever consulted on a fresh start, so both are UI
 /// inputs asked for every time, with the value remembered here purely to pre-fill that ask.
-/// Deliberately never authoritative — a task directory's own contents are (§3.1's
+/// Deliberately never authoritative — a room directory's own contents are (§3.1's
 /// self-describing-directory contract) — so this store treats a missing or corrupt config file as
-/// "nothing remembered yet" rather than a startup failure, and drops any remembered task directory
+/// "nothing remembered yet" rather than a startup failure, and drops any remembered room directory
 /// path that no longer exists on disk when it loads the list back, rather than surfacing it as an
 /// error. This is this phase's concrete answer to §3.1's "how a UI populates its list"
 /// implementation choice: ask the user for a path (or pick a remembered one), never scan a
@@ -18,7 +19,7 @@ namespace Aer.Ui.Core;
 /// </summary>
 public sealed class LocalUiConfigurationStore(string configFilePath)
 {
-    private const int MaxRecentTaskDirectories = 10;
+    private const int MaxRecentRoomDirectories = 10;
     private const int MaxRecentCommandsPerVendor = 5;
 
     /// <summary>
@@ -28,58 +29,59 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     public static LocalUiConfigurationStore CreateDefault() => new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.Create),
         "Aer.Ui",
-        "recent-task-directories.json"));
+        "recent-room-directories.json"));
 
-    public async Task<IReadOnlyList<string>> LoadRecentTaskDirectoriesAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<string>> LoadRecentRoomDirectoriesAsync(CancellationToken cancellationToken = default)
     {
         var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
 
         // A listed directory that no longer exists is stale list state, reflected here by
         // omission rather than surfaced as a system error (UI spec §3.1).
-        return configuration.RecentTaskDirectories.Where(Directory.Exists).ToList();
+        return configuration.RecentRoomDirectories.Where(Directory.Exists).ToList();
     }
 
     /// <summary>
-    /// Records <paramref name="taskDirectoryPath"/> as the most recently opened directory,
+    /// Records <paramref name="roomDirectoryPath"/> as the most recently opened directory,
     /// deduplicated against any existing entry for the same path and capped at
-    /// <see cref="MaxRecentTaskDirectories"/> — the list is a bounded convenience, not a full
+    /// <see cref="MaxRecentRoomDirectories"/> — the list is a bounded convenience, not a full
     /// history.
     /// </summary>
-    public async Task RecordOpenedAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public async Task RecordOpenedAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
         var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
-        var fullPath = Path.GetFullPath(taskDirectoryPath);
+        var fullPath = Path.GetFullPath(roomDirectoryPath);
 
         var updated = new List<string> { fullPath };
-        updated.AddRange(configuration.RecentTaskDirectories.Where(
+        updated.AddRange(configuration.RecentRoomDirectories.Where(
             path => !string.Equals(Path.GetFullPath(path), fullPath, StringComparison.Ordinal)));
-        if (updated.Count > MaxRecentTaskDirectories)
+        if (updated.Count > MaxRecentRoomDirectories)
         {
-            updated.RemoveRange(MaxRecentTaskDirectories, updated.Count - MaxRecentTaskDirectories);
+            updated.RemoveRange(MaxRecentRoomDirectories, updated.Count - MaxRecentRoomDirectories);
         }
 
-        await SaveConfigurationAsync(configuration with { RecentTaskDirectories = updated }, cancellationToken).ConfigureAwait(false);
+        await SaveConfigurationAsync(configuration with { RecentRoomDirectories = updated }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Strips <paramref name="taskDirectoryPath"/> from the recents list (M24 Phase 5, #278) — used
+    /// Strips <paramref name="roomDirectoryPath"/> from the recents list (M24 Phase 5, #278) — used
     /// by a real delete so a stale recent doesn't 404 on the next open. A no-op if the path isn't
     /// present, matching this store's own "rebuildable convenience, not authoritative" stance.
     /// </summary>
-    public async Task RemoveRecentTaskDirectoryAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public async Task RemoveRecentRoomDirectoryAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
         var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
-        var fullPath = Path.GetFullPath(taskDirectoryPath);
+        var fullPath = Path.GetFullPath(roomDirectoryPath);
 
-        var updated = configuration.RecentTaskDirectories
+        var updated = configuration.RecentRoomDirectories
             .Where(path => !string.Equals(Path.GetFullPath(path), fullPath, StringComparison.Ordinal))
             .ToList();
 
-        await SaveConfigurationAsync(configuration with { RecentTaskDirectories = updated }, cancellationToken).ConfigureAwait(false);
+        await SaveConfigurationAsync(configuration with { RecentRoomDirectories = updated }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// The bindings file (M15 Phase 1, issue #137): never persisted in a task directory (M14 Phase
+    /// record-once-ok: #443 src/Aer.Ui.Core/BindingsEditorViewModel.cs
+    /// The bindings file (M15 Phase 1, issue #137): never persisted in a room directory (M14 Phase
     /// 2's decision of record), so a Run action asks the user for it every time — this is only the
     /// remembered default that pre-fills the ask, exactly the same non-authoritative convenience the
     /// recents list already is (§3.1, §4).
@@ -235,7 +237,7 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
     /// migration worth writing.
     /// </summary>
     private sealed record StoredConfiguration(
-        List<string> RecentTaskDirectories,
+        List<string> RecentRoomDirectories,
         string? LastBindingsFilePath,
         string? LastWorkflowTemplateFilePath,
         string? TailscaleAuthKey,

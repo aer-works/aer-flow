@@ -7,9 +7,9 @@ import 'daemon/credentials_store.dart';
 import 'daemon/daemon_client.dart';
 import 'daemon/models.dart';
 import 'pairing_screen.dart';
-import 'tasks_screen.dart';
+import 'rooms_screen.dart';
 
-/// The phone's decision inbox — mirrors whatever task Aer.Daemon currently has open (typically
+/// The phone's decision inbox — mirrors whatever room Aer.Daemon currently has open (typically
 /// opened by the desktop first) and lets the user Approve/Reject a paused step or Cancel the run.
 /// RetryWithRevision/Supersede aren't offered here: both need a way to move file content onto the
 /// daemon host that this app doesn't have yet (deferred past Phase 2 — see daemon_client.dart).
@@ -22,18 +22,19 @@ class InboxScreen extends StatefulWidget {
 
 class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   DaemonClient? _client;
-  StreamSubscription<TaskProjection>? _subscription;
-  TaskProjection? _projection;
+  StreamSubscription<RoomProjection>? _subscription;
+  RoomProjection? _projection;
   String? _connectionError;
   final _pendingStepIds = <String>{};
 
-  /// Which task directory *this phone* is currently viewing — set only by this phone's own
-  /// actions (recent-task pick, starting a task/session), never by another client's. Aer.Daemon's
-  /// own "current task" is a separate, process-wide notion the daemon uses only to decide what a
+  /// Which room directory *this phone* is currently viewing — set only by this phone's own
+  /// actions (recent-room pick, starting a room), never by another client's. Aer.Daemon's
+  /// own "current room" is a separate, process-wide notion the daemon uses only to decide what a
+  /// record-once-ok: #443 src/Aer.Ui.Core/RoomClient.cs
   /// brand-new WS connection sees before this phone has opened anything of its own; `_connect`'s
   /// listener adopts that once, then filters every later push against this field so a different
-  /// client opening a different task can't silently change what this phone shows (pre-M24 defect,
-  /// fixed alongside issue #262's chat work — see TaskProjection's doc comment in models.dart).
+  /// client opening a different room can't silently change what this phone shows (pre-M24 defect,
+  /// fixed alongside issue #262's chat work — see RoomProjection's doc comment in models.dart).
   String? _openDirectoryPath;
 
   @override
@@ -125,16 +126,16 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const PairingScreen()));
   }
 
-  Future<void> _pickRecentTask() async {
+  Future<void> _pickRecentRoom() async {
     final client = _client;
     if (client == null) return;
     try {
-      final directories = await client.recentTasks();
+      final directories = await client.recentRooms();
       if (!mounted) return;
       final selected = await showModalBottomSheet<String>(
         context: context,
         builder: (context) => directories.isEmpty
-            ? const Padding(padding: EdgeInsets.all(24), child: Text('No recent tasks on that host yet.'))
+            ? const Padding(padding: EdgeInsets.all(24), child: Text('No recent rooms on that host yet.'))
             : ListView(
                 shrinkWrap: true,
                 children: directories
@@ -143,7 +144,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
               ),
       );
       if (selected != null) {
-        await client.openTask(selected);
+        await client.openRoom(selected);
         if (mounted) setState(() => _openDirectoryPath = selected);
       }
     } on DaemonException catch (e) {
@@ -151,13 +152,13 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// Opens the fleet management screen (M24 Phase 5, #278) — distinct from [_pickRecentTask]'s bare
+  /// Opens the fleet management screen (M24 Phase 5, #278) — distinct from [_pickRecentRoom]'s bare
   /// recents sheet, which stays the quick-reopen path; this is the real archive/unarchive/delete
   /// surface.
-  Future<void> _manageTasks() async {
+  Future<void> _manageRooms() async {
     final client = _client;
     if (client == null) return;
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => TasksScreen(client: client)));
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RoomsScreen(client: client)));
   }
 
   Future<void> _decide(WorkflowStepState step, String decisionType) async {
@@ -238,7 +239,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
         }
       } catch (_) {}
 
-      final taskNameController = TextEditingController();
+      final roomNameController = TextEditingController();
       final customPromptController = TextEditingController();
       final secondaryCustomPromptController = TextEditingController();
 
@@ -257,13 +258,13 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Start Room or Task'),
+            title: const Text('Start a Room'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Select Task Type:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Select Room Type:', style: TextStyle(fontWeight: FontWeight.bold)),
                   ...templates.map((t) {
                     final map = caseInsensitive(t as Map<String, dynamic>);
                     final id = map['id'].toString();
@@ -308,8 +309,8 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                   ],
                   const SizedBox(height: 12),
                   TextField(
-                    controller: taskNameController,
-                    decoration: const InputDecoration(labelText: 'Room / Task Name (Optional)', hintText: 'e.g. my-room'),
+                    controller: roomNameController,
+                    decoration: const InputDecoration(labelText: 'Room Name (Optional)', hintText: 'e.g. my-room'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -384,10 +385,10 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                         adapter: primaryVendor,
                         workingDirectory: selectedTemplateId == 'codebase-session' ? selectedProjectPath : null, // vocabulary-ok: template id key
                         initialMessage: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
-                        taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
+                        roomName: roomNameController.text.trim().isEmpty ? null : roomNameController.text.trim(),
                       );
                       final metaCi = caseInsensitive(meta);
-                      final startedDirectoryPath = metaCi['taskdirectorypath']?.toString();
+                      final startedDirectoryPath = metaCi['roomdirectorypath']?.toString();
                       final startedSessionId = metaCi['sessionid']?.toString();
                       if (startedDirectoryPath != null && mounted) {
                         setState(() => _openDirectoryPath = startedDirectoryPath);
@@ -406,7 +407,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                         templateId: selectedTemplateId,
                         primaryAdapter: primaryVendor,
                         secondaryAdapter: (selectedTemplateId == 'review-run' || selectedTemplateId == 'two-vendor-dialogue') ? secondaryVendor : null,
-                        taskName: taskNameController.text.trim().isEmpty ? null : taskNameController.text.trim(),
+                        roomName: roomNameController.text.trim().isEmpty ? null : roomNameController.text.trim(),
                         customPrompt: customPromptController.text.trim().isEmpty ? null : customPromptController.text.trim(),
                         secondaryCustomPrompt: (selectedTemplateId == 'review-run' || selectedTemplateId == 'two-vendor-dialogue') && secondaryCustomPromptController.text.trim().isNotEmpty
                             ? secondaryCustomPromptController.text.trim()
@@ -416,16 +417,16 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                         // /api/templates/run already broadcasts once, server-side, before its HTTP
                         // response returns — i.e. before this filter is set, so that frame is
                         // reliably missed (issue #348). Unlike chat's startSession, a template has
-                        // no sessionId/ChatScreen to jump into instead; the task's own view is
+                        // no sessionId/ChatScreen to jump into instead; the room's own view is
                         // InboxScreen's body, driven by `_projection`. Set the filter first, then
-                        // force a second, guaranteed-to-match broadcast via openTask (same call
-                        // _pickRecentTask already relies on) so this screen actually shows the
-                        // task instead of stranding on the empty state.
+                        // force a second, guaranteed-to-match broadcast via openRoom (same call
+                        // _pickRecentRoom already relies on) so this screen actually shows the
+                        // room instead of stranding on the empty state.
                         setState(() => _openDirectoryPath = dirPath);
-                        await client.openTask(dirPath);
+                        await client.openRoom(dirPath);
                       }
                       messenger.showSnackBar(
-                        SnackBar(content: Text('Started task ($dirPath)')),
+                        SnackBar(content: Text('Started room ($dirPath)')),
                       );
                     }
                   } on DaemonException catch (e) {
@@ -515,7 +516,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     try {
       final meta = await client.startSession(adapter: selectedAdapter);
       final metaCi = caseInsensitive(meta);
-      final startedDirectoryPath = metaCi['taskdirectorypath']?.toString();
+      final startedDirectoryPath = metaCi['roomdirectorypath']?.toString();
       final startedSessionId = metaCi['sessionid']?.toString();
       if (startedDirectoryPath != null && mounted) {
         setState(() => _openDirectoryPath = startedDirectoryPath);
@@ -544,7 +545,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Cancel this run?'),
-        content: const Text('This stops the whole task, not just one step.'),
+        content: const Text('This stops the whole room, not just one step.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep running')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Cancel run')),
@@ -565,31 +566,31 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final projection = _projection;
 
-    final taskTitle = projection?.directoryPath == null
+    final roomTitle = projection?.directoryPath == null
         ? (projection?.workflowTemplateId ?? 'Baton')
         : projection!.directoryPath!.split(RegExp(r'[\\/]')).last;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(projection == null ? 'Baton' : '$taskTitle — ${projection.status}'), // vocabulary-ok: internal status string
+        title: Text(projection == null ? 'Baton' : '$roomTitle — ${projection.status}'), // vocabulary-ok: internal status string
         actions: [
           IconButton(icon: const Icon(Icons.chat_bubble_outline), tooltip: 'Start new chat', onPressed: _startNewChat),
           IconButton(icon: const Icon(Icons.add), tooltip: 'Start from template', onPressed: _showTemplatePicker),
-          IconButton(icon: const Icon(Icons.folder_open), tooltip: 'Recent tasks', onPressed: _pickRecentTask),
+          IconButton(icon: const Icon(Icons.folder_open), tooltip: 'Recent rooms', onPressed: _pickRecentRoom),
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'forget') _forgetPairing();
               if (value == 'cancel') _cancelRun();
               if (value == 'chat') _startNewChat();
               if (value == 'template') _showTemplatePicker();
-              if (value == 'tasks') _manageTasks();
+              if (value == 'rooms') _manageRooms();
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'chat', child: Text('Start new chat')),
               const PopupMenuItem(value: 'template', child: Text('Start from template')),
               if (projection != null && projection.status == 'Running')
                 const PopupMenuItem(value: 'cancel', child: Text('Cancel run')),
-              const PopupMenuItem(value: 'tasks', child: Text('Manage tasks')),
+              const PopupMenuItem(value: 'rooms', child: Text('Manage rooms')),
               const PopupMenuItem(value: 'forget', child: Text('Sign out of this desktop')),
             ],
           ),
@@ -599,7 +600,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildBody(BuildContext context, TaskProjection? projection) {
+  Widget _buildBody(BuildContext context, RoomProjection? projection) {
     if (_connectionError != null) {
       return Center(
         child: Padding(
@@ -623,7 +624,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('No task is open on the host yet.', textAlign: TextAlign.center),
+              const Text('No room is open on the host yet.', textAlign: TextAlign.center),
               const SizedBox(height: 16),
               FilledButton.icon(
                 icon: const Icon(Icons.chat_bubble_outline),
@@ -637,7 +638,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                 onPressed: _showTemplatePicker,
               ),
               const SizedBox(height: 12),
-              OutlinedButton(onPressed: _pickRecentTask, child: const Text('Browse recent tasks')),
+              OutlinedButton(onPressed: _pickRecentRoom, child: const Text('Browse recent rooms')),
             ],
           ),
         ),
@@ -687,7 +688,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
             const SizedBox(height: 16),
             FilledButton.icon(
               icon: const Icon(Icons.add),
-              label: const Text('Start another task from template'),
+              label: const Text('Start another room from template'),
               onPressed: _showTemplatePicker,
             ),
           ],

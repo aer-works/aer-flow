@@ -50,7 +50,7 @@ public class LiveSessionSmokeTest
                 // growth and compaction plumbing, and a cheap model drives all three identically.
                 // A live-vendor gate nobody can afford to run is a gate that does not get run.
                 Model: "haiku",
-                TaskName: "live-session-smoke-" + Guid.NewGuid().ToString("N"),
+                RoomName: "live-session-smoke-" + Guid.NewGuid().ToString("N"),
                 InitialMessage: "Reply with a single short sentence acknowledging this is turn 1 of a smoke test. Do not ask questions.",
                 SafetyCeiling: 200);
 

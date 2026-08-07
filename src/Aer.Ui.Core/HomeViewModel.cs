@@ -9,17 +9,17 @@ using CommunityToolkit.Mvvm.Input;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// Home's read model (M19 Phase 2, issue #187): the recent task directories as live status cards,
-/// and the decision inbox — everything across those tasks currently waiting on the human, one item
+/// Home's read model (M19 Phase 2, issue #187): the recent room directories as live status cards,
+/// and the decision inbox — everything across those rooms currently waiting on the human, one item
 /// per paused step, each leading with the artifact to review (information-architecture.md).
 /// Rebuilt from durable contents on every refresh (§3.1, §11) with the same rebuild-from-scratch
 /// discipline as every other projection surface — never reconciled.
 /// <para>
 /// <b>Inbox scan-scope decision of record (the phase's named open question):</b> the inbox scans
-/// <em>all</em> recent task directories, not just the open task — Home exists precisely for the
-/// moment no task is open yet, and an inbox that only knew about the open task would be empty
+/// <em>all</em> recent room directories, not just the open room — Home exists precisely for the
+/// moment no room is open yet, and an inbox that only knew about the open room would be empty
 /// exactly when it matters most. The scan is bounded by the recents list the store already caps,
-/// and it refreshes on Home activation plus the poller's tick while an open task is being
+/// and it refreshes on Home activation plus the poller's tick while an open room is being
 /// observed — not on its own timer.
 /// </para>
 /// </summary>
@@ -27,16 +27,16 @@ public sealed partial class HomeViewModel : ObservableObject
 {
     private const int InboxPreviewMaxLength = 400;
 
-    public ObservableCollection<TaskCardViewModel> TaskCards { get; } = [];
+    public ObservableCollection<RoomCardViewModel> RoomCards { get; } = [];
     public ObservableCollection<InboxItemViewModel> InboxItems { get; } = [];
 
     /// <summary>The inbox's one-line summary — the honest empty state ("empty" must not read as "broken": running/finished counts say why nothing is waiting).</summary>
     [ObservableProperty]
     private string inboxSummaryText = "Nothing is waiting on you.";
 
-    /// <summary>True when there is no task history at all — Home's empty state says what to do next (M19 Phase 5, #190) instead of showing a blank page.</summary>
+    /// <summary>True when there is no room history at all — Home's empty state says what to do next (M19 Phase 5, #190) instead of showing a blank page.</summary>
     [ObservableProperty]
-    private bool hasNoTasks = true;
+    private bool hasNoRooms = true;
 
     /// <summary>
     /// Rebuilds cards and inbox from the recents list. A listed directory that no longer loads is
@@ -44,50 +44,50 @@ public sealed partial class HomeViewModel : ObservableObject
     /// refresh.
     /// </summary>
     public async Task RefreshAsync(
-        TaskSession session, Func<string, Task> openTaskAsync, CancellationToken cancellationToken = default)
+        RoomClient session, Func<string, Task> openRoomAsync, CancellationToken cancellationToken = default)
     {
-        var recents = await session.LoadRecentTaskDirectoriesAsync(cancellationToken).ConfigureAwait(true);
+        var recents = await session.LoadRecentRoomDirectoriesAsync(cancellationToken).ConfigureAwait(true);
 
-        TaskCards.Clear();
+        RoomCards.Clear();
         InboxItems.Clear();
 
-        foreach (var taskDirectoryPath in recents)
+        foreach (var roomDirectoryPath in recents)
         {
-            TaskProjection projection;
+            RoomProjection projection;
             try
             {
-                projection = await TaskProjectionLoader.LoadAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+                projection = await RoomProjectionLoader.LoadAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
             }
             catch (AerFlowException)
             {
                 // §3's stale-list rule: reflected as a greyed card, never an error — the entry
                 // stays visible (the user recorded it; hiding it silently would misreport their
                 // own history) but carries no inbox items and no live status.
-                TaskCards.Add(new TaskCardViewModel(
-                    taskDirectoryPath,
-                    TaskCardViewModel.TitleFor(taskDirectoryPath),
-                    "Not available — moved, deleted, or not a task",
-                    TaskCardStatus.Unavailable,
-                    openTaskAsync));
+                RoomCards.Add(new RoomCardViewModel(
+                    roomDirectoryPath,
+                    RoomCardViewModel.TitleFor(roomDirectoryPath),
+                    "Not available — moved, deleted, or not a room",
+                    RoomCardStatus.Unavailable,
+                    openRoomAsync));
                 continue;
             }
 
-            var card = TaskCardViewModel.FromProjection(taskDirectoryPath, projection, openTaskAsync);
-            TaskCards.Add(card);
+            var card = RoomCardViewModel.FromProjection(roomDirectoryPath, projection, openRoomAsync);
+            RoomCards.Add(card);
 
-            if (card.Status == TaskCardStatus.NeedsYou)
+            if (card.Status == RoomCardStatus.NeedsYou)
             {
                 foreach (var stepState in projection.State.Steps)
                 {
                     if (stepState.Status == StepStatus.Paused)
                     {
-                        InboxItems.Add(BuildInboxItem(taskDirectoryPath, projection, stepState, openTaskAsync));
+                        InboxItems.Add(BuildInboxItem(roomDirectoryPath, projection, stepState, openRoomAsync));
                     }
                 }
             }
         }
 
-        HasNoTasks = TaskCards.Count == 0;
+        HasNoRooms = RoomCards.Count == 0;
         UpdateInboxSummary();
     }
 
@@ -97,17 +97,17 @@ public sealed partial class HomeViewModel : ObservableObject
     /// is exactly the two-copies drift the same issue exists to end on the gate surfaces.
     /// Counts come from the card's one status derivation, not re-derived from the raw
     /// WorkflowStatus (#616: the raw switch counted every Terminal run as "finished", so a failed
-    /// or cancelled task inflated the finished count). Failed, Cancelled and Unavailable are
+    /// or cancelled room inflated the finished count). Failed, Cancelled and Unavailable are
     /// deliberately in neither count because the summary sentence doesn't speak of them.
     /// </summary>
     private void UpdateInboxSummary()
     {
-        var runningCount = TaskCards.Count(card => card.Status == TaskCardStatus.Running);
-        var finishedCount = TaskCards.Count(card => card.Status == TaskCardStatus.Finished);
+        var runningCount = RoomCards.Count(card => card.Status == RoomCardStatus.Running);
+        var finishedCount = RoomCards.Count(card => card.Status == RoomCardStatus.Finished);
         var needsInputCount = InboxItems.Count(item => item.Kind == PausePointKind.NeedsInput);
         InboxSummaryText = InboxItems.Count switch
         {
-            0 when TaskCards.Count == 0 => "Nothing is waiting on you.",
+            0 when RoomCards.Count == 0 => "Nothing is waiting on you.",
             0 => $"Nothing is waiting on you — {runningCount} working, {finishedCount} finished.",
             _ => SummaryForPending(needsInputCount, InboxItems.Count - needsInputCount),
         };
@@ -115,13 +115,13 @@ public sealed partial class HomeViewModel : ObservableObject
 
     /// <summary>
     /// #618 (0020 clause 3): answering a gate once retires it everywhere. Removes the matching inbox
-    /// item immediately by gate identity (taskDirectoryPath, StepId, ExecutionId) without a full Home refresh.
+    /// item immediately by gate identity (roomDirectoryPath, StepId, ExecutionId) without a full Home refresh.
     /// </summary>
-    public void RetireInboxItem(string taskDirectoryPath, StepId stepId, ExecutionId executionId)
+    public void RetireInboxItem(string roomDirectoryPath, StepId stepId, ExecutionId executionId)
     {
-        var key = AerPaths.RecordKey(taskDirectoryPath);
+        var key = AerPaths.RecordKey(roomDirectoryPath);
         var matching = InboxItems.FirstOrDefault(item =>
-            AerPaths.RecordKeyComparer.Equals(AerPaths.RecordKey(item.TaskDirectoryPath), key) &&
+            AerPaths.RecordKeyComparer.Equals(AerPaths.RecordKey(item.RoomDirectoryPath), key) &&
             item.StepName == stepId.Value &&
             item.ExecutionId == executionId.Value);
 
@@ -133,7 +133,7 @@ public sealed partial class HomeViewModel : ObservableObject
     }
 
     private static InboxItemViewModel BuildInboxItem(
-        string taskDirectoryPath, TaskProjection projection, StepState stepState, Func<string, Task> openTaskAsync)
+        string roomDirectoryPath, RoomProjection projection, StepState stepState, Func<string, Task> openRoomAsync)
     {
         // Lead with the thing to review (ux-principles §4): the paused execution's first durable
         // output, previewed inline. Best-effort by design — a pause with no readable output still
@@ -148,7 +148,7 @@ public sealed partial class HomeViewModel : ObservableObject
             {
                 previewFileName = execution.OutputFiles[0];
                 var outputDirectory = ArtifactManager.ResolveOutputDirectory(
-                    Path.Combine(taskDirectoryPath, ArtifactManager.ArtifactsDirectoryName), executionId);
+                    Path.Combine(roomDirectoryPath, ArtifactManager.ArtifactsDirectoryName), executionId);
                 try
                 {
                     var content = File.ReadAllText(Path.Combine(outputDirectory, previewFileName));
@@ -173,13 +173,13 @@ public sealed partial class HomeViewModel : ObservableObject
                 : "Waiting for your review";
 
         return new InboxItemViewModel(
-            taskDirectoryPath,
-            TaskCardViewModel.TitleFor(taskDirectoryPath),
+            roomDirectoryPath,
+            RoomCardViewModel.TitleFor(roomDirectoryPath),
             stepState.StepId.Value,
             statusText,
             previewText,
             kind,
-            openTaskAsync,
+            openRoomAsync,
             stepState.LatestExecutionId?.Value ?? string.Empty);
     }
 
@@ -210,64 +210,64 @@ public sealed partial class HomeViewModel : ObservableObject
     }
 }
 
-/// <summary>One recent task as a live status card — the recents list re-projected as Home's primary surface. Plain-language status per ux-principles.md's vocabulary map, with the precise engine state one disclosure away (the Task view).</summary>
-public sealed partial class TaskCardViewModel(
-    string taskDirectoryPath, string title, string statusText, TaskCardStatus status, Func<string, Task> openTaskAsync)
+/// <summary>One recent room as a live status card — the recents list re-projected as Home's primary surface. Plain-language status per ux-principles.md's vocabulary map, with the precise engine state one disclosure away (the Room view).</summary>
+public sealed partial class RoomCardViewModel(
+    string roomDirectoryPath, string title, string statusText, RoomCardStatus status, Func<string, Task> openRoomAsync)
 {
-    public string TaskDirectoryPath { get; } = taskDirectoryPath;
+    public string RoomDirectoryPath { get; } = roomDirectoryPath;
     public string Title { get; } = title;
     public string StatusText { get; } = statusText;
-    public TaskCardStatus Status { get; } = status;
+    public RoomCardStatus Status { get; } = status;
 
     /// <summary>Style hooks for the one status system (design-language.md): exactly one of these is true, consumed by the card's classes.</summary>
-    public bool IsNeedsYou => Status == TaskCardStatus.NeedsYou;
+    public bool IsNeedsYou => Status == RoomCardStatus.NeedsYou;
 
     [RelayCommand]
-    private Task Open() => openTaskAsync(TaskDirectoryPath);
+    private Task Open() => openRoomAsync(RoomDirectoryPath);
 
-    /// <summary>The card title is the task directory's leaf name — the human's handle for the task, with the full path detail-on-demand (ux-principles §3).</summary>
-    public static string TitleFor(string taskDirectoryPath)
-        => Path.GetFileName(Path.TrimEndingDirectorySeparator(taskDirectoryPath));
+    /// <summary>The card title is the room directory's leaf name — the human's handle for the room, with the full path detail-on-demand (ux-principles §3).</summary>
+    public static string TitleFor(string roomDirectoryPath)
+        => Path.GetFileName(Path.TrimEndingDirectorySeparator(roomDirectoryPath));
 
-    public static TaskCardViewModel FromProjection(
-        string taskDirectoryPath, TaskProjection projection, Func<string, Task> openTaskAsync)
+    public static RoomCardViewModel FromProjection(
+        string roomDirectoryPath, RoomProjection projection, Func<string, Task> openRoomAsync)
     {
         var (statusText, status) = DeriveStatus(projection);
-        return new TaskCardViewModel(taskDirectoryPath, TitleFor(taskDirectoryPath), statusText, status, openTaskAsync);
+        return new RoomCardViewModel(roomDirectoryPath, TitleFor(roomDirectoryPath), statusText, status, openRoomAsync);
     }
 
     /// <summary>
-    /// The one place a <see cref="TaskProjection"/> becomes a human status line and a
-    /// <see cref="TaskCardStatus"/>. Shared with the #336 switcher's rows rather than duplicated:
+    /// The one place a <see cref="RoomProjection"/> becomes a human status line and a
+    /// <see cref="RoomCardStatus"/>. Shared with the #336 switcher's rows rather than duplicated:
     /// the same surfaces that made #458's marks disagree across toolkits would make two copies of
     /// this disagree across views — Home would say "Cancelled" while the switcher said "Finished",
     /// which is the exact defect #461 had just fixed in one place.
     /// </summary>
-    public static (string StatusText, TaskCardStatus Status) DeriveStatus(TaskProjection projection)
+    public static (string StatusText, RoomCardStatus Status) DeriveStatus(RoomProjection projection)
     {
         return projection.State.Status switch
         {
-            WorkflowStatus.Paused => (PausedCardStatusText(projection), TaskCardStatus.NeedsYou),
+            WorkflowStatus.Paused => (PausedCardStatusText(projection), RoomCardStatus.NeedsYou),
             WorkflowStatus.Running when projection.State.Steps.FirstOrDefault(s => s.Status == StepStatus.Running) is { } runningStep
-                => ($"Working — {runningStep.StepId.Value}", TaskCardStatus.Running),
-            WorkflowStatus.Running => ("Working", TaskCardStatus.Running),
+                => ($"Working — {runningStep.StepId.Value}", RoomCardStatus.Running),
+            WorkflowStatus.Running => ("Working", RoomCardStatus.Running),
             _ when projection.State.Steps.Any(s => s.Status is StepStatus.Failed or StepStatus.Rejected)
-                => ("Failed", TaskCardStatus.Failed),
+                => ("Failed", RoomCardStatus.Failed),
             // #461: a cancelled run has no WorkflowStatus of its own — it reaches Terminal like any
-            // other, which is exactly why it used to fall through to "Finished" and tell you a task
+            // other, which is exactly why it used to fall through to "Finished" and tell you a room
             // you had just stopped had completed. Cancellation is only visible in the steps. Ordered
             // after Failed on purpose: if something failed *and* something was cancelled, the
             // failure is the more important truth about the run.
             _ when projection.State.Steps.Any(s => s.Status == StepStatus.Cancelled)
-                => ("Cancelled", TaskCardStatus.Cancelled),
-            _ => ("Finished", TaskCardStatus.Finished),
+                => ("Cancelled", RoomCardStatus.Cancelled),
+            _ => ("Finished", RoomCardStatus.Finished),
         };
     }
 
     // #334: a paused chat turn is "your turn to reply", not an approval gate. A card whose only
     // paused steps are NeedsInput says so; any genuine ReadyForReview gate among them keeps the
     // established approval wording (and its exact string, which NavigationShellTests pins).
-    private static string PausedCardStatusText(TaskProjection projection)
+    private static string PausedCardStatusText(RoomProjection projection)
         => projection.State.Steps.Any(step =>
                step.Status == StepStatus.Paused &&
                PauseKind.ForStep(projection, step.StepId) == PausePointKind.ReadyForReview)
@@ -283,13 +283,13 @@ public sealed partial class TaskCardViewModel(
 /// </summary>
 internal static class PauseKind
 {
-    public static PausePointKind ForStep(TaskProjection projection, StepId stepId)
+    public static PausePointKind ForStep(RoomProjection projection, StepId stepId)
         => projection.Snapshot.Steps.FirstOrDefault(step => step.StepId == stepId)?.PausePoint?.Kind
            ?? PausePointKind.ReadyForReview;
 }
 
 /// <summary>The one status system's card-level states — carried as data so the skin styles them consistently (color + icon + word, never color alone).</summary>
-public enum TaskCardStatus
+public enum RoomCardStatus
 {
     Running,
     NeedsYou,
@@ -297,8 +297,8 @@ public enum TaskCardStatus
     Failed,
 
     /// <summary>
-    /// The run was stopped on purpose (#461). Previously absent, which meant a cancelled task fell
-    /// through to <see cref="Finished"/> — the UI told you a task you had just stopped had finished.
+    /// The run was stopped on purpose (#461). Previously absent, which meant a cancelled room fell
+    /// through to <see cref="Finished"/> — the UI told you a room you had just stopped had finished.
     /// Deliberately distinct from <see cref="Failed"/>: "you stopped it" is not "it broke", and a
     /// list that renders them alike reads far more alarming than reality.
     /// </summary>
@@ -309,17 +309,17 @@ public enum TaskCardStatus
 }
 
 /// <summary>
-/// One paused step across the recent tasks, as a decision-inbox item: the plain status, the
-/// artifact preview beside it, and Review — which opens the task at its decision surface, the
+/// One paused step across the recent rooms, as a decision-inbox item: the plain status, the
+/// artifact preview beside it, and Review — which opens the room at its decision surface, the
 /// same mutation path as deciding anywhere else (the inbox is a projection, never a second
 /// authority).
 /// </summary>
 public sealed partial class InboxItemViewModel(
-    string taskDirectoryPath, string taskTitle, string stepName, string statusText, string previewText,
-    PausePointKind kind, Func<string, Task> openTaskAsync, string executionId = "")
+    string roomDirectoryPath, string roomTitle, string stepName, string statusText, string previewText,
+    PausePointKind kind, Func<string, Task> openRoomAsync, string executionId = "")
 {
-    public string TaskDirectoryPath { get; } = taskDirectoryPath;
-    public string TaskTitle { get; } = taskTitle;
+    public string RoomDirectoryPath { get; } = roomDirectoryPath;
+    public string RoomTitle { get; } = roomTitle;
     public string StepName { get; } = stepName;
     public string ExecutionId { get; } = executionId;
     public string StatusText { get; } = statusText;
@@ -329,9 +329,9 @@ public sealed partial class InboxItemViewModel(
     /// <summary>Which human act this pause demands (#334) — carried so #319 can filter the inbox into "Needs input" / "Ready for review" states without re-deriving it.</summary>
     public PausePointKind Kind { get; } = kind;
 
-    /// <summary>#334: a needs-input turn wants your next message, so the action reads "Reply"; a review gate reads "Review". Both open the task — the label names the act, not a second authority.</summary>
+    /// <summary>#334: a needs-input turn wants your next message, so the action reads "Reply"; a review gate reads "Review". Both open the room — the label names the act, not a second authority.</summary>
     public string ActionLabel => Kind == PausePointKind.NeedsInput ? "Reply" : "Review";
 
     [RelayCommand]
-    private Task Review() => openTaskAsync(TaskDirectoryPath);
+    private Task Review() => openRoomAsync(RoomDirectoryPath);
 }

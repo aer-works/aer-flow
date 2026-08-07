@@ -16,7 +16,7 @@ namespace Aer.Ui.Tests;
 /// <summary>
 /// Drives the real <see cref="MainWindow"/>'s DAG rendering (M14 Phase 3, issue #120) through
 /// <see cref="DagCanvas"/>'s actual rendered controls — the same headless-Avalonia approach
-/// <see cref="MainWindowTests"/> established (Phase 1) — over both a bound task directory and a
+/// <see cref="MainWindowTests"/> established (Phase 1) — over both a bound room directory and a
 /// raw, not-yet-instantiated template file, since UI spec §10 requires the graph view to render
 /// both.
 /// </summary>
@@ -29,15 +29,15 @@ public class MainWindowDagTests
     private static TextBlock LabelOf(Border node) => ((StackPanel)node.Child!).Children.OfType<TextBlock>().Single();
 
     [AvaloniaFact]
-    public async Task Renders_a_bound_tasks_dag_with_a_status_overlay()
+    public async Task Renders_a_bound_rooms_dag_with_a_status_overlay()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-dag-window-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-dag-window-{Guid.NewGuid():N}");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
-            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
@@ -55,7 +55,7 @@ public class MainWindowDagTests
                     TimeSpan.FromSeconds(30)),
             };
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             await using (var writer = new FlowEventLogWriter(logPath))
             {
                 var reader = new FlowEventLogReader(logPath);
@@ -63,10 +63,10 @@ public class MainWindowDagTests
 
                 await MutationInterface.StartWorkflowAsync(
                     new WorkflowId("wf-ui-dag-window-e2e"),
-                    taskDirectory,
+                    roomDirectory,
                     snapshot,
                     bindings,
-                    Path.Combine(taskDirectory, "artifacts"),
+                    Path.Combine(roomDirectory, "artifacts"),
                     reader,
                     writer,
                     dispatcher,
@@ -74,7 +74,7 @@ public class MainWindowDagTests
             }
 
             var window = new MainWindow();
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var dagCanvas = window.FindViewControl<Canvas>("DagCanvas")!;
             var nodes = dagCanvas.Children.OfType<Border>().ToList();
@@ -111,7 +111,7 @@ public class MainWindowDagTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -178,12 +178,12 @@ public class MainWindowDagTests
     public async Task Dag_node_colors_resolve_against_the_windows_actual_theme_variant_not_always_default()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-dag-theme-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-dag-theme-{Guid.NewGuid():N}");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
-            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
@@ -201,7 +201,7 @@ public class MainWindowDagTests
                     TimeSpan.FromSeconds(30)),
             };
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             await using (var writer = new FlowEventLogWriter(logPath))
             {
                 var reader = new FlowEventLogReader(logPath);
@@ -209,10 +209,10 @@ public class MainWindowDagTests
 
                 await MutationInterface.StartWorkflowAsync(
                     new WorkflowId("wf-ui-dag-theme-e2e"),
-                    taskDirectory,
+                    roomDirectory,
                     snapshot,
                     bindings,
-                    Path.Combine(taskDirectory, "artifacts"),
+                    Path.Combine(roomDirectory, "artifacts"),
                     reader,
                     writer,
                     dispatcher,
@@ -220,7 +220,7 @@ public class MainWindowDagTests
             }
 
             var window = new MainWindow { RequestedThemeVariant = ThemeVariant.Dark };
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var dagCanvas = window.FindViewControl<Canvas>("DagCanvas")!;
             var architectNode = dagCanvas.Children.OfType<Border>()
@@ -233,7 +233,7 @@ public class MainWindowDagTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 }

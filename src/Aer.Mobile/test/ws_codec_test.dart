@@ -203,7 +203,7 @@ void main() {
       final sub = channel.stream.listen((msg) => messages.add(msg));
 
       // Push text frame from server (using real WS push fixture)
-      final wsFixture = File('test/fixtures/wire/task_projection.ws.json').readAsStringSync();
+      final wsFixture = File('test/fixtures/wire/room_projection.ws.json').readAsStringSync();
       final msgFrame = encodeWsFrame(
         utf8.encode(wsFixture),
         opcode: 0x1,

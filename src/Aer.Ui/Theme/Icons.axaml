@@ -1,5 +1,5 @@
 <!-- M19 post-milestone design review (issue #206): design-language.md's status table specifies an
-     icon per status ("color + icon + word, never color alone" — TaskCardViewModel's own comment
+     icon per status ("color + icon + word, never color alone" — RoomCardViewModel's own comment
      said as much and nothing consumed it). One geometry set, drawn by hand at a 16x16 grid so
      every status icon shares stroke weight and proportion — status is told by shape, color is
      reinforcement, not the only signal. Stroke-based (Path, not PathIcon) so line glyphs

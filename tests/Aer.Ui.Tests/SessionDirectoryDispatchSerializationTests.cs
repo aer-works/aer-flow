@@ -16,7 +16,7 @@ namespace Aer.Ui.Tests;
 /// #590: the vendor CLI's own <c>--session-id</c> guard is an existence check, not a lock
 /// (vendor-doc-audit.md, "`--session-id` is guarded by an existence check, not a lock") -- two
 /// concurrent dispatches of the same persisted vendor session id both succeed and both write.
-/// <c>/api/tasks/run</c> and <c>/api/tasks/decide</c> dispatch whatever <c>bindings.json</c> says
+/// <c>/api/rooms/run</c> and <c>/api/rooms/decide</c> dispatch whatever <c>bindings.json</c> says
 /// with no serialisation of their own, unlike the chat pipeline's <c>SessionTurnLockFor</c>
 /// (Program.cs).
 ///
@@ -27,7 +27,7 @@ namespace Aer.Ui.Tests;
 /// against two different directories" can -- that would be true even with a perfect lock. What the
 /// lock changes is whether the second call's request is silently lost to Flow's own
 /// <c>ConcurrencyGuard</c> throwing <c>WorkflowLockedException</c> (pre-#590: swallowed by
-/// <c>TaskSession.RunAsync</c>/<c>DecideAsync</c>'s <c>catch (AerFlowException)</c>, invisible to the
+/// <c>RoomClient.RunAsync</c>/<c>DecideAsync</c>'s <c>catch (AerFlowException)</c>, invisible to the
 /// caller since both endpoints already return 200 before dispatch runs) or cleanly waits its turn.
 /// Every test below asserts exactly the number of completions the *serialised* pump can produce, and
 /// separately asserts no dispatch overlapped (the collision file) and, via #828's dispatch-failure log,
@@ -97,17 +97,17 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     [Fact]
     public async Task ConcurrentRuns_OnTheSameDirectory_NeverDispatchOverlappingWorkers()
     {
-        var (taskDirectory, bindingsFilePath) = await CreateReadyTaskDirectoryAsync();
+        var (roomDirectory, bindingsFilePath) = await CreateReadyRoomDirectoryAsync();
 
         // No await between the two POSTs: both endpoints return 200 before their fire-and-forget
         // dispatch runs, so this genuinely races the two Task.Run bodies against one another.
         var run1 = _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/run",
-            new RunTaskRequest(taskDirectory, null, bindingsFilePath),
+            $"{_baseUrl}/api/rooms/run",
+            new RunRoomRequest(roomDirectory, null, bindingsFilePath),
             TestContext.Current.CancellationToken);
         var run2 = _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/run",
-            new RunTaskRequest(taskDirectory, null, bindingsFilePath),
+            $"{_baseUrl}/api/rooms/run",
+            new RunRoomRequest(roomDirectory, null, bindingsFilePath),
             TestContext.Current.CancellationToken);
 
         var responses = await Task.WhenAll(run1, run2);
@@ -116,7 +116,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
             Assert.True(response.IsSuccessStatusCode);
         }
 
-        await WaitForCompletionsAsync(taskDirectory, expectedCompletions: 1);
+        await WaitForCompletionsAsync(roomDirectory, expectedCompletions: 1);
 
         // Settle grace: readiness is monotonic (see class doc), so only one of the two calls can
         // ever dispatch -- the whichever-arrives-second call finds the step already Succeeded and
@@ -125,35 +125,35 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         // completion lands would only prove the latter.
         await Task.Delay(SlowCollisionStubAdapter.DispatchDelay * 2, TestContext.Current.CancellationToken);
 
-        AssertNoCollision(taskDirectory);
-        Assert.Equal(1, ReadCompletionsCount(taskDirectory));
+        AssertNoCollision(roomDirectory);
+        Assert.Equal(1, ReadCompletionsCount(roomDirectory));
     }
 
     [Fact]
     public async Task ConcurrentRunAndDecide_OnTheSameDirectory_NeverDispatchOverlappingWorkers()
     {
-        // #590 review finding: the original version of this test posted /api/tasks/run twice and
-        // never called /api/tasks/decide at all, despite its name and doc comment claiming run+decide
+        // #590 review finding: the original version of this test posted /api/rooms/run twice and
+        // never called /api/rooms/decide at all, despite its name and doc comment claiming run+decide
         // coverage -- decide's lock wrapper (Program.cs) has its own pre-lock ArtifactReference branch
         // nothing exercised. This version actually races the two different endpoints.
-        var (taskDirectory, executionId) = await CreatePausedFailedTaskDirectoryAsync();
-        var bindingsFilePath = Path.Combine(taskDirectory, "bindings.json");
+        var (roomDirectory, executionId) = await CreatePausedFailedRoomDirectoryAsync();
+        var bindingsFilePath = Path.Combine(roomDirectory, "bindings.json");
 
-        // Set directly rather than relying on the /api/tasks/run request below to set it as a side
+        // Set directly rather than relying on the /api/rooms/run request below to set it as a side
         // effect (Program.cs) -- run and decide are about to fire with no await between them, so that
         // side effect would itself race decide's own read of it.
         DaemonHost.App!.Services.GetRequiredService<BindingsPathHolder>().BindingsFilePath = bindingsFilePath;
 
-        // /api/tasks/run against an already-Paused workflow dispatches nothing (Paused steps are
-        // never "ready") -- it still exercises /api/tasks/run's lock wrapper concurrently with
+        // /api/rooms/run against an already-Paused workflow dispatches nothing (Paused steps are
+        // never "ready") -- it still exercises /api/rooms/run's lock wrapper concurrently with
         // decide's, which is the actual coverage gap; it just cannot itself add a completion.
         var run = _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/run",
-            new RunTaskRequest(taskDirectory, null, bindingsFilePath),
+            $"{_baseUrl}/api/rooms/run",
+            new RunRoomRequest(roomDirectory, null, bindingsFilePath),
             TestContext.Current.CancellationToken);
         var decide = _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/decide",
-            new DecideTaskRequest(taskDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
+            $"{_baseUrl}/api/rooms/decide",
+            new DecideRoomRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
             TestContext.Current.CancellationToken);
 
         var responses = await Task.WhenAll(run, decide);
@@ -162,33 +162,33 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
             Assert.True(response.IsSuccessStatusCode);
         }
 
-        await WaitForCompletionsAsync(taskDirectory, expectedCompletions: 1);
+        await WaitForCompletionsAsync(roomDirectory, expectedCompletions: 1);
         await Task.Delay(SlowCollisionStubAdapter.DispatchDelay * 2, TestContext.Current.CancellationToken);
 
-        AssertNoCollision(taskDirectory);
-        Assert.Equal(1, ReadCompletionsCount(taskDirectory));
+        AssertNoCollision(roomDirectory);
+        Assert.Equal(1, ReadCompletionsCount(roomDirectory));
     }
 
     [Fact]
     public async Task ConcurrentDecides_OnTheSameDirectory_OnlyOneDispatchesAndTheLoserIsRecorded()
     {
-        var (taskDirectory, executionId) = await CreatePausedFailedTaskDirectoryAsync();
+        var (roomDirectory, executionId) = await CreatePausedFailedRoomDirectoryAsync();
 
         // DecideCommand always loads a bindings file regardless of decision type (Aer.Cli's
         // DecideCommand.cs), read through the daemon's DI-registered BindingsPathHolder -- normally
-        // populated as a side effect of /api/tasks/open or /api/tasks/run, neither of which this test
+        // populated as a side effect of /api/rooms/open or /api/rooms/run, neither of which this test
         // calls (see DaemonIntegrationTests.Reject_TriggersASecondWebSocketBroadcast... for the same
         // pattern), so it must be set directly.
         DaemonHost.App!.Services.GetRequiredService<BindingsPathHolder>().BindingsFilePath =
-            Path.Combine(taskDirectory, "bindings.json");
+            Path.Combine(roomDirectory, "bindings.json");
 
         var decide1 = _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/decide",
-            new DecideTaskRequest(taskDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
+            $"{_baseUrl}/api/rooms/decide",
+            new DecideRoomRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
             TestContext.Current.CancellationToken);
         var decide2 = _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/decide",
-            new DecideTaskRequest(taskDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
+            $"{_baseUrl}/api/rooms/decide",
+            new DecideRoomRequest(roomDirectory, WorkerStep.Value, executionId, DecisionType.RetryWithRevision),
             TestContext.Current.CancellationToken);
 
         var responses = await Task.WhenAll(decide1, decide2);
@@ -197,21 +197,21 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
             Assert.True(response.IsSuccessStatusCode);
         }
 
-        await WaitForCompletionsAsync(taskDirectory, expectedCompletions: 1);
+        await WaitForCompletionsAsync(roomDirectory, expectedCompletions: 1);
         await Task.Delay(SlowCollisionStubAdapter.DispatchDelay * 2, TestContext.Current.CancellationToken);
 
-        AssertNoCollision(taskDirectory);
-        Assert.Equal(1, ReadCompletionsCount(taskDirectory));
+        AssertNoCollision(roomDirectory);
+        Assert.Equal(1, ReadCompletionsCount(roomDirectory));
 
         // #828: the loser -- the second decide to actually run, once serialised by the #590 lock --
         // finds the execution no longer Paused (ExternalDecisionValidator) and throws
         // InvalidExternalDecisionException. Both endpoints answer 200 before dispatch runs, so before
         // #828 this failure reached Console.Error and nowhere else. Confirms it is now durably
         // recorded rather than silently lost.
-        var errorLogPath = Path.Combine(taskDirectory, ".aer", "turn-errors.log");
+        var errorLogPath = Path.Combine(roomDirectory, ".aer", "turn-errors.log");
         var errorLog = await WaitForFileContentAsync(errorLogPath);
-        Assert.Contains("/api/tasks/decide", errorLog);
-        // TaskSession.DecideAsync's in-process fallback catches InvalidExternalDecisionException
+        Assert.Contains("/api/rooms/decide", errorLog);
+        // RoomClient.DecideAsync's in-process fallback catches InvalidExternalDecisionException
         // itself and returns MutationOutcome(ex.Message) rather than throwing (see Program.cs's
         // #828 comment) -- what's recorded is ExternalDecisionValidator's message text, not the
         // exception type name.
@@ -223,50 +223,50 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     {
         // Exception-safety arm (work item 4): a dispatch that fails must release the per-directory
         // lock so a follow-up dispatch on the same directory still runs. UnknownWorkerAdapterException
-        // is an AerFlowException, caught inside TaskSession.RunAsync's own fallback branch and turned
+        // is an AerFlowException, caught inside RoomClient.RunAsync's own fallback branch and turned
         // into a MutationOutcome rather than an escaping .NET exception -- but Program.cs's
         // turnLock.Release() sits in a `finally` around the ENTIRE `await session.RunAsync(...)` call,
         // not inside a catch keyed to a specific exception type, so it runs identically whether
         // RunAsync swallows the failure internally or lets one escape. That makes this HTTP-level test
         // representative of both cases -- see the commit body for why a second, lock-internal unit
         // test would be redundant rather than additive here.
-        var (taskDirectory, goodBindingsFilePath) = await CreateReadyTaskDirectoryAsync();
-        var badBindingsFilePath = await WriteUnresolvableBindingsAsync(taskDirectory);
+        var (roomDirectory, goodBindingsFilePath) = await CreateReadyRoomDirectoryAsync();
+        var badBindingsFilePath = await WriteUnresolvableBindingsAsync(roomDirectory);
 
         var badRunResponse = await _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/run",
-            new RunTaskRequest(taskDirectory, null, badBindingsFilePath),
+            $"{_baseUrl}/api/rooms/run",
+            new RunRoomRequest(roomDirectory, null, badBindingsFilePath),
             TestContext.Current.CancellationToken);
         Assert.True(badRunResponse.IsSuccessStatusCode);
 
         // Wait for the failed dispatch to actually finish (and release the lock) before firing the
         // next one -- #828's error log is the observable signal that the background body completed.
-        var errorLogPath = Path.Combine(taskDirectory, ".aer", "turn-errors.log");
+        var errorLogPath = Path.Combine(roomDirectory, ".aer", "turn-errors.log");
         await WaitForFileContentAsync(errorLogPath);
 
         var goodRunResponse = await _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/run",
-            new RunTaskRequest(taskDirectory, null, goodBindingsFilePath),
+            $"{_baseUrl}/api/rooms/run",
+            new RunRoomRequest(roomDirectory, null, goodBindingsFilePath),
             TestContext.Current.CancellationToken);
         Assert.True(goodRunResponse.IsSuccessStatusCode);
 
         // If the lock were never released, this would hang until WaitForCompletionsAsync's own
         // internal 30s deadline and then fail on the assertion below -- a genuine timeout, not a
         // silent pass.
-        await WaitForCompletionsAsync(taskDirectory, expectedCompletions: 1);
-        Assert.Equal(1, ReadCompletionsCount(taskDirectory));
+        await WaitForCompletionsAsync(roomDirectory, expectedCompletions: 1);
+        Assert.Equal(1, ReadCompletionsCount(roomDirectory));
     }
 
     [Fact]
     public async Task ConcurrentRuns_OnDifferentDirectories_StillProceedConcurrently()
     {
-        var (directoryA, bindingsA) = await CreateReadyTaskDirectoryAsync();
-        var (directoryB, bindingsB) = await CreateReadyTaskDirectoryAsync();
+        var (directoryA, bindingsA) = await CreateReadyRoomDirectoryAsync();
+        var (directoryB, bindingsB) = await CreateReadyRoomDirectoryAsync();
 
         var runA = _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/run", new RunTaskRequest(directoryA, null, bindingsA), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/rooms/run", new RunRoomRequest(directoryA, null, bindingsA), TestContext.Current.CancellationToken);
         var runB = _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/run", new RunTaskRequest(directoryB, null, bindingsB), TestContext.Current.CancellationToken);
+            $"{_baseUrl}/api/rooms/run", new RunRoomRequest(directoryB, null, bindingsB), TestContext.Current.CancellationToken);
 
         var responses = await Task.WhenAll(runA, runB);
         foreach (var response in responses)
@@ -290,66 +290,66 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
         AssertNoCollision(directoryB);
     }
 
-    private static void AssertNoCollision(string taskDirectory)
+    private static void AssertNoCollision(string roomDirectory)
     {
-        var collisionFile = Path.Combine(taskDirectory, SlowCollisionStubAdapter.CollisionFileName);
+        var collisionFile = Path.Combine(roomDirectory, SlowCollisionStubAdapter.CollisionFileName);
         Assert.False(File.Exists(collisionFile),
-            "Two dispatches against the same task directory overlapped -- the per-directory lock did not serialise them.");
+            "Two dispatches against the same room directory overlapped -- the per-directory lock did not serialise them.");
     }
 
-    private static int ReadCompletionsCount(string taskDirectory)
+    private static int ReadCompletionsCount(string roomDirectory)
     {
-        var completionsFile = Path.Combine(taskDirectory, SlowCollisionStubAdapter.CompletionsFileName);
+        var completionsFile = Path.Combine(roomDirectory, SlowCollisionStubAdapter.CompletionsFileName);
         return File.Exists(completionsFile) ? LiveFileReader.ReadLines(completionsFile).Count : 0;
     }
 
     /// <summary>The one dispatch's start-stamp file time in this directory; fails loudly on zero or several.</summary>
-    private static DateTime ReadDispatchStartUtc(string taskDirectory)
+    private static DateTime ReadDispatchStartUtc(string roomDirectory)
     {
-        var stamps = Directory.GetFiles(taskDirectory, SlowCollisionStubAdapter.StartStampFilePrefix + "*");
+        var stamps = Directory.GetFiles(roomDirectory, SlowCollisionStubAdapter.StartStampFilePrefix + "*");
         var stamp = Assert.Single(stamps);
         return File.GetLastWriteTimeUtc(stamp);
     }
 
-    private static async Task<(string TaskDirectory, string BindingsFilePath)> CreateReadyTaskDirectoryAsync()
+    private static async Task<(string RoomDirectory, string BindingsFilePath)> CreateReadyRoomDirectoryAsync()
     {
         var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
             new WorkflowTemplateId("dispatch-serialization-test"),
             WorkflowTemplateVersion: 1,
             Steps: [new WorkflowStepDefinition(WorkerStep, "worker", [], ["out"], DependsOn: [], RetryPolicy: new RetryPolicy(1))]));
 
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"aer_590_dispatch_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(taskDirectory);
-        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"aer_590_dispatch_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(roomDirectory);
+        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
-        var bindingsFilePath = Path.Combine(taskDirectory, "bindings.json");
-        await WriteSlowCollisionBindingsAsync(bindingsFilePath, taskDirectory, promptTemplate: "irrelevant, no vendor is really invoked");
+        var bindingsFilePath = Path.Combine(roomDirectory, "bindings.json");
+        await WriteSlowCollisionBindingsAsync(bindingsFilePath, roomDirectory, promptTemplate: "irrelevant, no vendor is really invoked");
 
-        return (taskDirectory, bindingsFilePath);
+        return (roomDirectory, bindingsFilePath);
     }
 
     /// <summary>
     /// A single-step workflow whose one attempt has already failed (deterministically, via
     /// <see cref="SlowCollisionStubAdapter.ForceFailureSentinel"/>) and paused -- hand-written
     /// directly into <c>flow.jsonl</c>, the same technique
-    /// <c>DaemonIntegrationTests.CreatePausedTaskDirectoryAsync</c> uses for its own Paused fixture,
+    /// <c>DaemonIntegrationTests.CreatePausedRoomDirectoryAsync</c> uses for its own Paused fixture,
     /// swapping <c>ExecutionSucceeded</c> for <c>ExecutionFailed</c> so the paused outcome is Failed --
     /// <c>ExternalDecisionValidator</c> refuses <c>RetryWithRevision</c> once the paused outcome is
     /// Succeeded, so a fixture built the other way could never legitimately re-dispatch.
     /// </summary>
-    private static async Task<(string TaskDirectory, string ExecutionId)> CreatePausedFailedTaskDirectoryAsync()
+    private static async Task<(string RoomDirectory, string ExecutionId)> CreatePausedFailedRoomDirectoryAsync()
     {
         var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
             new WorkflowTemplateId("dispatch-serialization-paused-test"),
             WorkflowTemplateVersion: 1,
             Steps: [new WorkflowStepDefinition(WorkerStep, "worker", [], ["out"], DependsOn: [], RetryPolicy: new RetryPolicy(1), PausePoint: new PausePoint([]))]));
 
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"aer_590_dispatch_paused_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(taskDirectory);
-        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"aer_590_dispatch_paused_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(roomDirectory);
+        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
-        var bindingsFilePath = Path.Combine(taskDirectory, "bindings.json");
-        await WriteSlowCollisionBindingsAsync(bindingsFilePath, taskDirectory, promptTemplate: SlowCollisionStubAdapter.ForceFailureSentinel);
+        var bindingsFilePath = Path.Combine(roomDirectory, "bindings.json");
+        await WriteSlowCollisionBindingsAsync(bindingsFilePath, roomDirectory, promptTemplate: SlowCollisionStubAdapter.ForceFailureSentinel);
 
         var executionId = new ExecutionId(Guid.NewGuid().ToString("n"));
         var request = new ExecutionRequest(
@@ -363,7 +363,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
             Environment: [],
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 
-        await using (var writer = new FlowEventLogWriter(Path.Combine(taskDirectory, "flow.jsonl")))
+        await using (var writer = new FlowEventLogWriter(Path.Combine(roomDirectory, "flow.jsonl")))
         {
             await writer.AppendAsync(new FlowEvent.ExecutionRequestAccepted(request), TestContext.Current.CancellationToken);
             await writer.AppendAsync(
@@ -372,7 +372,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
             await writer.AppendAsync(new FlowEvent.WorkflowPaused(executionId, WorkerStep), TestContext.Current.CancellationToken);
         }
 
-        return (taskDirectory, executionId.Value);
+        return (roomDirectory, executionId.Value);
     }
 
     private static async Task WriteSlowCollisionBindingsAsync(string bindingsFilePath, string workingDirectory, string promptTemplate)
@@ -397,7 +397,7 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
     /// <see cref="WorkerBindingResolver.Resolve"/> throws <see cref="UnknownWorkerAdapterException"/>
     /// synchronously, a fast, deterministic way to exercise the failure path with no live process.
     /// </summary>
-    private static async Task<string> WriteUnresolvableBindingsAsync(string taskDirectory)
+    private static async Task<string> WriteUnresolvableBindingsAsync(string roomDirectory)
     {
         var config = new Dictionary<string, WorkerBindingConfigEntry>
         {
@@ -406,19 +406,19 @@ public class SessionDirectoryDispatchSerializationTests : IAsyncLifetime
                 "irrelevant, never dispatched", TimeSpan.FromSeconds(30)),
         };
 
-        var path = Path.Combine(taskDirectory, "bad-bindings.json");
+        var path = Path.Combine(roomDirectory, "bad-bindings.json");
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(config), TestContext.Current.CancellationToken);
         return path;
     }
 
     /// <summary>
     /// Polls until <paramref name="expectedCompletions"/> dispatches have actually run against
-    /// <paramref name="taskDirectory"/> (or the timeout elapses -- the caller's own completions-count
+    /// <paramref name="roomDirectory"/> (or the timeout elapses -- the caller's own completions-count
     /// assertion is what turns a timeout into a failure, not this helper).
     /// </summary>
-    private static async Task WaitForCompletionsAsync(string taskDirectory, int expectedCompletions)
+    private static async Task WaitForCompletionsAsync(string roomDirectory, int expectedCompletions)
     {
-        var completionsFile = Path.Combine(taskDirectory, SlowCollisionStubAdapter.CompletionsFileName);
+        var completionsFile = Path.Combine(roomDirectory, SlowCollisionStubAdapter.CompletionsFileName);
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
         while (DateTime.UtcNow < deadline)
         {

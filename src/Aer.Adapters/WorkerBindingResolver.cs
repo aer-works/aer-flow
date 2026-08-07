@@ -79,7 +79,7 @@ public static class WorkerBindingResolver
     /// above only fires for an entry some caller actually looks up by name, never for the rest of the
     /// file merely because it was present (#662). <c>aer run</c> still wants <see cref="Resolve"/>'s
     /// eager form — a fresh dispatch should fail before it starts rather than partway through — but
-    /// <c>aer cancel</c>/<c>aer supply</c> act on a task directory whose run has already started, and
+    /// <c>aer cancel</c>/<c>aer supply</c> act on a room directory whose run has already started, and
     /// need only the bindings a step actually reachable from here will use.
     /// </summary>
     public static IReadOnlyDictionary<string, WorkerBinding> ResolveLazily(

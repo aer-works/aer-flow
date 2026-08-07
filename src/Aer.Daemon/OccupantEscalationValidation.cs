@@ -39,7 +39,7 @@ public static class OccupantEscalationValidation
                 case EscalationSubject.Decision decision:
                     // Unconditional today: the room record carries no decisions
                     // (HeldWorkCitation deliberately cites by free string, and decision events
-                    // live in lane journals), so there is no collection to look up and every
+                    // live in workflow journals), so there is no collection to look up and every
                     // occupant-cited DecisionId is fabricated. When decisions become
                     // room-record citable, the extension point is ADDING a lookup here,
                     // mirroring the HeldWork arm — this return does not become conditional on

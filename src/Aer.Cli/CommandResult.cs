@@ -11,7 +11,7 @@ namespace Aer.Cli;
 /// (§17.1, §17.2), which <see cref="FlowState"/> alone does not carry.
 /// </summary>
 /// <param name="ResumedFromSnapshot">
-/// Whether this call ran the task directory's already-bound snapshot rather than binding the
+/// Whether this call ran the room directory's already-bound snapshot rather than binding the
 /// workflow file it was given (#628). Only <c>aer run</c> can bind one at all, so every other
 /// command leaves this at its default — they resume by definition, and saying so per-command would
 /// be noise rather than news.
@@ -25,7 +25,7 @@ public sealed record CommandResult(
     FlowState State,
     WorkflowDefinitionSnapshot Snapshot,
     bool ResumedFromSnapshot = false,
-    string? TaskDirectoryPath = null,
+    string? RoomDirectoryPath = null,
     IReadOnlyList<WorktreeTeardownResult>? WorktreeTeardowns = null)
 {
     /// <summary>Defaults to empty rather than <c>null</c> for callers that omit the argument.</summary>

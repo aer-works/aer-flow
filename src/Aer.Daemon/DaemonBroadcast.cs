@@ -14,10 +14,10 @@ namespace Aer.Daemon;
 /// client bags and every send path — lifted verbatim from <c>Program.cs</c>'s <c>RunDaemonAsync</c>
 /// closure (#425) so it is one addressable unit instead of scattered local functions.
 ///
-/// This is the daemon-side seam #335 makes per-task: today every connected socket receives every
-/// task's projection (<see cref="BroadcastStateAsync"/> fans out to <em>all</em> of
-/// <c>_webSockets</c>). When #335 keys tasks per instance, the routing of which socket feeds which
-/// task's stream lands here, rather than being spread across the endpoints that call it.
+/// This is the daemon-side seam #335 makes per-room: today every connected socket receives every
+/// room's projection (<see cref="BroadcastStateAsync"/> fans out to <em>all</em> of
+/// <c>_webSockets</c>). When #335 keys rooms per instance, the routing of which socket feeds which
+/// room's stream lands here, rather than being spread across the endpoints that call it.
 /// </summary>
 internal sealed class DaemonBroadcast
 {
@@ -26,9 +26,9 @@ internal sealed class DaemonBroadcast
 
     // M24 Phase 1's live in-turn streaming: a deliberately separate socket/bag from
     // `_webSockets` above, not an overload of the existing `/api/ws` protocol. That endpoint's
-    // frames are bare TaskProjection JSON with a couple of sibling properties bolted on
+    // frames are bare RoomProjection JSON with a couple of sibling properties bolted on
     // (DirectoryPath, WorkerAdapters) — every existing client deserializes each incoming
-    // frame straight into TaskProjection with no type discriminator at all. Sending a
+    // frame straight into RoomProjection with no type discriminator at all. Sending a
     // differently-shaped progress frame down that same socket risks corrupting an existing
     // client's projection state on a frame it doesn't recognize; a dedicated endpoint carries
     // zero compatibility risk for clients that never opt into it.
@@ -71,14 +71,14 @@ internal sealed class DaemonBroadcast
     }
 
     // Helper method for sending state to a single socket. DirectoryPath (M21 Phase 2, #232)
-    // is added as a sibling property rather than a TaskProjection field: the desktop client
-    // deserializes this same payload straight into TaskProjection and silently ignores
+    // is added as a sibling property rather than a RoomProjection field: the desktop client
+    // deserializes this same payload straight into RoomProjection and silently ignores
     // unmapped members, so this is additive and can't break it. Aer.Mobile needs it because
-    // /api/tasks/decide and /api/tasks/cancel take an explicit directoryPath — with no way
+    // /api/rooms/decide and /api/rooms/cancel take an explicit directoryPath — with no way
     // to derive it from the projection itself, a client that only ever observes the WS
-    // stream (never having called /api/tasks/open itself) would have no directory to send
+    // stream (never having called /api/rooms/open itself) would have no directory to send
     // decisions against.
-    public async Task SendStateAsync(WebSocket socket, TaskProjection projection, string? directoryPath)
+    public async Task SendStateAsync(WebSocket socket, RoomProjection projection, string? directoryPath)
     {
         var options = DaemonSerializerOptions.WebSocket;
         var node = JsonSerializer.SerializeToNode(projection, options)!.AsObject();
@@ -89,11 +89,11 @@ internal sealed class DaemonBroadcast
             // M24 mobile chat UI follow-up (issue #262): lets a client that only observes
             // this push (never having called /api/sessions/start itself — e.g. a phone
             // whose _openDirectoryPath was seeded from another client's push, or picked
-            // from /api/tasks/recent) learn this directory is an interactive session and
+            // from /api/rooms/recent) learn this directory is an interactive session and
             // which SessionId to fetch turns for, without a GET /api/sessions list-scan on
             // every push. Same additive-sibling pattern as DirectoryPath/WorkerAdapters
-            // above; still not part of TaskProjection itself.
-            var sessionMetadataPath = Path.Combine(directoryPath, ".aer", "session.json");
+            // above; still not part of RoomProjection itself.
+            var sessionMetadataPath = Path.Combine(directoryPath, ".aer", AerPaths.RoomMetadataFileName);
             if (File.Exists(sessionMetadataPath))
             {
                 try
@@ -147,7 +147,7 @@ internal sealed class DaemonBroadcast
     }
 
     // Helper method for broadcasting state to all sockets
-    public async Task BroadcastStateAsync(TaskProjection projection, string? directoryPath)
+    public async Task BroadcastStateAsync(RoomProjection projection, string? directoryPath)
     {
         var activeSockets = _webSockets.Where(s => s.State == WebSocketState.Open).ToList();
         foreach (var socket in activeSockets)

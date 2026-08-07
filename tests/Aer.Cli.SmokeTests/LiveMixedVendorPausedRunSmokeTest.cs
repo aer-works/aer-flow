@@ -31,10 +31,10 @@ public class LiveMixedVendorPausedRunSmokeTest
         var bindingsFilePath = Path.Combine(fixturesDirectory, "draft-review-paused-bindings.json");
 
         var testRoot = Path.Combine(Path.GetTempPath(), $"mixed-vendor-smoke-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
-            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var runOptions = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var pausedResult = await RunCommand.ExecuteAsync(runOptions, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken);
 
@@ -47,7 +47,7 @@ public class LiveMixedVendorPausedRunSmokeTest
 
             var pausedExecutionId = reviewState.LatestExecutionId!.Value;
             var decideOptions = new DecideOptions(
-                taskDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
+                roomDirectory, pausedExecutionId.Value, DecisionType.Resume, TargetStepId: null,
                 SupplementaryExecutionId: null, bindingsFilePath);
 
             var finalResult = await DecideCommand.ExecuteAsync(decideOptions, WorkerAdapterRegistry.Default, cancellationToken: TestContext.Current.CancellationToken);
@@ -55,7 +55,7 @@ public class LiveMixedVendorPausedRunSmokeTest
             Assert.Equal(WorkflowStatus.Terminal, finalResult.State.Status);
             Assert.All(finalResult.State.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
-            var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
+            var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
             var stepStateById = finalResult.State.Steps.ToDictionary(s => s.StepId);
 
             await AssertRealOutputAsync(artifactsRoot, stepStateById[new StepId("draft")], "draft");

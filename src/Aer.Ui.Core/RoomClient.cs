@@ -16,11 +16,11 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public record OpenTaskRequest(string DirectoryPath);
-public record RunTaskRequest(string DirectoryPath, string? WorkflowTemplateFilePath, string BindingsFilePath);
+public record OpenRoomRequest(string DirectoryPath);
+public record RunRoomRequest(string DirectoryPath, string? WorkflowTemplateFilePath, string BindingsFilePath);
 public record ArtifactReference(string ExecutionId, string FileName);
 
-public record DecideTaskRequest(
+public record DecideRoomRequest(
     string DirectoryPath,
     string StepId,
     string ExecutionId,
@@ -35,15 +35,15 @@ public record RunTemplateRequest(
     string TemplateId,
     string? PrimaryAdapter = null,
     string? SecondaryAdapter = null,
-    string? TaskName = null,
+    string? RoomName = null,
     string? CustomPrompt = null,
     string? SecondaryCustomPrompt = null);
 
-public record CancelTaskRequest(string DirectoryPath, string? ExecutionId = null);
+public record CancelRoomRequest(string DirectoryPath, string? ExecutionId = null);
 
-/// <summary>M24 Phase 5 (#278): the request body shape shared by <c>/api/tasks/archive</c>, <c>/api/tasks/unarchive</c>, and <c>/api/tasks/delete</c>.</summary>
-public record TaskDirectoryRequest(string DirectoryPath);
-public record DaemonVersionInfo(string Version, bool HasRunningTasks, bool IsRemote = false);
+/// <summary>M24 Phase 5 (#278): the request body shape shared by <c>/api/rooms/archive</c>, <c>/api/rooms/unarchive</c>, and <c>/api/rooms/delete</c>.</summary>
+public record RoomDirectoryRequest(string DirectoryPath);
+public record DaemonVersionInfo(string Version, bool HasRunningRooms, bool IsRemote = false);
 
 public class BindingsPathHolder
 {
@@ -51,30 +51,30 @@ public class BindingsPathHolder
 }
 
 /// <summary>
-/// One task-facing session's orchestration (M19 Phase 2, issue #187), updated in M20 Phase 2/3 to
+/// One room's orchestration (M19 Phase 2, issue #187), updated in M20 Phase 2/3 to
 /// support client-first daemonization: connects to Aer.Daemon background host process via REST/WebSockets
-/// to execute pumps and stream real-time task projections. Falls back to in-process execution seamlessly
+/// to execute pumps and stream real-time room projections. Falls back to in-process execution seamlessly
 /// if the daemon cannot be reached or started. Enforces global mutex single-instance checks, 
 /// local auth tokens, process supervision, and version-skew protection.
 /// </summary>
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     // Partial split (#426, no behaviour change): this file holds the shell (shared connection/
-    // client state + the constructor) and the *per-session core* — SetCurrentTaskDirectory /
+    // client state + the constructor) and the *per-session core* — SetCurrentRoomDirectory /
     // LoadAsync / RunAsync / DecideAsync / CancelExecutionAsync and the ShouldApplyProjectionPush /
     // UpdateProjection / Rebuild* projection helpers. Peripheral clusters live in
-    // TaskSession.{Connection,Sessions,Fleet,Remote,Persistence}.cs — same partial class, same
+    // RoomClient.{Connection,Sessions,Fleet,Remote,Persistence}.cs — same partial class, same
     // fields.
     //
-    // #426 named a triplet here (CurrentTaskDirectoryPath, CurrentPumpTask,
+    // #426 named a triplet here (CurrentRoomDirectoryPath, CurrentPumpTask,
     // _currentInFlightExecutions) as the surface #335 would lift into a per-session type. #335 has
     // landed and did exactly that for the *host* half: the registry, stop source and pump task now
     // live in HostedRun, keyed by session directory in _hostedRuns, so the daemon holds as many as
-    // it is running. CurrentTaskDirectoryPath deliberately stayed single-valued — it is the
+    // it is running. CurrentRoomDirectoryPath deliberately stayed single-valued — it is the
     // *client's* idea of what it is looking at, and desktop multi-session is #336's switcher.
 
     /// <summary>The outcome one load produces: exactly one of the two is non-null (§3's honest-error rule — an invalid directory is a rendered message, never a crash).</summary>
-    public sealed record LoadOutcome(TaskProjection? Projection, string? ErrorMessage);
+    public sealed record LoadOutcome(RoomProjection? Projection, string? ErrorMessage);
 
     /// <summary>The outcome one template load produces — <see cref="LoadOutcome"/>'s counterpart for a raw, not-yet-instantiated template file (M14 Phase 3).</summary>
     public sealed record TemplateLoadOutcome(Aer.Flow.Domain.WorkflowDefinition? Definition, string? ErrorMessage);
@@ -93,12 +93,12 @@ public sealed partial class TaskSession
     private readonly Func<string?> _bindingsFilePathProvider;
     private readonly Action _mutationStarted;
     private readonly Action _mutationFailed;
-    private readonly Func<string, CancellationToken, Task> _reopenTaskAsync;
-    private readonly Action<TaskProjection, string>? _onProjectionUpdated;
+    private readonly Func<string, CancellationToken, Task> _reopenRoomAsync;
+    private readonly Action<RoomProjection, string>? _onProjectionUpdated;
     private readonly string? _daemonUrl;
 
     /// <summary>#998: whether a failed daemon probe may launch a fresh Aer.Daemon child. The
-    /// desktop app wants true; a test constructing a real <see cref="TaskSession"/> must pass
+    /// desktop app wants true; a test constructing a real <see cref="RoomClient"/> must pass
     /// false or a probe failure spawns a daemon that rewrites the REAL ~/.aer registration.</summary>
     private readonly bool _spawnDaemonOnDemand;
 
@@ -133,9 +133,9 @@ public sealed partial class TaskSession
     /// <see cref="SessionProgressReceived"/>, and like it carries the directory alongside the payload
     /// so a subscriber can filter by directory itself.
     /// </summary>
-    public event Action<string, TaskProjection>? FleetProjectionReceived;
+    public event Action<string, RoomProjection>? FleetProjectionReceived;
 
-    private void RaiseFleetProjectionReceived(string directoryPath, TaskProjection projection)
+    private void RaiseFleetProjectionReceived(string directoryPath, RoomProjection projection)
     {
         if (FleetProjectionReceived == null)
         {
@@ -182,7 +182,7 @@ public sealed partial class TaskSession
     /// Before this these were three single-slot fields, so a second concurrent run overwrote the
     /// first's registry and stop source. The consequences were not subtle: a targeted cancel for
     /// session A fell through to the out-of-process <c>CancelCommand</c> path because
-    /// <see cref="CurrentTaskDirectoryPath"/> had moved to B, and <see cref="RequestHostStop()"/>
+    /// <see cref="CurrentRoomDirectoryPath"/> had moved to B, and <see cref="RequestHostStop()"/>
     /// cancelled whichever run started last — so asking the daemon to stop A stopped B instead.
     /// Whichever pump finished first then nulled the shared fields, breaking cancellation for the
     /// one still running.
@@ -199,23 +199,23 @@ public sealed partial class TaskSession
     /// </remarks>
     private readonly ConcurrentDictionary<string, HostedRun> _hostedRuns = new(AerPaths.RecordKeyComparer);
 
-    /// <summary>The hosted run for <paramref name="taskDirectoryPath"/>, or null if this process is not running it.</summary>
-    internal HostedRun? HostedRunFor(string taskDirectoryPath) =>
-        _hostedRuns.TryGetValue(AerPaths.RecordKey(taskDirectoryPath), out var run) ? run : null;
+    /// <summary>The hosted run for <paramref name="roomDirectoryPath"/>, or null if this process is not running it.</summary>
+    internal HostedRun? HostedRunFor(string roomDirectoryPath) =>
+        _hostedRuns.TryGetValue(AerPaths.RecordKey(roomDirectoryPath), out var run) ? run : null;
 
     /// <summary>How many pumps this process is hosting right now — the multi-session invariant, observable.</summary>
     internal int HostedRunCount => _hostedRuns.Count;
 
     /// <summary>
-    /// Claims the host slot for <paramref name="taskDirectoryPath"/>. Overwrites any stale entry
+    /// Claims the host slot for <paramref name="roomDirectoryPath"/>. Overwrites any stale entry
     /// rather than refusing: §15's <c>flow.lock</c> is what actually prevents two mutators on one
     /// session, and duplicating that decision here would mean two guards that can disagree.
     /// </summary>
     private HostedRun RegisterHostedRun(
-        string taskDirectoryPath, InFlightExecutionRegistry inFlightExecutions, CancellationTokenSource hostStopSource)
+        string roomDirectoryPath, InFlightExecutionRegistry inFlightExecutions, CancellationTokenSource hostStopSource)
     {
         var hostedRun = new HostedRun(inFlightExecutions, hostStopSource);
-        _hostedRuns[AerPaths.RecordKey(taskDirectoryPath)] = hostedRun;
+        _hostedRuns[AerPaths.RecordKey(roomDirectoryPath)] = hostedRun;
         return hostedRun;
     }
 
@@ -224,22 +224,22 @@ public sealed partial class TaskSession
     /// point: an unconditional remove would let a finishing run evict a newer run that had already
     /// claimed the same directory, silently disarming cancellation for the one still going.
     /// </summary>
-    private void ReleaseHostedRun(string taskDirectoryPath, HostedRun hostedRun) =>
-        _hostedRuns.TryRemove(new KeyValuePair<string, HostedRun>(AerPaths.RecordKey(taskDirectoryPath), hostedRun));
+    private void ReleaseHostedRun(string roomDirectoryPath, HostedRun hostedRun) =>
+        _hostedRuns.TryRemove(new KeyValuePair<string, HostedRun>(AerPaths.RecordKey(roomDirectoryPath), hostedRun));
 
     public MainWindowViewModel ViewModel { get; }
 
     /// <summary>
-    /// Which task directory *this client instance* is currently viewing — set only by this
-    /// session's own actions (<see cref="SetCurrentTaskDirectory"/>, <see cref="RunAsync"/>,
+    /// Which room directory *this client instance* is currently viewing — set only by this
+    /// session's own actions (<see cref="SetCurrentRoomDirectory"/>, <see cref="RunAsync"/>,
     /// <see cref="StartInteractiveSessionAsync"/>), never by another client's. Aer.Daemon's own
-    /// "current task" is a separate, process-wide notion the daemon uses only to decide what a
+    /// "current room" is a separate, process-wide notion the daemon uses only to decide what a
     /// brand-new WS connection sees before this client has opened anything of its own — see
     /// <see cref="ShouldApplyProjectionPush"/>, which is what actually keeps two clients pointed
     /// at different directories from corrupting each other's view (pre-M24 defect, filed as part
     /// of issue #262's chat work).
     /// </summary>
-    public string? CurrentTaskDirectoryPath { get; private set; }
+    public string? CurrentRoomDirectoryPath { get; private set; }
 
     public bool LastLoadSucceeded { get; private set; }
     public WorkflowStatus? LastWorkflowStatus { get; private set; }
@@ -261,18 +261,18 @@ public sealed partial class TaskSession
     /// </remarks>
     public Task? CurrentPumpTask => _hostedRuns.Values.FirstOrDefault()?.PumpTask;
 
-    /// <summary>Whether the poller should keep observing: a successfully opened task that has not reached §12's terminal fixed point.</summary>
+    /// <summary>Whether the poller should keep observing: a successfully opened room that has not reached §12's terminal fixed point.</summary>
     public bool ShouldLiveRefresh => LastLoadSucceeded && LastWorkflowStatus != WorkflowStatus.Terminal;
 
-    public TaskSession(
+    public RoomClient(
         LocalUiConfigurationStore configurationStore,
         IReadOnlyDictionary<string, IWorkerAdapter> adapters,
         MainWindowViewModel viewModel,
         Func<string?> bindingsFilePathProvider,
         Action mutationStarted,
         Action mutationFailed,
-        Func<string, CancellationToken, Task> reopenTaskAsync,
-        Action<TaskProjection, string>? onProjectionUpdated = null,
+        Func<string, CancellationToken, Task> reopenRoomAsync,
+        Action<RoomProjection, string>? onProjectionUpdated = null,
         string? daemonUrl = null,
         bool spawnDaemonOnDemand = true)
     {
@@ -282,14 +282,14 @@ public sealed partial class TaskSession
         _bindingsFilePathProvider = bindingsFilePathProvider;
         _mutationStarted = mutationStarted;
         _mutationFailed = mutationFailed;
-        _reopenTaskAsync = reopenTaskAsync;
+        _reopenRoomAsync = reopenRoomAsync;
         _onProjectionUpdated = onProjectionUpdated;
         _daemonUrl = daemonUrl;
         _spawnDaemonOnDemand = spawnDaemonOnDemand;
     }
 
-    /// <summary>Points the session at <paramref name="taskDirectoryPath"/> without loading — <c>OpenAsync</c>'s bookkeeping half; the load itself goes through <see cref="LoadAsync"/>.</summary>
-    public void SetCurrentTaskDirectory(string? taskDirectoryPath) => CurrentTaskDirectoryPath = taskDirectoryPath;
+    /// <summary>Points the session at <paramref name="roomDirectoryPath"/> without loading — <c>OpenAsync</c>'s bookkeeping half; the load itself goes through <see cref="LoadAsync"/>.</summary>
+    public void SetCurrentRoomDirectory(string? roomDirectoryPath) => CurrentRoomDirectoryPath = roomDirectoryPath;
 
     private static readonly JsonSerializerOptions DefaultJsonOptions = new()
     {
@@ -299,27 +299,27 @@ public sealed partial class TaskSession
 
     /// <summary>
     /// Decides whether an incoming projection push for <paramref name="incomingDirectoryPath"/>
-    /// should be applied to this client's state, seeding <see cref="CurrentTaskDirectoryPath"/>
+    /// should be applied to this client's state, seeding <see cref="CurrentRoomDirectoryPath"/>
     /// from the first push a fresh client ever sees (typically whatever Aer.Daemon last had
     /// open) and rejecting every later push for a different directory. Before this (issue #262
     /// follow-up), every push was applied unconditionally, so one client opening a different
-    /// task silently corrupted every other connected client's view with that task's data,
+    /// room silently corrupted every other connected client's view with that room's data,
     /// mislabeled under whatever directory the victim client had open. Extracted from
     /// <see cref="ReceiveWebSocketDataAsync"/> so this decision is unit-testable without a live
     /// daemon connection.
     /// </summary>
     internal bool ShouldApplyProjectionPush(string? incomingDirectoryPath)
     {
-        CurrentTaskDirectoryPath ??= incomingDirectoryPath;
-        return incomingDirectoryPath == CurrentTaskDirectoryPath;
+        CurrentRoomDirectoryPath ??= incomingDirectoryPath;
+        return incomingDirectoryPath == CurrentRoomDirectoryPath;
     }
 
-    private void UpdateProjection(TaskProjection projection)
+    private void UpdateProjection(RoomProjection projection)
     {
-        if (CurrentTaskDirectoryPath != null)
+        if (CurrentRoomDirectoryPath != null)
         {
-            RebuildPausedSteps(projection, CurrentTaskDirectoryPath);
-            RebuildRunningExecutions(projection, CurrentTaskDirectoryPath);
+            RebuildPausedSteps(projection, CurrentRoomDirectoryPath);
+            RebuildRunningExecutions(projection, CurrentRoomDirectoryPath);
             LastLoadSucceeded = true;
             LastWorkflowStatus = projection.State.Status;
             LastSnapshot = projection.Snapshot;
@@ -332,12 +332,12 @@ public sealed partial class TaskSession
     /// the desktop can read whether the daemon or this process answers the load, and clearing on
     /// the not-held arm is what stops a released lock leaving a stale banner behind.
     /// </summary>
-    private void RefreshWaitingOnLockBanner(string taskDirectoryPath)
+    private void RefreshWaitingOnLockBanner(string roomDirectoryPath)
     {
-        if (ConcurrencyGuard.IsHeld(taskDirectoryPath))
+        if (ConcurrencyGuard.IsHeld(roomDirectoryPath))
         {
-            var (holderDescription, _) = ConcurrencyGuard.ReadHolderInfo(taskDirectoryPath);
-            ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(holderDescription, () => LoadAsync(taskDirectoryPath));
+            var (holderDescription, _) = ConcurrencyGuard.ReadHolderInfo(roomDirectoryPath);
+            ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(holderDescription, () => LoadAsync(roomDirectoryPath));
         }
         else
         {
@@ -346,28 +346,28 @@ public sealed partial class TaskSession
     }
 
     /// <summary>
-    /// Loads <paramref name="taskDirectoryPath"/> through <see cref="TaskProjectionLoader"/> and
+    /// Loads <paramref name="roomDirectoryPath"/> through <see cref="RoomProjectionLoader"/> and
     /// rebuilds the ViewModel's mutation surfaces (<see cref="MainWindowViewModel.PausedSteps"/>,
     /// <see cref="MainWindowViewModel.RunningExecutions"/>) from the projected facts.
     /// </summary>
-    public async Task<LoadOutcome> LoadAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public async Task<LoadOutcome> LoadAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
         // Before the mode branch, deliberately: the second reader found the first draft probed
         // only in the in-process fallback, so the primary (daemon-connected) desktop never showed
         // the waiting-on-lock state at all — and the daemon's own locked answer is a plain string
         // this method's caller drops. The lock is a local filesystem fact the desktop can read in
         // either mode; which process answers the load does not change who holds the directory.
-        RefreshWaitingOnLockBanner(taskDirectoryPath);
-        await RefreshRoomTurnHostBannerAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+        RefreshWaitingOnLockBanner(roomDirectoryPath);
+        await RefreshRoomTurnHostBannerAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
 
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
             try
             {
-                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/open", new OpenTaskRequest(taskDirectoryPath), cancellationToken).ConfigureAwait(true);
+                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/open", new OpenRoomRequest(roomDirectoryPath), cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
-                    var projection = await response.Content.ReadFromJsonAsync<TaskProjection>(DefaultJsonOptions, cancellationToken: cancellationToken).ConfigureAwait(true);
+                    var projection = await response.Content.ReadFromJsonAsync<RoomProjection>(DefaultJsonOptions, cancellationToken: cancellationToken).ConfigureAwait(true);
                     if (projection != null)
                     {
                         UpdateProjection(projection);
@@ -389,10 +389,10 @@ public sealed partial class TaskSession
         // In-process fallback
         try
         {
-            var projection = await TaskProjectionLoader.LoadAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+            var projection = await RoomProjectionLoader.LoadAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
 
-            RebuildPausedSteps(projection, taskDirectoryPath);
-            RebuildRunningExecutions(projection, taskDirectoryPath);
+            RebuildPausedSteps(projection, roomDirectoryPath);
+            RebuildRunningExecutions(projection, roomDirectoryPath);
 
             LastLoadSucceeded = true;
             LastWorkflowStatus = projection.State.Status;
@@ -408,7 +408,7 @@ public sealed partial class TaskSession
 
             if (ex is WorkflowLockedException wle)
             {
-                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(taskDirectoryPath));
+                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(roomDirectoryPath));
             }
 
             LastLoadSucceeded = false;
@@ -453,25 +453,25 @@ public sealed partial class TaskSession
     /// M24 Phase 1's live in-turn streaming — forwarded to <see cref="RunCommand.ExecuteAsync"/>'s
     /// own same-named parameter, and therefore only takes effect on the in-process fallback path
     /// below (a delegate can't cross the HTTP call to a real remote daemon). <c>Aer.Daemon</c>'s own
-    /// <see cref="TaskSession"/> singleton always takes that fallback path (it has no daemon of its
+    /// <see cref="RoomClient"/> singleton always takes that fallback path (it has no daemon of its
     /// own to delegate to), which is exactly the case that needs this.
     /// </param>
     public async Task<MutationOutcome> RunAsync(
-        string taskDirectoryPath, string? workflowTemplateFilePath, string bindingsFilePath, CancellationToken cancellationToken = default,
+        string roomDirectoryPath, string? workflowTemplateFilePath, string bindingsFilePath, CancellationToken cancellationToken = default,
         Action<string, string>? onWorkerStdoutLine = null)
     {
-        CurrentTaskDirectoryPath = taskDirectoryPath;
+        CurrentRoomDirectoryPath = roomDirectoryPath;
 
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
             try
             {
-                var request = new RunTaskRequest(taskDirectoryPath, workflowTemplateFilePath, bindingsFilePath);
+                var request = new RunRoomRequest(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath);
                 ViewModel.IsMutationInFlight = true;
                 ViewModel.RunStatusText = "Running…";
                 _mutationStarted();
 
-                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/run", request, cancellationToken).ConfigureAwait(true);
+                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/run", request, cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
                     ViewModel.RunStatusText = string.Empty;
@@ -482,8 +482,8 @@ public sealed partial class TaskSession
                         await _configurationStore.RecordWorkflowTemplateFilePathAsync(workflowTemplateFilePath, cancellationToken).ConfigureAwait(true);
                     }
                     await _configurationStore.RecordBindingsFilePathAsync(bindingsFilePath, cancellationToken).ConfigureAwait(true);
-                    await RecordTaskPathMetadataAsync(taskDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken).ConfigureAwait(true);
-                    await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+                    await RecordRoomPathMetadataAsync(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken).ConfigureAwait(true);
+                    await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
                     return new MutationOutcome(null);
                 }
                 else
@@ -492,7 +492,7 @@ public sealed partial class TaskSession
                     _mutationFailed();
                     // The daemon's locked refusal is a plain string with no holder in it — the
                     // local probe is what turns it into the waiting-on-lock state (#618).
-                    RefreshWaitingOnLockBanner(taskDirectoryPath);
+                    RefreshWaitingOnLockBanner(roomDirectoryPath);
                     ViewModel.RunStatusText = err;
                     ViewModel.IsMutationInFlight = false;
                     return new MutationOutcome(err);
@@ -511,7 +511,7 @@ public sealed partial class TaskSession
         var options = new RunOptions(
             string.IsNullOrWhiteSpace(workflowTemplateFilePath) ? null : workflowTemplateFilePath,
             bindingsFilePath,
-            taskDirectoryPath);
+            roomDirectoryPath);
 
         ViewModel.IsMutationInFlight = true;
         ViewModel.RunStatusText = "Running…";
@@ -519,7 +519,7 @@ public sealed partial class TaskSession
 
         var inFlightExecutions = new InFlightExecutionRegistry();
         var hostStopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var hostedRun = RegisterHostedRun(taskDirectoryPath, inFlightExecutions, hostStopSource);
+        var hostedRun = RegisterHostedRun(roomDirectoryPath, inFlightExecutions, hostStopSource);
 
         try
         {
@@ -536,7 +536,7 @@ public sealed partial class TaskSession
             }
 
             await _configurationStore.RecordBindingsFilePathAsync(bindingsFilePath, cancellationToken).ConfigureAwait(true);
-            await RecordTaskPathMetadataAsync(taskDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken).ConfigureAwait(true);
+            await RecordRoomPathMetadataAsync(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken).ConfigureAwait(true);
         }
         catch (AerFlowException ex)
         {
@@ -544,36 +544,36 @@ public sealed partial class TaskSession
             if (ex is WorkflowLockedException wle)
             {
                 ViewModel.RunStatusText = string.Empty;
-                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(taskDirectoryPath));
+                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(roomDirectoryPath));
             }
             else
             {
                 ViewModel.RunStatusText = ex.Message;
             }
 
-            // #330: a failed pump used to return here without ever calling _reopenTaskAsync, so
-            // Aer.Daemon's own wiring of that hook (reopenTaskAsync -> BroadcastStateAsync,
+            // #330: a failed pump used to return here without ever calling _reopenRoomAsync, so
+            // Aer.Daemon's own wiring of that hook (reopenRoomAsync -> BroadcastStateAsync,
             // Program.cs) never fired for this run at all -- a connected phone watching this
             // directory saw nothing, permanently, instead of learning the run stopped.
-            await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+            await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
             return new MutationOutcome(ex.Message);
         }
         finally
         {
             ViewModel.IsMutationInFlight = false;
-            ReleaseHostedRun(taskDirectoryPath, hostedRun);
+            ReleaseHostedRun(roomDirectoryPath, hostedRun);
             hostStopSource.Dispose();
         }
 
-        await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+        await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
     }
 
-    private static async Task RecordTaskPathMetadataAsync(string taskDirectoryPath, string? workflowTemplateFilePath, string? bindingsFilePath, CancellationToken cancellationToken)
+    private static async Task RecordRoomPathMetadataAsync(string roomDirectoryPath, string? workflowTemplateFilePath, string? bindingsFilePath, CancellationToken cancellationToken)
     {
         try
         {
-            var aerDir = Path.Combine(taskDirectoryPath, ".aer");
+            var aerDir = Path.Combine(roomDirectoryPath, ".aer");
             Directory.CreateDirectory(aerDir);
             if (!string.IsNullOrWhiteSpace(workflowTemplateFilePath))
             {
@@ -598,7 +598,7 @@ public sealed partial class TaskSession
     /// parameter; identical in-process-fallback-only behavior applies here.
     /// </param>
     public async Task<MutationOutcome> DecideAsync(
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         StepId stepId,
         ExecutionId executionId,
         DecisionType decisionType,
@@ -617,8 +617,8 @@ public sealed partial class TaskSession
                 ViewModel.IsMutationInFlight = true;
                 _mutationStarted();
 
-                var request = new DecideTaskRequest(
-                    taskDirectoryPath,
+                var request = new DecideRoomRequest(
+                    roomDirectoryPath,
                     stepId.Value,
                     executionId.Value,
                     decisionType,
@@ -627,13 +627,13 @@ public sealed partial class TaskSession
                     supplementaryWorker,
                     supplementaryOutputName);
 
-                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/decide", request, cancellationToken).ConfigureAwait(true);
+                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/decide", request, cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
                     ViewModel.DecisionStatusText = string.Empty;
                     ViewModel.IsMutationInFlight = false;
-                    ViewModel.Home.RetireInboxItem(taskDirectoryPath, stepId, executionId);
-                    await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+                    ViewModel.Home.RetireInboxItem(roomDirectoryPath, stepId, executionId);
+                    await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
                     return new MutationOutcome(null);
                 }
                 else
@@ -642,7 +642,7 @@ public sealed partial class TaskSession
                     _mutationFailed();
                     // Same reason as RunAsync's daemon-refusal arm: the string carries no holder;
                     // the local probe renders the state (#618).
-                    RefreshWaitingOnLockBanner(taskDirectoryPath);
+                    RefreshWaitingOnLockBanner(roomDirectoryPath);
                     ViewModel.DecisionStatusText = err;
                     ViewModel.IsMutationInFlight = false;
                     return new MutationOutcome(err);
@@ -664,7 +664,7 @@ public sealed partial class TaskSession
 
         var inFlightExecutions = new InFlightExecutionRegistry();
         var hostStopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var hostedRun = RegisterHostedRun(taskDirectoryPath, inFlightExecutions, hostStopSource);
+        var hostedRun = RegisterHostedRun(roomDirectoryPath, inFlightExecutions, hostStopSource);
 
         try
         {
@@ -673,7 +673,7 @@ public sealed partial class TaskSession
             if (revisionFilePath is not null)
             {
                 var supplyOptions = new SupplyOptions(
-                    taskDirectoryPath,
+                    roomDirectoryPath,
                     supplementaryWorker ?? string.Empty,
                     supplementaryOutputName ?? string.Empty,
                     revisionFilePath,
@@ -686,7 +686,7 @@ public sealed partial class TaskSession
             }
 
             var options = new DecideOptions(
-                taskDirectoryPath,
+                roomDirectoryPath,
                 executionId.Value,
                 decisionType,
                 targetStepId,
@@ -706,7 +706,7 @@ public sealed partial class TaskSession
             if (ex is WorkflowLockedException wle)
             {
                 ViewModel.DecisionStatusText = string.Empty;
-                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(taskDirectoryPath));
+                ViewModel.WaitingOnLockBanner = new WaitingOnLockBannerViewModel(wle.HolderDescription, () => LoadAsync(roomDirectoryPath));
             }
             else
             {
@@ -717,12 +717,12 @@ public sealed partial class TaskSession
         finally
         {
             ViewModel.IsMutationInFlight = false;
-            ReleaseHostedRun(taskDirectoryPath, hostedRun);
+            ReleaseHostedRun(roomDirectoryPath, hostedRun);
             hostStopSource.Dispose();
         }
 
-        ViewModel.Home.RetireInboxItem(taskDirectoryPath, stepId, executionId);
-        await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+        ViewModel.Home.RetireInboxItem(roomDirectoryPath, stepId, executionId);
+        await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
     }
 
@@ -730,7 +730,7 @@ public sealed partial class TaskSession
     /// The targeted-Cancel surface: cancels via daemon or executes in-process.
     /// </summary>
     public async Task<MutationOutcome> CancelExecutionAsync(
-        string taskDirectoryPath, ExecutionId executionId, CancellationToken cancellationToken = default)
+        string roomDirectoryPath, ExecutionId executionId, CancellationToken cancellationToken = default)
     {
         if (await EnsureDaemonConnectedAsync(cancellationToken).ConfigureAwait(true))
         {
@@ -740,13 +740,13 @@ public sealed partial class TaskSession
                 ViewModel.IsMutationInFlight = true;
                 _mutationStarted();
 
-                var request = new CancelTaskRequest(taskDirectoryPath, executionId.Value);
-                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/cancel", request, cancellationToken).ConfigureAwait(true);
+                var request = new CancelRoomRequest(roomDirectoryPath, executionId.Value);
+                var response = await _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/cancel", request, cancellationToken).ConfigureAwait(true);
                 if (response.IsSuccessStatusCode)
                 {
                     ViewModel.CancelStatusText = string.Empty;
                     ViewModel.IsMutationInFlight = false;
-                    await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+                    await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
                     return new MutationOutcome(null);
                 }
                 else
@@ -771,7 +771,7 @@ public sealed partial class TaskSession
         // session happens to be "current" (#335): with two runs in flight the current one is
         // simply the more recent, so cancelling the other used to miss its live registry entirely
         // and fall through to the out-of-process path below.
-        if (HostedRunFor(taskDirectoryPath) is { } hostedRun)
+        if (HostedRunFor(roomDirectoryPath) is { } hostedRun)
         {
             await hostedRun.InFlightExecutions.RequestCancellationAsync(executionId, cancellationToken).ConfigureAwait(true);
             return new MutationOutcome(null);
@@ -783,7 +783,7 @@ public sealed partial class TaskSession
 
         try
         {
-            var options = new CancelOptions(taskDirectoryPath, executionId.Value, _bindingsFilePathProvider() ?? string.Empty);
+            var options = new CancelOptions(roomDirectoryPath, executionId.Value, _bindingsFilePathProvider() ?? string.Empty);
             await Task.Run(() => CancelCommand.ExecuteAsync(options, _adapters, cancellationToken: cancellationToken), cancellationToken)
                 .ConfigureAwait(true);
 
@@ -800,7 +800,7 @@ public sealed partial class TaskSession
             ViewModel.IsMutationInFlight = false;
         }
 
-        await _reopenTaskAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+        await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
     }
 
@@ -811,9 +811,9 @@ public sealed partial class TaskSession
     /// </summary>
     public void RequestHostStop()
     {
-        if (_isClientMode && CurrentTaskDirectoryPath != null && _activeDaemonUrl != null)
+        if (_isClientMode && CurrentRoomDirectoryPath != null && _activeDaemonUrl != null)
         {
-            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/cancel", new CancelTaskRequest(CurrentTaskDirectoryPath, null));
+            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/cancel", new CancelRoomRequest(CurrentRoomDirectoryPath, null));
             return;
         }
 
@@ -824,7 +824,7 @@ public sealed partial class TaskSession
     }
 
     /// <summary>
-    /// Stops the pump hosting <paramref name="taskDirectoryPath"/>, leaving every other hosted
+    /// Stops the pump hosting <paramref name="roomDirectoryPath"/>, leaving every other hosted
     /// session running. Returns whether one was found.
     /// </summary>
     /// <remarks>
@@ -833,15 +833,15 @@ public sealed partial class TaskSession
     /// session B and left A running (#335). Any caller that knows which session it means must call
     /// this one.
     /// </remarks>
-    public bool RequestHostStop(string taskDirectoryPath)
+    public bool RequestHostStop(string roomDirectoryPath)
     {
         if (_isClientMode && _activeDaemonUrl != null)
         {
-            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/tasks/cancel", new CancelTaskRequest(taskDirectoryPath, null));
+            _ = _httpClient.PostAsJsonAsync($"{_activeDaemonUrl}/api/rooms/cancel", new CancelRoomRequest(roomDirectoryPath, null));
             return true;
         }
 
-        if (HostedRunFor(taskDirectoryPath) is not { } hostedRun)
+        if (HostedRunFor(roomDirectoryPath) is not { } hostedRun)
         {
             return false;
         }
@@ -850,7 +850,7 @@ public sealed partial class TaskSession
         return true;
     }
 
-    private void RebuildPausedSteps(TaskProjection projection, string taskDirectoryPath)
+    private void RebuildPausedSteps(RoomProjection projection, string roomDirectoryPath)
     {
         ViewModel.PausedSteps.Clear();
 
@@ -871,7 +871,7 @@ public sealed partial class TaskSession
                 supersedeTargets,
                 (stepId, decidedExecutionId, decisionType, targetStepId, revisionFilePath, supplementaryWorker, supplementaryOutputName) =>
                     DecideAsync(
-                        taskDirectoryPath, stepId, decidedExecutionId, decisionType, targetStepId,
+                        roomDirectoryPath, stepId, decidedExecutionId, decisionType, targetStepId,
                         revisionFilePath, supplementaryWorker, supplementaryOutputName))
             {
                 IsEnabled = !ViewModel.IsMutationInFlight,
@@ -879,11 +879,11 @@ public sealed partial class TaskSession
         }
     }
 
-    private void RebuildRunningExecutions(TaskProjection projection, string taskDirectoryPath)
+    private void RebuildRunningExecutions(RoomProjection projection, string roomDirectoryPath)
     {
         ViewModel.RunningExecutions.Clear();
 
-        var isLocallyHostedTask = HostedRunFor(taskDirectoryPath) is not null;
+        var isLocallyHostedRoom = HostedRunFor(roomDirectoryPath) is not null;
 
         foreach (var stepState in projection.State.Steps)
         {
@@ -892,17 +892,17 @@ public sealed partial class TaskSession
                 continue;
             }
 
-            AddRunningExecution(stepState.StepId, executionId, isLocallyHostedTask || _isClientMode, projection.State, taskDirectoryPath);
+            AddRunningExecution(stepState.StepId, executionId, isLocallyHostedRoom || _isClientMode, projection.State, roomDirectoryPath);
         }
 
         foreach (var stepLessExecution in projection.State.StepLessExecutions)
         {
-            AddRunningExecution(stepId: null, stepLessExecution.ExecutionId, isLocallyHosted: false, projection.State, taskDirectoryPath);
+            AddRunningExecution(stepId: null, stepLessExecution.ExecutionId, isLocallyHosted: false, projection.State, roomDirectoryPath);
         }
     }
 
     private void AddRunningExecution(
-        StepId? stepId, ExecutionId executionId, bool isLocallyHosted, FlowState state, string taskDirectoryPath)
+        StepId? stepId, ExecutionId executionId, bool isLocallyHosted, FlowState state, string roomDirectoryPath)
     {
         var cancellationRequested = state.CancellationRequestedExecutionIds.Contains(executionId);
 
@@ -911,7 +911,7 @@ public sealed partial class TaskSession
             executionId,
             isLocallyHosted,
             cancellationRequested,
-            targetExecutionId => CancelExecutionAsync(taskDirectoryPath, targetExecutionId))
+            targetExecutionId => CancelExecutionAsync(roomDirectoryPath, targetExecutionId))
         {
             IsEnabled = isLocallyHosted || !ViewModel.IsMutationInFlight,
         });

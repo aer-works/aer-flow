@@ -25,7 +25,7 @@ public class CapturedOutputEncodingEndToEndTests
         }
 
         var testRoot = Path.Combine(Path.GetTempPath(), $"cli-e2e-utf8-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             Directory.CreateDirectory(testRoot);
@@ -37,7 +37,7 @@ public class CapturedOutputEncodingEndToEndTests
 
             var workflowFilePath = await WriteOneStepWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteOneStepBindingsAsync(testRoot, fixturePath);
-            var options = new RunOptions(workflowFilePath, bindingsFilePath, taskDirectory);
+            var options = new RunOptions(workflowFilePath, bindingsFilePath, roomDirectory);
 
             var capturedStdoutLines = new List<string>();
             Action<string, string> onWorkerStdoutLine = (worker, line) =>
@@ -51,7 +51,7 @@ public class CapturedOutputEncodingEndToEndTests
 
             // Verify output artifact was produced
             var stepState = finalState.Steps.First(s => s.StepId.Value == "step1");
-            var outputPath = Path.Combine(taskDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}", "output1");
+            var outputPath = Path.Combine(roomDirectory, "artifacts", $"execution_{stepState.LatestExecutionId}", "output1");
             Assert.True(File.Exists(outputPath), $"Expected output artifact at {outputPath}");
 
             // The claim under test is capture fidelity: fixture bytes -> python stdout -> aer-core

@@ -59,8 +59,8 @@ public class FlowStateReporterTests
 
     /// <summary>
     /// #628: a resumed run reports the prior run's status and writes no new events, so without this
-    /// line an already-terminal task directory is indistinguishable from a fresh failure. Naming the
-    /// template is the point — under <c>--task-dir</c> it need not be the file on the command line.
+    /// line an already-terminal room directory is indistinguishable from a fresh failure. Naming the
+    /// template is the point — under <c>--room-dir</c> it need not be the file on the command line.
     /// </summary>
     /// <remarks>
     /// A fresh run is the polarity control on the same output: a reporter that printed the line
@@ -187,7 +187,7 @@ public class FlowStateReporterTests
     [Fact]
     public void Report_prints_produced_output_paths_for_succeeded_steps_and_none_for_failed_steps()
     {
-        var taskDir = Path.Combine(Path.GetTempPath(), $"flow-reporter-test-{Guid.NewGuid():N}");
+        var roomDir = Path.Combine(Path.GetTempPath(), $"flow-reporter-test-{Guid.NewGuid():N}");
         var snapshot = new WorkflowDefinitionSnapshot(
             new WorkflowDefinitionSnapshotId("snap-1"),
             new WorkflowTemplateId("wf"),
@@ -211,13 +211,13 @@ public class FlowStateReporterTests
             WorkflowStatus.Terminal);
 
         using var stringWriter = new StringWriter();
-        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, TaskDirectoryPath: taskDir));
+        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, RoomDirectoryPath: roomDir));
 
         var output = stringWriter.ToString();
 
-        var expectedPlanPath = Path.GetFullPath(Path.Combine(taskDir, "artifacts", $"execution_{execSucceeded}", "plan"));
-        var expectedSpecPath = Path.GetFullPath(Path.Combine(taskDir, "artifacts", $"execution_{execSucceeded}", "spec"));
-        var unexpectedFailPath = Path.GetFullPath(Path.Combine(taskDir, "artifacts", $"execution_{execFailed}", "unused_out"));
+        var expectedPlanPath = Path.GetFullPath(Path.Combine(roomDir, "artifacts", $"execution_{execSucceeded}", "plan"));
+        var expectedSpecPath = Path.GetFullPath(Path.Combine(roomDir, "artifacts", $"execution_{execSucceeded}", "spec"));
+        var unexpectedFailPath = Path.GetFullPath(Path.Combine(roomDir, "artifacts", $"execution_{execFailed}", "unused_out"));
 
         Assert.Contains($"plan -> {expectedPlanPath}", output);
         Assert.Contains($"spec -> {expectedSpecPath}", output);
@@ -241,7 +241,7 @@ public class FlowStateReporterTests
     public void A_paused_step_prints_output_paths_exactly_when_its_masked_outcome_succeeded(
         StepStatus pausedOutcome, bool expectPaths)
     {
-        var taskDir = Path.Combine(Path.GetTempPath(), $"flow-reporter-test-{Guid.NewGuid():N}");
+        var roomDir = Path.Combine(Path.GetTempPath(), $"flow-reporter-test-{Guid.NewGuid():N}");
         var snapshot = new WorkflowDefinitionSnapshot(
             new WorkflowDefinitionSnapshotId("snap-1"),
             new WorkflowTemplateId("wf"),
@@ -263,10 +263,10 @@ public class FlowStateReporterTests
             WorkflowStatus.Paused);
 
         using var stringWriter = new StringWriter();
-        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, TaskDirectoryPath: taskDir));
+        FlowStateReporter.Report(stringWriter, new CommandResult(state, snapshot, RoomDirectoryPath: roomDir));
 
         var output = stringWriter.ToString();
-        var expectedPath = Path.Combine(taskDir, "artifacts", $"execution_{executionId}", "verdict");
+        var expectedPath = Path.Combine(roomDir, "artifacts", $"execution_{executionId}", "verdict");
 
         Assert.Contains("Paused — awaiting review", output);
         Assert.Equal(expectPaths, output.Contains($"verdict -> {expectedPath}", StringComparison.Ordinal));

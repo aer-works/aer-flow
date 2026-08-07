@@ -11,7 +11,7 @@ namespace Aer.Ui.Converters;
 /// <summary>
 /// Post-M19 design review (issue #206): design-language.md's status→icon table, materialized as
 /// one mapping every status-rendering surface goes through, so the same status always draws the
-/// same glyph ("color + icon + word, never color alone" — <see cref="TaskCardViewModel"/>'s own
+/// same glyph ("color + icon + word, never color alone" — <see cref="RoomCardViewModel"/>'s own
 /// comment named this intent; nothing consumed it until now).
 /// </summary>
 internal static class StatusIconMap
@@ -65,31 +65,31 @@ internal static class StatusIconMap
     };
 
     /// <summary>Same #458 correction as the <see cref="StepStatus"/> overload above: NeedsYou was a dot.</summary>
-    public static string GeometryKeyFor(TaskCardStatus status) => status switch
+    public static string GeometryKeyFor(RoomCardStatus status) => status switch
     {
-        TaskCardStatus.Running => "Icon.Ring",
-        TaskCardStatus.NeedsYou => "Icon.Bubble",
-        TaskCardStatus.Finished => "Icon.Check",
-        TaskCardStatus.Failed => "Icon.Cross",
-        TaskCardStatus.Cancelled => "Icon.Dash",
+        RoomCardStatus.Running => "Icon.Ring",
+        RoomCardStatus.NeedsYou => "Icon.Bubble",
+        RoomCardStatus.Finished => "Icon.Check",
+        RoomCardStatus.Failed => "Icon.Cross",
+        RoomCardStatus.Cancelled => "Icon.Dash",
         // #461: the stale-list state gets its own mark. It previously borrowed Icon.Refresh, the
         // Retry *action*'s glyph — a state wearing an action's icon invites clicking it.
-        // #616: Unavailable is named and the discard throws — a new TaskCardStatus member must
+        // #616: Unavailable is named and the discard throws — a new RoomCardStatus member must
         // not silently render as the stale-list state.
-        TaskCardStatus.Unavailable => "Icon.Slashed",
+        RoomCardStatus.Unavailable => "Icon.Slashed",
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped card status."),
     };
 
-    public static string ColorKeyFor(TaskCardStatus status) => status switch
+    public static string ColorKeyFor(RoomCardStatus status) => status switch
     {
-        TaskCardStatus.Running => "Status.Running",
-        TaskCardStatus.NeedsYou => "Status.NeedsYou",
-        TaskCardStatus.Finished => "Status.Succeeded",
-        TaskCardStatus.Failed => "Status.Failed",
+        RoomCardStatus.Running => "Status.Running",
+        RoomCardStatus.NeedsYou => "Status.NeedsYou",
+        RoomCardStatus.Finished => "Status.Succeeded",
+        RoomCardStatus.Failed => "Status.Failed",
         // Cancelled shares the muted brush rather than earning a hue: it is a quiet outcome, and
         // colouring it like a failure is exactly the alarm #461 exists to remove.
-        TaskCardStatus.Cancelled => "Status.Idle",
-        TaskCardStatus.Unavailable => "Status.Idle",
+        RoomCardStatus.Cancelled => "Status.Idle",
+        RoomCardStatus.Unavailable => "Status.Idle",
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped card status."), // #616
     };
 }
@@ -107,7 +107,7 @@ public sealed class StatusToIconFillConverter : IValueConverter
         var geometryKey = value switch
         {
             StepStatus stepStatus => StatusIconMap.GeometryKeyFor(stepStatus),
-            TaskCardStatus cardStatus => StatusIconMap.GeometryKeyFor(cardStatus),
+            RoomCardStatus cardStatus => StatusIconMap.GeometryKeyFor(cardStatus),
             _ => null,
         };
 
@@ -119,7 +119,7 @@ public sealed class StatusToIconFillConverter : IValueConverter
         var colorKey = value switch
         {
             StepStatus stepStatus => StatusIconMap.ColorKeyFor(stepStatus),
-            TaskCardStatus cardStatus => StatusIconMap.ColorKeyFor(cardStatus),
+            RoomCardStatus cardStatus => StatusIconMap.ColorKeyFor(cardStatus),
             _ => null,
         };
 
@@ -144,7 +144,7 @@ public sealed class StatusToIconGeometryConverter : IValueConverter
         var key = value switch
         {
             StepStatus stepStatus => StatusIconMap.GeometryKeyFor(stepStatus),
-            TaskCardStatus cardStatus => StatusIconMap.GeometryKeyFor(cardStatus),
+            RoomCardStatus cardStatus => StatusIconMap.GeometryKeyFor(cardStatus),
             _ => null,
         };
 
@@ -166,7 +166,7 @@ public sealed class StatusToIconBrushConverter : IValueConverter
         var key = value switch
         {
             StepStatus stepStatus => StatusIconMap.ColorKeyFor(stepStatus),
-            TaskCardStatus cardStatus => StatusIconMap.ColorKeyFor(cardStatus),
+            RoomCardStatus cardStatus => StatusIconMap.ColorKeyFor(cardStatus),
             _ => null,
         };
 

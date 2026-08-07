@@ -28,7 +28,7 @@ public class AuthoringRoundTripTests
         new Dictionary<string, IWorkerAdapter> { ["shell"] = new ShellCommandWorkerAdapter() };
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-authoring-round-trip-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-authoring-round-trip-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     private static List<string> TextsOf(StackPanel panel) => panel.Children.OfType<TextBlock>().Select(block => block.Text!).ToList();
 
@@ -81,7 +81,7 @@ public class AuthoringRoundTripTests
     public async Task A_template_authored_from_blank_is_saved_and_run_to_terminal_over_shell_stub_bindings()
     {
         var templatePath = Path.Combine(Path.GetTempPath(), $"ui-authoring-round-trip-template-{Guid.NewGuid():N}.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-authoring-round-trip-task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-authoring-round-trip-task-{Guid.NewGuid():N}");
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), ShellAdapters);
@@ -111,7 +111,7 @@ public class AuthoringRoundTripTests
 
             var bindingsPath = await WriteArchitectCriticBindingsAsync(TestContext.Current.CancellationToken);
 
-            await window.RunAsync(taskDirectory, templatePath, bindingsPath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, templatePath, bindingsPath, TestContext.Current.CancellationToken);
 
             var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;
@@ -124,30 +124,30 @@ public class AuthoringRoundTripTests
         finally
         {
             FileCleanup.Delete(templatePath);
-            if (Directory.Exists(taskDirectory))
+            if (Directory.Exists(roomDirectory))
             {
-                DirectoryCleanup.DeleteRecursively(taskDirectory);
+                DirectoryCleanup.DeleteRecursively(roomDirectory);
             }
         }
     }
 
     [AvaloniaFact]
-    public async Task Editing_a_bound_tasks_template_shows_the_divergence_in_the_diff_view_and_leaves_the_bound_tasks_rendering_unchanged()
+    public async Task Editing_a_bound_rooms_template_shows_the_divergence_in_the_diff_view_and_leaves_the_bound_tasks_rendering_unchanged()
     {
         var originalDefinition = ArchitectCriticTemplate();
         var templatePath = await WriteTemplateFileAsync(originalDefinition, TestContext.Current.CancellationToken);
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-authoring-round-trip-diff-task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-authoring-round-trip-diff-task-{Guid.NewGuid():N}");
         try
         {
             var snapshot = SnapshotBinder.Bind(originalDefinition);
             await SnapshotBinder.PersistAsync(
-                snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
-            await using (new FlowEventLogWriter(Path.Combine(taskDirectory, "flow.jsonl")))
+                snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            await using (new FlowEventLogWriter(Path.Combine(roomDirectory, "flow.jsonl")))
             {
             }
 
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var stepsBeforeEdit = TextsOf(window.FindViewControl<StackPanel>("StepsPanel")!);
             Assert.NotEmpty(stepsBeforeEdit);
@@ -182,7 +182,7 @@ public class AuthoringRoundTripTests
         finally
         {
             FileCleanup.Delete(templatePath);
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -191,7 +191,7 @@ public class AuthoringRoundTripTests
     {
         var templatePath = await WriteTemplateFileAsync(ArchitectCriticTemplate(), TestContext.Current.CancellationToken);
         var bindingsPath = Path.Combine(Path.GetTempPath(), $"ui-authoring-round-trip-bindings-{Guid.NewGuid():N}.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-authoring-round-trip-bindings-task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-authoring-round-trip-bindings-task-{Guid.NewGuid():N}");
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), ShellAdapters);
@@ -220,7 +220,7 @@ public class AuthoringRoundTripTests
             var parsed = await WorkerBindingConfigParser.LoadFromFileAsync(bindingsPath, TestContext.Current.CancellationToken);
             Assert.Equal(2, parsed.Count);
 
-            await window.RunAsync(taskDirectory, templatePath, bindingsPath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, templatePath, bindingsPath, TestContext.Current.CancellationToken);
 
             var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             var runStatusText = window.FindViewControl<TextBlock>("RunStatusText")!;
@@ -234,9 +234,9 @@ public class AuthoringRoundTripTests
         {
             FileCleanup.Delete(templatePath);
             FileCleanup.Delete(bindingsPath);
-            if (Directory.Exists(taskDirectory))
+            if (Directory.Exists(roomDirectory))
             {
-                DirectoryCleanup.DeleteRecursively(taskDirectory);
+                DirectoryCleanup.DeleteRecursively(roomDirectory);
             }
         }
     }

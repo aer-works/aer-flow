@@ -8,7 +8,7 @@ namespace Aer.Cli;
 /// <c>--supplementary</c> argument to <c>aer decide</c> — no separate settling call is needed
 /// (unlike a mid-DAG human step, whose completion only a later <c>aer run</c> pump can detect).
 /// </summary>
-/// <param name="TaskDirectoryPath">An already-started task's durable state directory.</param>
+/// <param name="RoomDirectoryPath">An already-started room's durable state directory.</param>
 /// <param name="Worker">
 /// The worker role to mint under (e.g. <c>"human"</c>). Worker-binding config files only ever
 /// resolve to <see cref="Aer.Flow.Mutation.WorkerBinding.Process"/> (M11's decision of record), so
@@ -20,7 +20,7 @@ namespace Aer.Cli;
 /// <param name="BindingsFilePath">The worker-binding config file — resolved for its Process entries only.</param>
 /// <param name="WorkflowId">Defaults to the bound snapshot's <c>WorkflowTemplateId</c> when not given, same as <c>aer run</c>.</param>
 public sealed record SupplyOptions(
-    string TaskDirectoryPath,
+    string RoomDirectoryPath,
     string Worker,
     string OutputName,
     string SourceFilePath,

@@ -383,11 +383,11 @@ WorkflowDefinition (Template)
 
 ```
 
-A `WorkflowDefinition` in this form is a **template**: editable, versionable, and not itself bound to any running task. `WorkflowTemplateVersion` is ordinary template data, exactly like `WorkflowTemplateId` — Flow neither computes, infers, nor enforces it; it only reads whatever value is present in the template at instantiation time and copies it into the snapshot (§11.2). Responsibility for incrementing it belongs entirely to whoever edits the template (a UI, or a human editing the file by hand): it should increment on every content-changing edit — any save whose resulting `Steps` or metadata differ from what was loaded — never on a save that leaves the template unchanged, and never at finer granularity than a save. It is the only thing that distinguishes two otherwise-identically-named templates over time, and its accuracy is an authoring-discipline guarantee external to Flow, not one Flow verifies.
+A `WorkflowDefinition` in this form is a **template**: editable, versionable, and not itself bound to any running room. `WorkflowTemplateVersion` is ordinary template data, exactly like `WorkflowTemplateId` — Flow neither computes, infers, nor enforces it; it only reads whatever value is present in the template at instantiation time and copies it into the snapshot (§11.2). Responsibility for incrementing it belongs entirely to whoever edits the template (a UI, or a human editing the file by hand): it should increment on every content-changing edit — any save whose resulting `Steps` or metadata differ from what was loaded — never on a save that leaves the template unchanged, and never at finer granularity than a save. It is the only thing that distinguishes two otherwise-identically-named templates over time, and its accuracy is an authoring-discipline guarantee external to Flow, not one Flow verifies.
 
 ### 11.2 WorkflowDefinitionSnapshot (Immutable Binding)
 
-When a task is created, Flow binds it to an immutable `WorkflowDefinitionSnapshot` — a frozen copy of the template as it existed at that moment.
+When a room is created, Flow binds it to an immutable `WorkflowDefinitionSnapshot` — a frozen copy of the template as it existed at that moment.
 
 ```
 WorkflowDefinitionSnapshot
@@ -406,14 +406,14 @@ Template (id, version N, at instantiation time)
 WorkflowDefinitionSnapshot (new SnapshotId, recording TemplateId + version N)
         │
         ▼
-       Task
+       Room
 ```
 
 **Rules:**
-- A running or historical task is permanently bound to the `WorkflowDefinitionSnapshot` it was created from. Editing the template after task creation has no effect on that task, in progress or in replay.
+- A running or historical room is permanently bound to the `WorkflowDefinitionSnapshot` it was created from. Editing the template after room creation has no effect on that room, in progress or in replay.
 - `WorkflowDefinitionSnapshotId`, `WorkflowTemplateId`, and `WorkflowTemplateVersion` are first-class, queryable metadata — not derived or reconstructed after the fact. This is what makes "which template produced this snapshot, and which version" an answerable question without needing to diff file contents.
-- Every reference to "WorkflowDefinition" elsewhere in this document, including the Determinism Guarantee (§13) and Dependency Resolution Rule (§11.3), means the task's bound `WorkflowDefinitionSnapshot` — never "whatever the current template says."
-- Flow never mutates or patches a `WorkflowDefinitionSnapshot` once a task is bound to it. A workflow change for an in-flight task is only possible by defining a new template version and creating a new task from it — never by altering history's binding.
+- Every reference to "WorkflowDefinition" elsewhere in this document, including the Determinism Guarantee (§13) and Dependency Resolution Rule (§11.3), means the room's bound `WorkflowDefinitionSnapshot` — never "whatever the current template says."
+- Flow never mutates or patches a `WorkflowDefinitionSnapshot` once a room is bound to it. A workflow change for an in-flight room is only possible by defining a new template version and creating a new room from it — never by altering history's binding.
 - This is what makes §13's determinism guarantee well-defined in the presence of editable templates: "identical WorkflowDefinition" is only a coherent claim because the snapshot, not the live template, is what Flow actually reads.
 
 ### 11.3 Dependency Resolution Rule (critical)
@@ -478,9 +478,9 @@ A reference implementation exists today and is described in a separate document 
 
 ## 15. Concurrency Model
 
-**Guarantee (behavior, not mechanism):** at most one Flow instance may mutate a given task's workflow state at a time. At most one Core execution exists per `ExecutionRequest`.
+**Guarantee (behavior, not mechanism):** at most one Flow instance may mutate a given room's workflow state at a time. At most one Core execution exists per `ExecutionRequest`.
 
-The implementation today may use a kernel-held advisory file lock (e.g. `FileShare.None` on a `FileStream`) scoped to the task namespace. Such a lock releases automatically the instant its owning process exits — a crashed holder never leaves a deadlock behind. A sentinel file whose mere *existence* signals "locked" does **not** satisfy this guarantee, because it survives a crash and must be manually cleared. Whatever the mechanism, this is the property that must hold; the mechanism itself is not part of the contract and may change.
+The implementation today may use a kernel-held advisory file lock (e.g. `FileShare.None` on a `FileStream`) scoped to the room namespace. Such a lock releases automatically the instant its owning process exits — a crashed holder never leaves a deadlock behind. A sentinel file whose mere *existence* signals "locked" does **not** satisfy this guarantee, because it survives a crash and must be manually cleared. Whatever the mechanism, this is the property that must hold; the mechanism itself is not part of the contract and may change.
 
 ---
 
@@ -659,7 +659,7 @@ These are not gaps — they are deliberate exclusions, listed so they are not si
 
 - **No workflow DSL.** No loops, no conditional syntax, no runtime logic in `WorkflowDefinition`. Control flow exists only as the consequence of observed execution outcomes feeding back into §11.3's readiness check, plus the bounded patterns in §10.1 and §17.5. `Supersede`'s bounded backward routing (§17.2) is not an exception to this: every step it can ever target is declared statically in the template's `SupersedeTargets` list, never chosen freely at runtime.
 - **No daemon.** Flow is invoked as a process per mutation-interface call, not a persistent background service. Any future "watch and react automatically" capability is a different system built on top of this one, not a revision to this contract. *Superseded as a system-level claim (room spec §5, 2026-08-03): the daemon ships as a specified component, and the predicted built-on-top system now exists — the wake bridge (room spec §5, decision 0049). The exclusion remains true of the engine itself: Flow still advances only inside mutation-interface calls.*
-- **No cross-task event ordering.** Each task namespace's Event Store is independent. Flow makes no claim about relative ordering of events between two different tasks.
+- **No cross-room event ordering.** Each room namespace's Event Store is independent. Flow makes no claim about relative ordering of events between two different rooms.
 - **No named client architecture.** This document does not enumerate, privilege, or design around any specific client. See §14. *Superseded (room spec §5, 2026-08-03): retired; §14's surviving invariant is unchanged.*
 - **No interactive mid-execution control.** Pausing, deciding, and resuming (§17) happens only *between* executions. Interrupting or steering a worker while it is actively running is Core Tier 3 territory and is not specified here. See §17.4.
 - **No open-ended `DecisionType` or `FailureClassification` vocabulary.** Both are deliberately small, closed sets (`Resume | Reject | RetryWithRevision | Supersede`, §17.2; `Permanent | Retryable`, §8.1). Expanding either is a real design decision to revisit only when a concrete case doesn't fit — not something to grow speculatively in advance.
@@ -669,7 +669,7 @@ These are not gaps — they are deliberate exclusions, listed so they are not si
 ## 21. Open Questions
 
 - **The pump problem: who invokes Flow after a step completes?** Flow is per-invocation (§20, no daemon), so when step A finishes, *something* must call the mutation interface again before step B can be scheduled. Candidates: (a) **the CLI is the pump** — `aer run` blocks for the whole pipeline, dispatching each ready step as the previous completes; laptop sleep or a closed terminal stops progress, but event sourcing makes that safe and cheap to resume (running `aer run` again picks up from the log, per §7's recovery semantics); (b) **the UI is the pump** — it polls and invokes per tick, which couples pipeline liveness to a window being open and hands a projection surface de facto execution authority, straining §14's single-mutation-path rule. **v1 intent: (a).** Recorded here because M7 Phases 6–7 would otherwise pick an answer de facto, and the answer shapes the CLI UX, the UI's invocation model, and the Event Store read strategy (next question) simultaneously. *Answered (room spec §5, "The pump, answered", 2026-08-03): whichever host process drives the room — the CLI for a headless run, the daemon for anything a client initiates; §15's lock arbitrates. The autonomous layer above both is decision 0049. This question is closed.*
-- **Event Store performance at scale.** The per-task-namespace scoping keeps any single task's log small by construction, but no explicit strategy is committed yet for how Flow reads the log efficiently across many invocations (full reread each time vs. manifest-checkpoint-plus-tail). Deferred until the no-daemon question in §20 is revisited, since the efficient strategies differ depending on that answer. *Answered (room spec §7, 2026-08-03): full replay each read, no index — cheap at current journal sizes; bounded room open is tracked as #903. This question is closed.*
+- **Event Store performance at scale.** The per-room-namespace scoping keeps any single room's log small by construction, but no explicit strategy is committed yet for how Flow reads the log efficiently across many invocations (full reread each time vs. manifest-checkpoint-plus-tail). Deferred until the no-daemon question in §20 is revisited, since the efficient strategies differ depending on that answer. *Answered (room spec §7, 2026-08-03): full replay each read, no index — cheap at current journal sizes; bounded room open is tracked as #903. This question is closed.*
 - **Storage backend choice (JSONL vs. SQLite vs. other).** Explicitly not part of this contract per §5. Recommendation, not requirement: start with JSONL for human-readability and tooling-independence; revisit only if scale demands it.
 - **Shape of the mutation interface itself (§14).** Deliberately unspecified beyond "exactly one." The CLI is today's reference implementation; nothing here commits to its API surface as the long-term contract.
 - **Interactive mid-execution control (§17.4, §20).** Genuinely out of scope for now, not merely deferred wording — would require Core Tier 3 (stdin/PTY) and a substantially different worker-resumability model. Revisit only if a concrete use case needs steering a worker mid-run rather than only pausing between runs.

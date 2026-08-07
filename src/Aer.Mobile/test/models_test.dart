@@ -15,13 +15,13 @@ void main() {
   // doc comment) — both are loaded from checked-in golden contract fixtures emitted by the daemon's
   // real serializer options (issue #953).
   final fixtures = {
-    'camelCase (REST)': loadFixture('test/fixtures/wire/task_projection.rest.json'),
-    'PascalCase (WS)': loadFixture('test/fixtures/wire/task_projection.ws.json'),
+    'camelCase (REST)': loadFixture('test/fixtures/wire/room_projection.rest.json'),
+    'PascalCase (WS)': loadFixture('test/fixtures/wire/room_projection.ws.json'),
   };
 
   for (final entry in fixtures.entries) {
-    test('TaskProjection.fromJson parses ${entry.key} wire fixture correctly', () {
-      final projection = TaskProjection.fromJson(entry.value);
+    test('RoomProjection.fromJson parses ${entry.key} wire fixture correctly', () {
+      final projection = RoomProjection.fromJson(entry.value);
 
       expect(projection.directoryPath, 'C:/tasks/foo');
       expect(projection.sessionId, 'session-123');
@@ -55,10 +55,10 @@ void main() {
   };
 
   for (final entry in fleetFixtures.entries) {
-    test('TaskFleetItem.fromJson parses ${entry.key} wire fixture correctly', () {
-      final item = TaskFleetItem.fromJson(entry.value);
+    test('RoomFleetItem.fromJson parses ${entry.key} wire fixture correctly', () {
+      final item = RoomFleetItem.fromJson(entry.value);
 
-      expect(item.taskDirectoryPath, 'C:/Users/pbree/.aer/tasks/foo');
+      expect(item.roomDirectoryPath, 'C:/Users/pbree/.aer/tasks/foo');
       expect(item.friendlyName, 'foo');
       expect(item.typeLabel, 'solo-run-template');
       expect(item.statusText, 'Running');

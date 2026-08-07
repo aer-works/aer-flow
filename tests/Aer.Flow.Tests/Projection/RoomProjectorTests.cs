@@ -60,9 +60,9 @@ public class RoomProjectorTests
         ]);
 
         var item = state.HeldWork[LaneRefA];
-        var rendered = HeldWorkReconciler.RenderStatus(item, laneJournalExistsProbe: _ => false);
+        var rendered = HeldWorkReconciler.RenderStatus(item, workflowJournalExistsProbe: _ => false);
 
-        Assert.Contains("dispatch recorded; lane never started", rendered);
+        Assert.Contains("dispatch recorded; workflow never started", rendered);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class RoomProjectorTests
             new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
         ]);
 
-        var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], laneJournalExistsProbe: _ => true);
+        var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], workflowJournalExistsProbe: _ => true);
 
         Assert.Equal("dispatched", rendered);
     }
@@ -135,10 +135,10 @@ public class RoomProjectorTests
             new RoomEvent.HeldWorkDispatched(LaneRefA, "shape-1", TimeSpan.FromMinutes(10), "decider-1"),
         ]);
 
-        var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], laneJournalExistsProbe: _ => false);
+        var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], workflowJournalExistsProbe: _ => false);
 
         Assert.Equal(
-            $"dispatch recorded; lane never started (no ledger found at {LaneRefA.LaneDirectoryPath})",
+            $"dispatch recorded; workflow never started (no ledger found at {LaneRefA.AsWorkflowDirectoryPath()})",
             rendered);
     }
 
@@ -197,10 +197,10 @@ public class RoomProjectorTests
             new RoomEvent.HeldWorkDispatched(LaneRefA, "some-future-shape", TimeSpan.FromMinutes(10), "decider-1"),
         ]);
 
-        var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], laneJournalExistsProbe: _ => false);
+        var rendered = HeldWorkReconciler.RenderStatus(state.HeldWork[LaneRefA], workflowJournalExistsProbe: _ => false);
 
         Assert.Equal(
-            $"dispatch recorded; lane never started (no ledger found at {LaneRefA.LaneDirectoryPath})",
+            $"dispatch recorded; workflow never started (no ledger found at {LaneRefA.AsWorkflowDirectoryPath()})",
             rendered);
     }
 }

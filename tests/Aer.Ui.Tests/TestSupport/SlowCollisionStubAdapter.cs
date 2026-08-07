@@ -5,7 +5,7 @@ using Aer.Flow.Domain;
 namespace Aer.Ui.Tests.TestSupport;
 
 /// <summary>
-/// #590: detects two dispatches racing the SAME task directory. Each dispatched process checks for
+/// #590: detects two dispatches racing the SAME room directory. Each dispatched process checks for
 /// a marker file left by another still-running dispatch in the same <see cref="WorkerInvocation.WorkingDirectory"/>,
 /// records a collision if one is found, then holds the marker for <see cref="DispatchDelay"/> before
 /// clearing it -- long enough that an unserialised pair of concurrent dispatches against one

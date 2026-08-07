@@ -20,19 +20,19 @@ public static class FlowStateReporter
         var pausePointByStepId = result.Snapshot.Steps.ToDictionary(step => step.StepId, step => step.PausePoint);
         var stepDefByStepId = result.Snapshot.Steps.ToDictionary(step => step.StepId);
 
-        // #628: an already-terminal task directory reports the prior run's status, writes no new
+        // #628: an already-terminal room directory reports the prior run's status, writes no new
         // events, and exits non-zero — with nothing to distinguish it from a fresh failure. Say
         // which template actually ran, since it is not necessarily the file named on the command line.
         if (result.ResumedFromSnapshot)
         {
             output.WriteLine(
-                $"Resumed the snapshot already bound in this task directory " +
+                $"Resumed the snapshot already bound in this room directory " +
                 $"(template '{result.Snapshot.WorkflowTemplateId.Value}').");
         }
 
         output.WriteLine($"Workflow status: {result.State.Status}");
-        var artifactsRootPath = result.TaskDirectoryPath is not null
-            ? Path.Combine(result.TaskDirectoryPath, ArtifactManager.ArtifactsDirectoryName)
+        var artifactsRootPath = result.RoomDirectoryPath is not null
+            ? Path.Combine(result.RoomDirectoryPath, ArtifactManager.ArtifactsDirectoryName)
             : null;
 
         foreach (var step in result.State.Steps)

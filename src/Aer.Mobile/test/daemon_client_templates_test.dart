@@ -55,7 +55,7 @@ void main() {
         expect(body['templateId'], 'solo-run');
         expect(body['primaryAdapter'], 'claude');
         return http.Response(
-          jsonEncode({'taskDirectoryPath': '/home/user/.aer/tasks/task-123'}),
+          jsonEncode({'roomDirectoryPath': '/home/user/.aer/tasks/task-123'}),
           200,
         );
       });
@@ -76,7 +76,7 @@ void main() {
 
     test('decide with artifactReference formats payload correctly', () async {
       final mockClient = MockClient((request) async {
-        expect(request.url.path, '/api/tasks/decide');
+        expect(request.url.path, '/api/rooms/decide');
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         expect(body['decisionType'], 'Supersede');
         expect(body['targetStepId'], 'draft');

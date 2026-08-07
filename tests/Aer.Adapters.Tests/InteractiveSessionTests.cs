@@ -92,7 +92,7 @@ public sealed class InteractiveSessionTests
     {
         var (def, bindings, meta) = InteractiveSessionMaterializer.Materialize(
             sessionId: "sess-abc",
-            taskDirectoryPath: "/tmp/aer/sessions/session-sess-abc",
+            roomDirectoryPath: "/tmp/aer/sessions/session-sess-abc",
             adapter: "claude",
             initialMessage: "Opening prompt");
 
@@ -156,7 +156,7 @@ public sealed class InteractiveSessionTests
         // directory-less or plan-mode session (whose grants cannot write) classified Failed despite
         // the vendor succeeding. That verdict is what three separate daemon workarounds route around.
         var (_, bindings, _) = InteractiveSessionMaterializer.Materialize(
-            sessionId: "sess-empty", taskDirectoryPath: "/tmp/aer/sessions/sess-empty", adapter: "claude");
+            sessionId: "sess-empty", roomDirectoryPath: "/tmp/aer/sessions/sess-empty", adapter: "claude");
 
         var emptyOutputDirectory = Path.Combine(Path.GetTempPath(), $"aer-650-{Guid.NewGuid():N}");
         Directory.CreateDirectory(emptyOutputDirectory);
@@ -211,7 +211,7 @@ public sealed class InteractiveSessionTests
     {
         // #407: a directory-less session's process must start in its own dir under ~/.aer/sessions/,
         // never the inherited daemon/app cwd -- defense in depth on top of #321's fail-closed grant.
-        var sessionDir = Path.Combine("home", ".aer", "sessions", "session-s-1");
+        var sessionDir = Path.Combine("home", ".aer", "rooms", "session-s-1");
         foreach (var workingDirectory in new string?[] { null, "", "   " })
         {
             Assert.Equal(sessionDir, InteractiveSessionMaterializer.ResolveRunDirectory(workingDirectory, sessionDir));
@@ -229,7 +229,7 @@ public sealed class InteractiveSessionTests
         // daemon/app cwd nobody chose (#321).
         var (_, bindings, _) = InteractiveSessionMaterializer.Materialize(
             sessionId: "sess-nodir",
-            taskDirectoryPath: "/tmp/aer/sessions/session-sess-nodir",
+            roomDirectoryPath: "/tmp/aer/sessions/session-sess-nodir",
             adapter: "claude");
 
         var grant = bindings["chat-worker"].PermissionGrant;
@@ -245,7 +245,7 @@ public sealed class InteractiveSessionTests
     {
         var (_, bindings, _) = InteractiveSessionMaterializer.Materialize(
             sessionId: "sess-dir",
-            taskDirectoryPath: "/tmp/aer/sessions/session-sess-dir",
+            roomDirectoryPath: "/tmp/aer/sessions/session-sess-dir",
             adapter: "claude",
             workingDirectory: "/home/user/project");
 
@@ -313,13 +313,13 @@ public sealed class InteractiveSessionTests
             var first = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                 "sess-first", testPath, "claude", cancellationToken: TestContext.Current.CancellationToken);
 
-            var ex = await Assert.ThrowsAsync<TaskDirectoryAlreadyExistsException>(() =>
+            var ex = await Assert.ThrowsAsync<RoomDirectoryAlreadyExistsException>(() =>
                 InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                     "sess-second", testPath, "claude", cancellationToken: TestContext.Current.CancellationToken));
             Assert.Contains(testPath, ex.Message);
 
             // The rejected second attempt must not have clobbered the first session's metadata.
-            var metadataPath = Path.Combine(testPath, ".aer", "session.json");
+            var metadataPath = Path.Combine(testPath, ".aer", "room.json");
             var stillThere = await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath, TestContext.Current.CancellationToken);
             Assert.NotNull(stillThere);
             Assert.Equal(first.SessionId, stillThere.SessionId);
@@ -342,18 +342,18 @@ public sealed class InteractiveSessionTests
             await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                 "sess-archived", testPath, "claude", cancellationToken: TestContext.Current.CancellationToken);
 
-            Assert.False(TaskLifecycle.IsArchived(testPath));
-            await TaskLifecycle.ArchiveAsync(testPath, TestContext.Current.CancellationToken);
-            Assert.True(TaskLifecycle.IsArchived(testPath));
+            Assert.False(RoomLifecycle.IsArchived(testPath));
+            await RoomLifecycle.ArchiveAsync(testPath, TestContext.Current.CancellationToken);
+            Assert.True(RoomLifecycle.IsArchived(testPath));
 
             // Archiving alone does not free the name -- workflow.json is still on disk.
-            var ex = await Assert.ThrowsAsync<TaskDirectoryAlreadyExistsException>(() =>
+            var ex = await Assert.ThrowsAsync<RoomDirectoryAlreadyExistsException>(() =>
                 InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                     "sess-second", testPath, "claude", cancellationToken: TestContext.Current.CancellationToken));
             Assert.Contains("archived", ex.Message, StringComparison.OrdinalIgnoreCase);
 
-            await TaskLifecycle.UnarchiveAsync(testPath);
-            Assert.False(TaskLifecycle.IsArchived(testPath));
+            await RoomLifecycle.UnarchiveAsync(testPath);
+            Assert.False(RoomLifecycle.IsArchived(testPath));
 
             // Only a real delete frees the name for reuse (M24 Phase 5 regression, #278).
             DirectoryCleanup.DeleteRecursively(testPath);

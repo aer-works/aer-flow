@@ -14,7 +14,7 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     /// <summary>
     /// Starts an interactive chat/codebase session (M24 Phase 1, issue #262) the same daemon-first,
@@ -47,17 +47,17 @@ public sealed partial class TaskSession
         }
 
         // In-process fallback: materialize locally, same directory-naming rule the daemon endpoint
-        // uses (InteractiveSessionMaterializer.ResolveTaskDirectoryPath), so a session created
+        // uses (InteractiveSessionMaterializer.ResolveRoomDirectoryPath), so a session created
         // without a daemon lands wherever a later-started daemon's /api/sessions endpoints would
         // also look for it.
         try
         {
             var sessionId = Guid.NewGuid().ToString("N")[..12];
-            var taskDirectoryPath = InteractiveSessionMaterializer.ResolveTaskDirectoryPath(sessionId, request.TaskName, request.DirectoryPath);
+            var roomDirectoryPath = InteractiveSessionMaterializer.ResolveRoomDirectoryPath(sessionId, request.RoomName, request.DirectoryPath);
 
             var metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                 sessionId,
-                taskDirectoryPath,
+                roomDirectoryPath,
                 string.IsNullOrWhiteSpace(request.Adapter) ? "claude" : request.Adapter.Trim().ToLowerInvariant(),
                 request.Model,
                 request.WorkingDirectory,
@@ -66,8 +66,8 @@ public sealed partial class TaskSession
                 request.PermissionGrant,
                 cancellationToken).ConfigureAwait(true);
 
-            SetCurrentTaskDirectory(taskDirectoryPath);
-            await RecordOpenedAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+            SetCurrentRoomDirectory(roomDirectoryPath);
+            await RecordOpenedAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
 
             return new SessionStartOutcome(metadata, null);
         }
@@ -83,7 +83,7 @@ public sealed partial class TaskSession
     /// fallback here: <c>ExecuteSessionTurnAsync</c> only exists in <c>Aer.Daemon.Program</c>, and
     /// <c>POST /api/sessions/send</c> itself only confirms the turn was dispatched onto the
     /// daemon's own background task, not that it completed -- the caller observes completion by
-    /// polling <see cref="LoadSessionMetadataAsync"/> the same way every other live task state in
+    /// polling <see cref="LoadSessionMetadataAsync"/> the same way every other live room state in
     /// this app is observed (<c>MainWindow</c>'s existing 2-second poll).
     /// </summary>
     public async Task<MutationOutcome> SendSessionMessageAsync(SendSessionMessageRequest request, CancellationToken cancellationToken = default)
@@ -272,21 +272,24 @@ public sealed partial class TaskSession
     private sealed record SessionModeResult(string? Mode);
 
     /// <summary>
-    /// Reads <paramref name="taskDirectoryPath"/>'s <c>.aer/session.json</c> directly rather than
-    /// round-tripping through the daemon (unlike <see cref="LoadAsync"/>'s <c>TaskProjection</c>,
+    /// Reads <paramref name="roomDirectoryPath"/>'s <c>.aer/room.json</c> directly rather than
+    /// round-tripping through the daemon (unlike <see cref="LoadAsync"/>'s <c>RoomProjection</c>,
     /// <see cref="SessionMetadata"/> is a directly-readable local artifact with no in-memory
-    /// projection of its own) -- also doubles as the "is this task directory a chat/codebase
+    /// projection of its own) -- also doubles as the "is this room directory a chat/codebase
     /// session" check <c>MainWindow.OpenAsync</c> uses to decide whether to route to the Chat view.
     /// Returns <see langword="null"/> for a directory that isn't an interactive session at all.
     /// </summary>
-    public async Task<SessionMetadata?> LoadSessionMetadataAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public async Task<SessionMetadata?> LoadSessionMetadataAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
-        var metadataPath = Path.Combine(taskDirectoryPath, ".aer", "session.json"); // vocabulary-ok: technical file path
+        var metadataPath = Path.Combine(roomDirectoryPath, ".aer", AerPaths.RoomMetadataFileName);
         if (!File.Exists(metadataPath))
         {
             return null;
         }
 
+        // A workflow room now also has a room.json marker, but LoadMetadataAsync returns null for it
+        // (its SessionId is empty), so this still answers "is this an interactive session" the same
+        // way MainWindow.OpenAsync has always relied on.
         return await InteractiveSessionMaterializer.LoadMetadataAsync(metadataPath, cancellationToken).ConfigureAwait(true);
     }
 }

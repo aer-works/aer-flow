@@ -8,13 +8,13 @@ using CommunityToolkit.Mvvm.Input;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// The Tasks view's state (M24 Phase 5, #278) — every known task/session directory, not just
+/// The Rooms view's state (M24 Phase 5, #278) — every known room directory, not just
 /// Home's capped 10-item recents cards, with archive/unarchive/delete. Deliberately its own child
 /// ViewModel rather than fields on <see cref="MainWindowViewModel"/> (the pattern <see cref="RemoteViewModel"/>/<see cref="ChatViewModel"/>
 /// already establish) — a real fleet management surface is a distinct concern from the mutation/decision
 /// surface <see cref="MainWindowViewModel"/> was introduced for.
 /// </summary>
-public sealed partial class TasksViewModel : ObservableObject
+public sealed partial class RoomsViewModel : ObservableObject
 {
     [ObservableProperty]
     private bool includeArchived;
@@ -27,7 +27,7 @@ public sealed partial class TasksViewModel : ObservableObject
     private string? errorText;
 
     /// <summary>
-    /// How many of <see cref="Items"/> currently have <see cref="TaskFleetItemViewModel.IsSelected"/>
+    /// How many of <see cref="Items"/> currently have <see cref="RoomFleetItemViewModel.IsSelected"/>
     /// set (bulk select, issue #288) — recomputed by <see cref="OnItemSelectionChanged"/> rather than
     /// tracked independently, since the source of truth is each row's own checkbox state.
     /// </summary>
@@ -39,33 +39,33 @@ public sealed partial class TasksViewModel : ObservableObject
 
     /// <summary>
     /// Bulk delete's own two-step confirm (issue #288) — the same in-place idiom
-    /// <see cref="TaskFleetItemViewModel.IsConfirmingDelete"/> already uses for a single row, scaled
-    /// to "Delete N tasks?" instead of one confirm per item.
+    /// <see cref="RoomFleetItemViewModel.IsConfirmingDelete"/> already uses for a single row, scaled
+    /// to "Delete N rooms?" instead of one confirm per item.
     /// </summary>
     [ObservableProperty]
     private bool isConfirmingBulkDelete;
 
-    public ObservableCollection<TaskFleetItemViewModel> Items { get; } = [];
+    public ObservableCollection<RoomFleetItemViewModel> Items { get; } = [];
 
     /// <summary>
     /// The switcher's current row (#336) — which record the permanently-visible list has highlighted,
     /// and therefore what the detail pane is showing. Distinct from
-    /// <see cref="TaskFleetItemViewModel.IsSelected"/>, which is bulk-select's checkbox: you can tick
+    /// <see cref="RoomFleetItemViewModel.IsSelected"/>, which is bulk-select's checkbox: you can tick
     /// five rows for a bulk archive while looking at a sixth, so "checked" and "open" are genuinely
     /// two different things and share no state.
     /// </summary>
     [ObservableProperty]
-    private TaskFleetItemViewModel? currentItem;
+    private RoomFleetItemViewModel? currentItem;
 
     public bool HasNoItems => !IsBusy && Items.Count == 0;
     public bool HasErrorText => !string.IsNullOrEmpty(ErrorText);
     public bool HasSelection => SelectedCount > 0;
 
     public string BulkDeleteConfirmText =>
-        $"Really delete {SelectedCount} selected task{(SelectedCount == 1 ? "" : "s")}? This can't be undone.";
+        $"Really delete {SelectedCount} selected room{(SelectedCount == 1 ? "" : "s")}? This can't be undone.";
 
     /// <summary>Re-fetches the fleet list (activation, after archive/unarchive/delete, and the "Show archived" toggle).</summary>
-    public async Task RefreshAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task RefreshAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         IsBusy = true;
         ErrorText = null;
@@ -76,7 +76,7 @@ public sealed partial class TasksViewModel : ObservableObject
             var (items, error) = await session.GetFleetAsync(IncludeArchived, cancellationToken).ConfigureAwait(true);
             if (items == null)
             {
-                ErrorText = error ?? "Could not load tasks.";
+                ErrorText = error ?? "Could not load rooms.";
                 return;
             }
 
@@ -84,12 +84,12 @@ public sealed partial class TasksViewModel : ObservableObject
             // afterwards (#336) — otherwise any refresh would silently deselect whatever the user is
             // looking at, which on a permanently-visible switcher is far more disruptive than it was
             // on a view you had to navigate to. Null if it was archived away or deleted meanwhile.
-            var openDirectoryPath = CurrentItem?.TaskDirectoryPath;
+            var openDirectoryPath = CurrentItem?.RoomDirectoryPath;
 
             Items.Clear();
             foreach (var item in InFleetOrder(items))
             {
-                Items.Add(new TaskFleetItemViewModel(
+                Items.Add(new RoomFleetItemViewModel(
                     item,
                     i => ArchiveAsync(session, i, cancellationToken),
                     i => UnarchiveAsync(session, i, cancellationToken),
@@ -107,7 +107,7 @@ public sealed partial class TasksViewModel : ObservableObject
         }
     }
 
-    /// <summary>Every row's selection checkbox reports back through this (rather than <see cref="Items"/> itself being observed) — see <see cref="TaskFleetItemViewModel"/>'s own <c>selectionChanged</c> callback.</summary>
+    /// <summary>Every row's selection checkbox reports back through this (rather than <see cref="Items"/> itself being observed) — see <see cref="RoomFleetItemViewModel"/>'s own <c>selectionChanged</c> callback.</summary>
     private void OnItemSelectionChanged() => SelectedCount = Items.Count(i => i.IsSelected);
 
     /// <summary>
@@ -119,20 +119,20 @@ public sealed partial class TasksViewModel : ObservableObject
     /// <remarks>
     /// This previously ordered by <c>FriendlyName</c> descending, which silently discarded the
     /// recency order the daemon had already applied (<c>Aer.Daemon.Program</c>'s
-    /// <c>OrderByDescending(i =&gt; i.Updated)</c>) and contradicted <see cref="TaskFleetItem.Updated"/>'s
+    /// <c>OrderByDescending(i =&gt; i.Updated)</c>) and contradicted <see cref="RoomFleetItem.Updated"/>'s
     /// own contract ("the key the fleet list orders by"). The phone showed recency and the desktop
     /// showed reverse-alphabetical for the same fleet. Sorting here rather than trusting the
     /// transport keeps local (non-daemon) loads and push-updated rows in the same order as remote ones.
     /// </remarks>
-    private static IEnumerable<TaskFleetItem> InFleetOrder(IEnumerable<TaskFleetItem> items) =>
+    private static IEnumerable<RoomFleetItem> InFleetOrder(IEnumerable<RoomFleetItem> items) =>
         items.OrderByDescending(i => i.LastActivityAt ?? i.Updated).ThenBy(i => i.FriendlyName, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Test seam for <see cref="InFleetOrder"/> — same reasoning as <see cref="AddTestItem"/>: the
     /// rule is worth asserting directly, and reaching it through <see cref="RefreshAsync"/> would
-    /// need the sealed <see cref="TaskSession"/> and a live fleet fetch to test a pure sort.
+    /// need the sealed <see cref="RoomClient"/> and a live fleet fetch to test a pure sort.
     /// </summary>
-    internal static IEnumerable<TaskFleetItem> InFleetOrderForTests(IEnumerable<TaskFleetItem> items) =>
+    internal static IEnumerable<RoomFleetItem> InFleetOrderForTests(IEnumerable<RoomFleetItem> items) =>
         InFleetOrder(items);
 
     /// <summary>
@@ -152,7 +152,7 @@ public sealed partial class TasksViewModel : ObservableObject
     /// — two spellings of one directory must resolve to one row here for the same reason they must
     /// resolve to one lock there.
     /// </remarks>
-    public void ApplyProjectionPush(string directoryPath, TaskProjection projection) =>
+    public void ApplyProjectionPush(string directoryPath, RoomProjection projection) =>
         FindRow(directoryPath)?.ApplyProjection(projection);
 
     /// <summary>
@@ -162,25 +162,25 @@ public sealed partial class TasksViewModel : ObservableObject
     /// durable lesson was that the *second* primitive keyed on a record path is where normalisers
     /// drift apart, and this is that second primitive.
     /// </summary>
-    private TaskFleetItemViewModel? FindRow(string directoryPath)
+    private RoomFleetItemViewModel? FindRow(string directoryPath)
     {
         var key = AerPaths.RecordKey(directoryPath);
         return Items.FirstOrDefault(
-            i => AerPaths.RecordKeyComparer.Equals(AerPaths.RecordKey(i.TaskDirectoryPath), key));
+            i => AerPaths.RecordKeyComparer.Equals(AerPaths.RecordKey(i.RoomDirectoryPath), key));
     }
 
     /// <summary>
     /// Test seam (issue #288): adds a row to <see cref="Items"/> wired with the real
     /// selection-changed callback <see cref="RefreshAsync"/> itself uses, but no-op
-    /// archive/unarchive/delete delegates — lets <c>TasksViewModelTests</c> exercise the actual
+    /// archive/unarchive/delete delegates — lets <c>RoomsViewModelTests</c> exercise the actual
     /// selection bookkeeping (<see cref="SelectedCount"/>, <see cref="HasSelection"/>, the bulk-delete
-    /// confirm gating) without constructing the sealed <see cref="TaskSession"/> that
+    /// confirm gating) without constructing the sealed <see cref="RoomClient"/> that
     /// <see cref="RefreshAsync"/>'s real row construction needs. Same reasoning as
-    /// <see cref="TaskSession.ShouldApplyProjectionPush"/>'s own internal test seam.
+    /// <see cref="RoomClient.ShouldApplyProjectionPush"/>'s own internal test seam.
     /// </summary>
-    internal TaskFleetItemViewModel AddTestItem(TaskFleetItem item)
+    internal RoomFleetItemViewModel AddTestItem(RoomFleetItem item)
     {
-        var row = new TaskFleetItemViewModel(
+        var row = new RoomFleetItemViewModel(
             item, _ => Task.CompletedTask, _ => Task.CompletedTask, _ => Task.CompletedTask, OnItemSelectionChanged);
         Items.Add(row);
         OnItemSelectionChanged();
@@ -214,14 +214,14 @@ public sealed partial class TasksViewModel : ObservableObject
     /// <summary>
     /// Archives every selected, not-yet-archived row (issue #288) — the bulk counterpart of
     /// <see cref="ArchiveAsync"/>. Fans out sequentially against the same per-directory
-    /// <c>/api/tasks/archive</c> endpoint (delete mutates the shared recents list and archive mutates
+    /// <c>/api/rooms/archive</c> endpoint (delete mutates the shared recents list and archive mutates
     /// the shared fleet index, so concurrent calls could race) rather than a new bulk daemon endpoint,
-    /// per the issue's stated default. Calls <see cref="TaskSession.ArchiveTaskAsync"/> directly in the
+    /// per the issue's stated default. Calls <see cref="RoomClient.ArchiveRoomAsync"/> directly in the
     /// loop and refreshes exactly once at the end -- routing through the existing single-item
     /// <see cref="ArchiveAsync"/> would call <see cref="RefreshAsync"/> after every item, rebuilding
     /// <see cref="Items"/> (and clearing selection) mid-loop.
     /// </summary>
-    public async Task BulkArchiveAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task BulkArchiveAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         var targets = Items.Where(i => i.IsSelected && !i.IsArchived).ToList();
         if (targets.Count == 0)
@@ -235,7 +235,7 @@ public sealed partial class TasksViewModel : ObservableObject
         {
             foreach (var item in targets)
             {
-                var outcome = await session.ArchiveTaskAsync(item.TaskDirectoryPath, cancellationToken).ConfigureAwait(true);
+                var outcome = await session.ArchiveRoomAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
                 if (outcome.ErrorMessage != null)
                 {
                     failures.Add($"{item.FriendlyName}: {outcome.ErrorMessage}");
@@ -253,7 +253,7 @@ public sealed partial class TasksViewModel : ObservableObject
         // refresh would just be clobbered.
         if (failures.Count > 0)
         {
-            ErrorText = $"{failures.Count} of {targets.Count} task(s) couldn't be archived: {string.Join("; ", failures)}";
+            ErrorText = $"{failures.Count} of {targets.Count} room(s) couldn't be archived: {string.Join("; ", failures)}";
         }
     }
 
@@ -262,7 +262,7 @@ public sealed partial class TasksViewModel : ObservableObject
     /// been accepted -- the bulk counterpart of <see cref="DeleteAsync"/>, with the same
     /// sequential-fan-out-then-single-refresh reasoning as <see cref="BulkArchiveAsync"/>.
     /// </summary>
-    public async Task ConfirmBulkDeleteAsync(TaskSession session, CancellationToken cancellationToken = default)
+    public async Task ConfirmBulkDeleteAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         var targets = Items.Where(i => i.IsSelected).ToList();
         if (targets.Count == 0)
@@ -277,7 +277,7 @@ public sealed partial class TasksViewModel : ObservableObject
         {
             foreach (var item in targets)
             {
-                var outcome = await session.DeleteTaskAsync(item.TaskDirectoryPath, cancellationToken).ConfigureAwait(true);
+                var outcome = await session.DeleteRoomAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
                 if (outcome.ErrorMessage != null)
                 {
                     failures.Add($"{item.FriendlyName}: {outcome.ErrorMessage}");
@@ -293,13 +293,13 @@ public sealed partial class TasksViewModel : ObservableObject
 
         if (failures.Count > 0)
         {
-            ErrorText = $"{failures.Count} of {targets.Count} task(s) couldn't be deleted: {string.Join("; ", failures)}";
+            ErrorText = $"{failures.Count} of {targets.Count} room(s) couldn't be deleted: {string.Join("; ", failures)}";
         }
     }
 
-    private async Task ArchiveAsync(TaskSession session, TaskFleetItemViewModel item, CancellationToken cancellationToken)
+    private async Task ArchiveAsync(RoomClient session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
     {
-        var outcome = await session.ArchiveTaskAsync(item.TaskDirectoryPath, cancellationToken).ConfigureAwait(true);
+        var outcome = await session.ArchiveRoomAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (outcome.ErrorMessage != null)
         {
             item.RowErrorText = outcome.ErrorMessage;
@@ -309,9 +309,9 @@ public sealed partial class TasksViewModel : ObservableObject
         await RefreshAsync(session, cancellationToken).ConfigureAwait(true);
     }
 
-    private async Task UnarchiveAsync(TaskSession session, TaskFleetItemViewModel item, CancellationToken cancellationToken)
+    private async Task UnarchiveAsync(RoomClient session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
     {
-        var outcome = await session.UnarchiveTaskAsync(item.TaskDirectoryPath, cancellationToken).ConfigureAwait(true);
+        var outcome = await session.UnarchiveRoomAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (outcome.ErrorMessage != null)
         {
             item.RowErrorText = outcome.ErrorMessage;
@@ -321,9 +321,9 @@ public sealed partial class TasksViewModel : ObservableObject
         await RefreshAsync(session, cancellationToken).ConfigureAwait(true);
     }
 
-    private async Task DeleteAsync(TaskSession session, TaskFleetItemViewModel item, CancellationToken cancellationToken)
+    private async Task DeleteAsync(RoomClient session, RoomFleetItemViewModel item, CancellationToken cancellationToken)
     {
-        var outcome = await session.DeleteTaskAsync(item.TaskDirectoryPath, cancellationToken).ConfigureAwait(true);
+        var outcome = await session.DeleteRoomAsync(item.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (outcome.ErrorMessage != null)
         {
             item.IsConfirmingDelete = false;
@@ -336,29 +336,29 @@ public sealed partial class TasksViewModel : ObservableObject
 }
 
 /// <summary>
-/// One row in the Tasks view (M24 Phase 5, #278) — same closure-over-parent-actions shape as
-/// <see cref="PairedClientItemViewModel"/>: the parent <see cref="TasksViewModel"/> already has the
-/// <see cref="TaskSession"/> this row's actions need, so each action closes over it at construction
+/// One row in the Rooms view (M24 Phase 5, #278) — same closure-over-parent-actions shape as
+/// <see cref="PairedClientItemViewModel"/>: the parent <see cref="RoomsViewModel"/> already has the
+/// <see cref="RoomClient"/> this row's actions need, so each action closes over it at construction
 /// rather than the row needing its own reference. Delete uses an inline two-step confirm
 /// (<see cref="IsConfirmingDelete"/>) rather than a modal dialog — no modal-dialog precedent exists
 /// anywhere in this codebase's Avalonia views (<see cref="TemplatePickerWindow"/>'s in-window
 /// <c>ErrorText</c> is the closest thing, and this follows the same in-place idiom).
 /// </summary>
-public sealed partial class TaskFleetItemViewModel : ObservableObject
+public sealed partial class RoomFleetItemViewModel : ObservableObject
 {
-    private readonly Func<TaskFleetItemViewModel, Task> _archiveAsync;
-    private readonly Func<TaskFleetItemViewModel, Task> _unarchiveAsync;
-    private readonly Func<TaskFleetItemViewModel, Task> _deleteAsync;
+    private readonly Func<RoomFleetItemViewModel, Task> _archiveAsync;
+    private readonly Func<RoomFleetItemViewModel, Task> _unarchiveAsync;
+    private readonly Func<RoomFleetItemViewModel, Task> _deleteAsync;
     private readonly Action? _selectionChanged;
 
-    public TaskFleetItemViewModel(
-        TaskFleetItem item,
-        Func<TaskFleetItemViewModel, Task> archiveAsync,
-        Func<TaskFleetItemViewModel, Task> unarchiveAsync,
-        Func<TaskFleetItemViewModel, Task> deleteAsync,
+    public RoomFleetItemViewModel(
+        RoomFleetItem item,
+        Func<RoomFleetItemViewModel, Task> archiveAsync,
+        Func<RoomFleetItemViewModel, Task> unarchiveAsync,
+        Func<RoomFleetItemViewModel, Task> deleteAsync,
         Action? selectionChanged = null)
     {
-        TaskDirectoryPath = item.TaskDirectoryPath;
+        RoomDirectoryPath = item.RoomDirectoryPath;
         FriendlyName = item.FriendlyName;
         TypeLabel = item.TypeLabel;
         IsSession = item.IsSession;
@@ -372,14 +372,14 @@ public sealed partial class TaskFleetItemViewModel : ObservableObject
         _selectionChanged = selectionChanged;
     }
 
-    public string TaskDirectoryPath { get; }
+    public string RoomDirectoryPath { get; }
     public string FriendlyName { get; }
     public string TypeLabel { get; }
     public DateTimeOffset? LastActivityAt { get; }
 
     /// <summary>
     /// Whether this row is an interactive session (chat-shaped) rather than a workflow (DAG-shaped)
-    /// — what the switcher routes the detail pane on (#336). See <see cref="TaskFleetItem.IsSession"/>
+    /// — what the switcher routes the detail pane on (#336). See <see cref="RoomFleetItem.IsSession"/>
     /// for why this is carried structurally instead of read back off <see cref="TypeLabel"/>.
     /// </summary>
     public bool IsSession { get; }
@@ -387,7 +387,7 @@ public sealed partial class TaskFleetItemViewModel : ObservableObject
     public bool IsArchived { get; }
 
     /// <summary>
-    /// Live under projection pushes (#336) — see <see cref="TasksViewModel.ApplyProjectionPush"/>.
+    /// Live under projection pushes (#336) — see <see cref="RoomsViewModel.ApplyProjectionPush"/>.
     /// Observable rather than get-only because the switcher's list is permanently visible: it can no
     /// longer wait for a section activation to rebuild itself with a fresh value.
     /// </summary>
@@ -406,9 +406,9 @@ public sealed partial class TaskFleetItemViewModel : ObservableObject
     /// timestamps are fleet metadata the push does not carry, so they are deliberately left alone
     /// rather than being guessed at from the projection.
     /// </summary>
-    internal void ApplyProjection(TaskProjection projection)
+    internal void ApplyProjection(RoomProjection projection)
     {
-        var (statusText, status) = TaskCardViewModel.DeriveStatus(projection);
+        var (statusText, status) = RoomCardViewModel.DeriveStatus(projection);
         StatusText = statusText;
         Status = status;
         PausedStepCount = projection.State.Steps.Count(s => s.Status == StepStatus.Paused);
@@ -418,14 +418,14 @@ public sealed partial class TaskFleetItemViewModel : ObservableObject
     /// This row's status as a mark-bearing state rather than a string (#461's vocabulary), so the
     /// switcher draws the same silhouette for the same state as Home's cards do — decision 0006's
     /// rule 2 is only worth anything if every surface honours it. Null until a projection has been
-    /// seen for this row: the fleet list's own <see cref="TaskFleetItem.StatusText"/> is a bare
+    /// seen for this row: the fleet list's own <see cref="RoomFleetItem.StatusText"/> is a bare
     /// <c>WorkflowStatus</c> name, which is deliberately *not* mapped to a mark here — guessing a
     /// state from a string is how the vocabulary drifts, and an unknown state must read as unknown.
     /// </summary>
     [ObservableProperty]
-    private TaskCardStatus? status;
+    private RoomCardStatus? status;
 
-    /// <summary>Bulk select (issue #288) — this row's own checkbox state; <see cref="TasksViewModel.SelectedCount"/> is recomputed from every row's value whenever any one of them changes.</summary>
+    /// <summary>Bulk select (issue #288) — this row's own checkbox state; <see cref="RoomsViewModel.SelectedCount"/> is recomputed from every row's value whenever any one of them changes.</summary>
     [ObservableProperty]
     private bool isSelected;
 

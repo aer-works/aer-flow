@@ -5,7 +5,7 @@ namespace Aer.Ui.Core;
 /// <summary>
 /// Every execution's artifact output directory, plus — for each of its declared inputs — which
 /// upstream execution produced it (UI spec §10; M14 Phase 4, issue #121). Walked directly from the
-/// same Flow Event Store <see cref="TaskProjectionLoader"/> already reads, the same
+/// same Flow Event Store <see cref="RoomProjectionLoader"/> already reads, the same
 /// presentation-layer-derived-from-durable-facts shape <see cref="ExecutionHistory"/> established
 /// (M14 Phase 2): never a new stored fact, never a re-derivation of which execution is a step's
 /// *current* one — <see cref="ArtifactInputLink"/> instead comes straight from each recorded

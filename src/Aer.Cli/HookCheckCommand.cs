@@ -201,7 +201,7 @@ public static class HookCheckCommand
             // Name the cause when the exemption was unusable rather than the target being outside it.
             // A non-rooted AER_OUTPUT_DIR denies every outbox write (OutboxPath refuses to resolve one
             // against this process's inherited cwd), and the generic message above would send an
-            // operator looking at their permission grant for a fault that is in their --task-dir. The
+            // operator looking at their permission grant for a fault that is in their --room-dir. The
             // run still fails its contract; it no longer fails without saying why. #668 is the root
             // cause -- AER emitting a relative path at all.
             if (outboxDirectory is not null && !Path.IsPathRooted(outboxDirectory))
@@ -209,7 +209,7 @@ public static class HookCheckCommand
                 stderr.WriteLine(
                     $"AER: the '{toolName}' tool is withheld, and its outbox exemption is unavailable " +
                     $"because AER_OUTPUT_DIR ('{outboxDirectory}') is not an absolute path — this gate " +
-                    "cannot tell where the outbox is. Re-run with an absolute --task-dir (#668).");
+                    "cannot tell where the outbox is. Re-run with an absolute --room-dir (#668).");
                 return DeniedExitCode;
             }
 

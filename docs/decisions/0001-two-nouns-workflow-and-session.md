@@ -36,6 +36,15 @@ concept — the vendor CLI's own resumable thread — rather than being deleted;
 A chat is a room whose workflow is the conversation shape. A review run is a room whose workflow is an
 authored pipeline. See [0003](0003-templates-collapse-to-three-shapes.md).
 
+### The plan is a definition; its execution is a room
+
+In code the two halves carry distinct identifiers, and the split is load-bearing: `WorkflowDefinition`
+and `WorkflowTemplate*` name the authored **plan** (the reusable shape); bare `Workflow*` names the
+**execution** of one, bound to a room. There is deliberately **no "workflow run" noun** — a running
+workflow *is* the room (per the Decision above), so the running instance is never named a second time.
+A surface or record that reintroduces "workflow run" has split the one running-instance noun back in
+two, which is the drift [0002](0002-one-vocabulary.md) forbids.
+
 ### A room has participants
 
 The two nouns hold, but the running instance was underspecified — a design pass over #312 (J2: how a
@@ -72,9 +81,9 @@ showing. The `Task` / `Tasks` rail split stops being defensible, which is a feat
 IA question rather than letting it hide behind vocabulary. And "add a worker," "spin off a review,"
 and "a worker delegates" collapse to one thing to build and reason about, not three.
 
-**Harder.** Two storage roots (`~/.aer/tasks`, `~/.aer/sessions`) currently encode the distinction
-being deleted, and a third exists for authored workflows under `OneDrive\Documents\AER Flow`.
-Unifying them is a migration, not a rename. The room model adds real engine work — multi-participant
+**Harder.** Two storage roots (`~/.aer/tasks`, `~/.aer/sessions`) encoded the distinction being
+deleted, and a third exists for authored workflows under `OneDrive\Documents\AER Flow`. #443 unified
+the first two into `~/.aer/rooms` and deleted the copy-only migration — there was no user data to fold. The room model adds real engine work — multi-participant
 turns, floor-passing, and child-room lineage need new event types — which **retires the estimate that
 the multi-task daemon (#335) needs zero `Aer.Flow` changes.**
 

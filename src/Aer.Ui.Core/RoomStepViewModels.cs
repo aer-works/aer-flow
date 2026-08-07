@@ -8,7 +8,7 @@ namespace Aer.Ui.Core;
 
 /// <summary>
 /// M19 Phase 3 (issue #188): the plain-language vocabulary map (docs/archive/ux/ux-principles.md) applied
-/// to the task view's primary text. Total for primary labels — a spec term reaching a primary
+/// to the room view's primary text. Total for primary labels — a spec term reaching a primary
 /// label is a defect (Phase 1 decision of record); the precise engine vocabulary survives one
 /// disclosure away (ids as handles, the Details section, tooltips).
 /// </summary>
@@ -21,7 +21,7 @@ public static class PlainLanguage
         StepStatus.Succeeded => "Done",
         StepStatus.Failed => "Failed",
         // #461: was "Stopped". The token file's label for this state is "Cancelled", and a step
-        // saying one word while the task card says another is the collage this milestone is undoing.
+        // saying one word while the room card says another is the collage this milestone is undoing.
         StepStatus.Cancelled => "Cancelled",
         StepStatus.Paused => "Waiting for your review",
         StepStatus.Rejected => "Rejected",
@@ -42,14 +42,14 @@ public static class PlainLanguage
     };
 
     /// <summary>
-    /// The task-level headline — Home's card derivation, by delegation rather than by copy. This
+    /// The room-level headline — Home's card derivation, by delegation rather than by copy. This
     /// method used to restate the mapping and claim it was shared; the copy drifted (#976: no
     /// Cancelled arm, so a cancelled run's headline said "Finished" — the 0020 worked example,
     /// alive on a second surface) and hard-coded the review wording for every pause, missing
     /// #334's reply/review split. Delegating is what makes "can never drift" true.
     /// </summary>
-    public static string ForWorkflow(TaskProjection projection)
-        => TaskCardViewModel.DeriveStatus(projection).StatusText;
+    public static string ForWorkflow(RoomProjection projection)
+        => RoomCardViewModel.DeriveStatus(projection).StatusText;
 
     /// <summary>
     /// #215: real execution/decision ids are 32-char generated Guids — pure visual noise to a
@@ -61,7 +61,7 @@ public static class PlainLanguage
 }
 
 /// <summary>
-/// One step of the open task as the drill-in's read model (M19 Phase 3, issue #188;
+/// One step of the open room as the drill-in's read model (M19 Phase 3, issue #188;
 /// docs/archive/ux/information-architecture.md's Task view): the plain status up front, and everything
 /// that used to sprawl as separate stacked sections — attempts, output files, conversations,
 /// recorded decisions — sliced per step. Rebuilt wholesale on every refresh like every other
@@ -166,7 +166,7 @@ public sealed partial class StepItemViewModel : ObservableObject
 
 /// <summary>
 /// M25 / issue #618 (#480 rider): the waiting-on-lock banner.
-/// Surfaces when a task directory is held by another process. Reads as a WAIT, never an error.
+/// Surfaces when a room directory is held by another process. Reads as a WAIT, never an error.
 /// </summary>
 public sealed partial class WaitingOnLockBannerViewModel : ObservableObject
 {
@@ -303,13 +303,13 @@ public sealed partial class FailedStepBannerViewModel : ObservableObject
         // A banner exists only for StepStatus.Failed, and a Failed step is never in the paused set
         // (paused-after-exhausted-retries is Status Paused, with its own decision surface) — so the
         // only honest retry here is the re-run clone flow, and the label says so. That flow exists
-        // only for a Terminal task: while a sibling branch is still running or paused, Run resumes
+        // only for a Terminal room: while a sibling branch is still running or paused, Run resumes
         // the same directory in place, and for a step that is Failed with no pending obligation the
         // pump reaches its fixed point immediately — a silent no-op wearing a "Try again" label.
         // The projector therefore passes reRunAction only when the workflow is Terminal, and
         // CanTryAgain hides the button in the meantime rather than offering a click that does
         // nothing.
-        TryAgainLabel = "Try again (re-run task)";
+        TryAgainLabel = "Try again (re-run room)";
         _tryAgainAction = reRunAction;
     }
 
@@ -370,15 +370,15 @@ public sealed partial class ConversationRefViewModel(string label, string output
 }
 
 /// <summary>
-/// Builds the per-step drill-in items from one <see cref="TaskProjection"/> — pure projection
-/// re-slicing (§11): every fact here already renders in the Details section's task-level panels;
+/// Builds the per-step drill-in items from one <see cref="RoomProjection"/> — pure projection
+/// re-slicing (§11): every fact here already renders in the Details section's room-level panels;
 /// this groups it by step, in plain language, nothing new asserted.
 /// </summary>
 public static class StepItemProjector
 {
     public static IReadOnlyList<StepItemViewModel> Build(
-        TaskProjection projection,
-        string taskDirectoryPath,
+        RoomProjection projection,
+        string roomDirectoryPath,
         IReadOnlyList<PausedStepViewModel> pausedSteps,
         Func<string, Task> previewFileAsync,
         Action<string, string> showConversation,
@@ -387,7 +387,7 @@ public static class StepItemProjector
         Action? reRunAction = null,
         Action<string, string, string>? askWorkerToFixAction = null)
     {
-        var artifactsRootPath = Path.Combine(taskDirectoryPath, ArtifactManager.ArtifactsDirectoryName);
+        var artifactsRootPath = Path.Combine(roomDirectoryPath, ArtifactManager.ArtifactsDirectoryName);
         var pausedByStepId = pausedSteps.ToDictionary(paused => paused.StepId);
         var executionsByStepId = projection.Lineage.Executions
             .Where(execution => execution.StepId is not null)

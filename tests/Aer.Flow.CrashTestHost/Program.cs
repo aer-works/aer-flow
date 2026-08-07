@@ -9,12 +9,12 @@ using Aer.Flow.Store;
 // appear in the log, then kills it — exercising MutationInterface.StartWorkflowAsync against real
 // Core dispatch, then reconciling from a real, killed-mid-run log via a second, in-process run.
 //
-// args: <pausePoint> <taskDirectory> <artifactsRoot> <logPath> <pauseSignalPath> <cancelSignalPath>
+// args: <pausePoint> <roomDirectory> <artifactsRoot> <logPath> <pauseSignalPath> <cancelSignalPath>
 //   pausePoint: "none" | "before-dispatch" | "after-dispatch" (see DispatchPausePoint).
 if (args.Length != 6)
 {
     await Console.Error.WriteLineAsync(
-        "usage: <pausePoint> <taskDirectory> <artifactsRoot> <logPath> <pauseSignalPath> <cancelSignalPath>");
+        "usage: <pausePoint> <roomDirectory> <artifactsRoot> <logPath> <pauseSignalPath> <cancelSignalPath>");
     return 1;
 }
 
@@ -25,7 +25,7 @@ var pausePoint = args[0] switch
     "after-dispatch" => DispatchPausePoint.AfterDispatch,
     _ => throw new ArgumentException($"Unknown pausePoint '{args[0]}'."),
 };
-var taskDirectory = args[1];
+var roomDirectory = args[1];
 var artifactsRoot = args[2];
 var logPath = args[3];
 var pauseSignalPath = args[4];
@@ -49,7 +49,7 @@ var inFlightExecutions = new InFlightExecutionRegistry();
 _ = WatchForCancelSignalAsync(cancelSignalPath, reader, inFlightExecutions);
 
 await MutationInterface.StartWorkflowAsync(
-    Scenarios.WorkflowId, taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
+    Scenarios.WorkflowId, roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher,
     inFlightExecutions: inFlightExecutions);
 
 return 0;

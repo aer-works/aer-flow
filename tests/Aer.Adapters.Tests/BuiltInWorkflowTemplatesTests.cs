@@ -174,7 +174,7 @@ public class BuiltInWorkflowTemplatesTests
         {
             await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("solo-run", "claude", null, tempDir, "First prompt", cancellationToken: TestContext.Current.CancellationToken);
 
-            var ex = await Assert.ThrowsAsync<TaskDirectoryAlreadyExistsException>(() =>
+            var ex = await Assert.ThrowsAsync<RoomDirectoryAlreadyExistsException>(() =>
                 BuiltInWorkflowTemplates.MaterializeToDirectoryAsync("review-run", "claude", "agy", tempDir, "Second prompt", cancellationToken: TestContext.Current.CancellationToken));
             Assert.Contains(tempDir, ex.Message);
 

@@ -51,14 +51,14 @@ if (args.Length == 0 || !knownSubcommands.Contains(args[0]))
     Console.Error.WriteLine(RunOptionsParser.Usage);
     Console.Error.WriteLine($"       {DispatchOptionsParser.Usage[7..]}");
     Console.Error.WriteLine(
-        "       aer cancel <task-dir> --execution <execution-id> --bindings <bindings-file> [--workflow-id <id>]");
+        "       aer cancel <room-dir> --execution <execution-id> --bindings <bindings-file> [--workflow-id <id>]");
     Console.Error.WriteLine(
-        "       aer decide <task-dir> --execution <execution-id> --type resume|reject|retry-with-revision|supersede " +
+        "       aer decide <room-dir> --execution <execution-id> --type resume|reject|retry-with-revision|supersede " +
         "[--target-step <step-id>] [--supplementary <execution-id>] --bindings <bindings-file> [--workflow-id <id>]");
     Console.Error.WriteLine(
-        "       aer supply <task-dir> --worker <role> --output <name> --file <source-path> " +
+        "       aer supply <room-dir> --worker <role> --output <name> --file <source-path> " +
         "--bindings <bindings-file> [--workflow-id <id>]");
-    Console.Error.WriteLine("       aer status <task-dir> [--follow]");
+    Console.Error.WriteLine("       aer status <room-dir> [--follow]");
     Console.Error.WriteLine("       aer templates [--json]");
     Console.Error.WriteLine("       aer --version");
     Console.Error.WriteLine();

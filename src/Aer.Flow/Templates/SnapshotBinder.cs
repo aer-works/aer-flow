@@ -6,8 +6,8 @@ namespace Aer.Flow.Templates;
 
 /// <summary>
 /// Freezes a validated <see cref="WorkflowDefinition"/> template into an immutable
-/// <see cref="WorkflowDefinitionSnapshot"/> at task creation (spec §11.2), and persists it
-/// alongside the task's log directory. Once bound and persisted, later edits to the source
+/// <see cref="WorkflowDefinitionSnapshot"/> at room creation (spec §11.2), and persists it
+/// alongside the room's log directory. Once bound and persisted, later edits to the source
 /// template file — or even the file being deleted — have no effect on the snapshot: binding
 /// copies every field the snapshot needs out of the in-memory <see cref="WorkflowDefinition"/>
 /// and never re-reads the source afterward.
@@ -56,10 +56,10 @@ public static class SnapshotBinder
     /// disk while a direct write is still in flight (#818).
     /// <para>
     /// <b>The rename is retried, unlike that writer's retry which guards concurrent writers:</b> this
-    /// method ASSUMES no concurrent writer — "a snapshot is bound and persisted exactly once per task"
+    /// method ASSUMES no concurrent writer — "a snapshot is bound and persisted exactly once per room"
     /// is a caller invariant upheld by <c>RunCommand</c>'s bind-or-load choice, not something this
     /// method enforces (its <c>File.Exists</c> check has an unguarded window; two racing engines on
-    /// one task directory would be refused earlier by the journal's ConcurrencyGuard, which is the
+    /// one room directory would be refused earlier by the journal's ConcurrencyGuard, which is the
     /// actual enforcement point). What it does guard against is the writer-vs-reader race, and
     /// measurement while building this fix's own race test
     /// showed Windows' overwrite-rename needs the destination free of default-share handles: a
@@ -142,7 +142,7 @@ public static class SnapshotBinder
 
     /// <summary>
     /// Reads back a snapshot persisted by <see cref="PersistAsync"/> — how a resumed <c>aer run</c>
-    /// (§21) re-derives the exact frozen template a task was created from, rather than re-parsing
+    /// (§21) re-derives the exact frozen template a room was created from, rather than re-parsing
     /// and re-binding the source workflow file a second time (which would mint a new, unrelated
     /// <see cref="WorkflowDefinitionSnapshotId"/> and, per this type's own remarks, be unaffected by
     /// what binding already froze anyway).
@@ -168,7 +168,7 @@ public static class SnapshotBinder
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
             // Most callers pre-check existence and throw their own SnapshotLoadException, but not all
-            // (TaskProjectionLoader, StatusCommand, LaneTerminalProbe read straight through), and a
+            // (RoomProjectionLoader, StatusCommand, WorkflowTerminalProbe read straight through), and a
             // pre-check races a file that vanishes before the open. Translating here makes the loader
             // self-protecting: a raw FileNotFoundException is not an AerFlowException and would escape
             // the CLI's typed boundary as a crash.

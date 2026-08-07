@@ -98,7 +98,7 @@
         <!-- #336: one destination for "the record you have open", whichever shape it is. This was
              two rail buttons (Task and Chat) that a user had to already know the answer to before
              navigating — the shape of a record is a property of the record, not a choice. -->
-        <Button x:Name="NavTaskButton" Classes="nav" Classes.selected="{Binding IsDetailVisible}"
+        <Button x:Name="NavRoomButton" Classes="nav" Classes.selected="{Binding IsDetailVisible}"
                 HorizontalAlignment="Stretch">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
             <Path Classes="nav-icon" Data="{StaticResource Icon.Task}"
@@ -154,26 +154,26 @@
             </Button>
           </StackPanel>
           <TextBlock Classes="caption secondary" Foreground="{DynamicResource Status.Failed}"
-                     TextWrapping="Wrap" Text="{Binding Tasks.ErrorText}"
-                     IsVisible="{Binding Tasks.HasErrorText}" />
+                     TextWrapping="Wrap" Text="{Binding Rooms.ErrorText}"
+                     IsVisible="{Binding Rooms.HasErrorText}" />
         </StackPanel>
 
         <!-- The management surface #278/#288 shipped is reached from here rather than from the rail:
              a 260px switcher cannot host a bulk action bar, and dropping bulk archive/delete to make
              the rail smaller would be trading working functionality for tidiness. -->
         <Button x:Name="SwitcherManageButton" DockPanel.Dock="Bottom" Classes="quiet"
-                HorizontalAlignment="Stretch" Margin="8" Classes.selected="{Binding IsTasksVisible}">
-          <AccessText Text="Manage task_s…" />
+                HorizontalAlignment="Stretch" Margin="8" Classes.selected="{Binding IsRoomsVisible}">
+          <AccessText Text="Manage room_s…" />
         </Button>
 
         <TextBlock DockPanel.Dock="Top" Classes="caption secondary" Margin="12,4,12,8"
-                   Text="No rooms yet." IsVisible="{Binding Tasks.HasNoItems}" />
+                   Text="No rooms yet." IsVisible="{Binding Rooms.HasNoItems}" />
 
-        <ListBox x:Name="SwitcherList" ItemsSource="{Binding Tasks.Items}"
-                 SelectedItem="{Binding Tasks.CurrentItem}"
+        <ListBox x:Name="SwitcherList" ItemsSource="{Binding Rooms.Items}"
+                 SelectedItem="{Binding Rooms.CurrentItem}"
                  Background="Transparent" BorderThickness="0">
           <ListBox.ItemTemplate>
-            <DataTemplate x:DataType="vm:TaskFleetItemViewModel">
+            <DataTemplate x:DataType="vm:RoomFleetItemViewModel">
               <StackPanel Spacing="2" Margin="0,2">
                 <TextBlock Classes="body-strong" Text="{Binding FriendlyName}"
                            TextTrimming="CharacterEllipsis" />
@@ -202,11 +202,11 @@
     </Border>
     <Panel>
       <views:HomeView x:Name="HomeViewControl" IsVisible="{Binding IsHomeVisible}" />
-      <views:TaskView x:Name="TaskViewControl" IsVisible="{Binding IsTaskVisible}" />
+      <views:RoomView x:Name="RoomViewControl" IsVisible="{Binding IsRoomVisible}" />
       <views:AuthorView x:Name="AuthorViewControl" IsVisible="{Binding IsAuthorVisible}" />
       <views:RemoteView x:Name="RemoteViewControl" IsVisible="{Binding IsRemoteVisible}" />
       <views:ChatView x:Name="ChatViewControl" IsVisible="{Binding IsChatVisible}" />
-      <views:TasksView x:Name="TasksViewControl" IsVisible="{Binding IsTasksVisible}" />
+      <views:RoomsView x:Name="RoomsViewControl" IsVisible="{Binding IsRoomsVisible}" />
     </Panel>
   </DockPanel>
 </Window>

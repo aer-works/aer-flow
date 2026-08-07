@@ -102,7 +102,7 @@ trips re-pointed:
 
 | Today (stacked section / control) | New home |
 |---|---|
-| TaskDirectoryPathBox + Open/Refresh | Home "Open a task…" fallback; refresh becomes live-follow + explicit refresh in Task |
+| RoomDirectoryPathBox + Open/Refresh | Home "Open a task…" fallback; refresh becomes live-follow + explicit refresh in Task |
 | RecentsPanel | Home task cards |
 | Run/Stop row + RunStatusText | Task view (task-level bar); "Run" also the end of Author's flow |
 | Template editor (path box, New/Open/Save, AddStep, status) | Author view |

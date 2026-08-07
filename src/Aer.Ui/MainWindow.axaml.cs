@@ -71,8 +71,8 @@ public partial class MainWindow : Window
     /// ask-don't-infer path source, the 2-second poller as the mutation-progress renderer, and
     /// <see cref="OpenAsync"/> as the settle-time re-open.
     /// </summary>
-    private readonly TaskSession _session;
-    internal TaskSession Session => _session;
+    private readonly RoomClient _session;
+    internal RoomClient Session => _session;
 
     private readonly DispatcherTimer _liveRefreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 
@@ -87,7 +87,7 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Which execution's conversation is currently shown (M18 Phase 2, issue #178) — local UI
-    /// selection state like <see cref="TaskDirectoryPathBox"/>'s text (UI spec §4), never a
+    /// selection state like <see cref="RoomDirectoryPathBox"/>'s text (UI spec §4), never a
     /// projected fact: every <see cref="LoadAsync"/> re-renders the conversation from the durable
     /// transcript this directory holds *now*, which is how load-on-refresh follows a still-running
     /// exchange without any push/streaming channel.
@@ -115,30 +115,30 @@ public partial class MainWindow : Window
     // these internal properties are how this window's rendering code and the headless round trips
     // keep addressing them — one migration per surface, no behavioral change. Phases 3–4 retire
     // entries as they rebuild each surface properly.
-    internal TextBox TaskDirectoryPathBox => HomeViewControl.TaskDirectoryPathBox;
+    internal TextBox RoomDirectoryPathBox => HomeViewControl.RoomDirectoryPathBox;
     internal Button OpenButton => HomeViewControl.OpenButton;
     internal Button RefreshButton => HomeViewControl.RefreshButton;
 
-    internal TextBox WorkflowTemplatePathBox => TaskViewControl.WorkflowTemplatePathBox;
-    internal TextBox BindingsFilePathBox => TaskViewControl.BindingsFilePathBox;
-    internal Button RunButton => TaskViewControl.RunButton;
-    internal Button StopButton => TaskViewControl.StopButton;
-    internal TextBlock RunStatusText => TaskViewControl.RunStatusText;
-    internal TextBlock StatusText => TaskViewControl.StatusText;
-    internal StackPanel StepsPanel => TaskViewControl.StepsPanel;
-    internal TextBlock CancelStatusText => TaskViewControl.CancelStatusText;
-    internal TextBlock DecisionStatusText => TaskViewControl.DecisionStatusText;
-    internal Canvas DagCanvas => TaskViewControl.DagCanvas;
-    internal StackPanel HistoryPanel => TaskViewControl.HistoryPanel;
-    internal StackPanel ConversationExecutionsPanel => TaskViewControl.ConversationExecutionsPanel;
-    internal StackPanel ConversationPanel => TaskViewControl.ConversationPanel;
-    internal StackPanel DecisionsPanel => TaskViewControl.DecisionsPanel;
-    internal StackPanel SupplementaryPanel => TaskViewControl.SupplementaryPanel;
-    internal StackPanel LineagePanel => TaskViewControl.LineagePanel;
-    internal TextBox ArtifactPreviewBox => TaskViewControl.ArtifactPreviewBox;
-    internal TextBox TemplateComparePathBox => TaskViewControl.TemplateComparePathBox;
-    internal Button CompareButton => TaskViewControl.CompareButton;
-    internal StackPanel DiffPanel => TaskViewControl.DiffPanel;
+    internal TextBox WorkflowTemplatePathBox => RoomViewControl.WorkflowTemplatePathBox;
+    internal TextBox BindingsFilePathBox => RoomViewControl.BindingsFilePathBox;
+    internal Button RunButton => RoomViewControl.RunButton;
+    internal Button StopButton => RoomViewControl.StopButton;
+    internal TextBlock RunStatusText => RoomViewControl.RunStatusText;
+    internal TextBlock StatusText => RoomViewControl.StatusText;
+    internal StackPanel StepsPanel => RoomViewControl.StepsPanel;
+    internal TextBlock CancelStatusText => RoomViewControl.CancelStatusText;
+    internal TextBlock DecisionStatusText => RoomViewControl.DecisionStatusText;
+    internal Canvas DagCanvas => RoomViewControl.DagCanvas;
+    internal StackPanel HistoryPanel => RoomViewControl.HistoryPanel;
+    internal StackPanel ConversationExecutionsPanel => RoomViewControl.ConversationExecutionsPanel;
+    internal StackPanel ConversationPanel => RoomViewControl.ConversationPanel;
+    internal StackPanel DecisionsPanel => RoomViewControl.DecisionsPanel;
+    internal StackPanel SupplementaryPanel => RoomViewControl.SupplementaryPanel;
+    internal StackPanel LineagePanel => RoomViewControl.LineagePanel;
+    internal TextBox ArtifactPreviewBox => RoomViewControl.ArtifactPreviewBox;
+    internal TextBox TemplateComparePathBox => RoomViewControl.TemplateComparePathBox;
+    internal Button CompareButton => RoomViewControl.CompareButton;
+    internal StackPanel DiffPanel => RoomViewControl.DiffPanel;
 
     internal TextBox TemplateEditorPathBox => AuthorViewControl.TemplateEditorPathBox;
     internal Button NewTemplateButton => AuthorViewControl.NewTemplateButton;
@@ -176,7 +176,7 @@ public partial class MainWindow : Window
     /// </summary>
     internal T? FindViewControl<T>(string name) where T : Control
         => HomeViewControl.FindControl<T>(name)
-           ?? TaskViewControl.FindControl<T>(name)
+           ?? RoomViewControl.FindControl<T>(name)
            ?? AuthorViewControl.FindControl<T>(name)
            ?? ChatViewControl.FindControl<T>(name);
 
@@ -217,15 +217,15 @@ public partial class MainWindow : Window
             Win32Properties.AddWndProcHookCallback(this, WndProcHook);
         }
         DataContext = ViewModel;
-        _session = new TaskSession(
+        _session = new RoomClient(
             configurationStore,
             adapters,
             ViewModel,
             bindingsFilePathProvider: () => BindingsFilePathBox.Text,
             mutationStarted: _liveRefreshTimer.Start,
             mutationFailed: _liveRefreshTimer.Stop,
-            reopenTaskAsync: (taskDirectoryPath, cancellationToken) => OpenAsync(taskDirectoryPath, cancellationToken),
-            onProjectionUpdated: (projection, taskDirectoryPath) => RenderProjection(projection, taskDirectoryPath),
+            reopenRoomAsync: (roomDirectoryPath, cancellationToken) => OpenAsync(roomDirectoryPath, cancellationToken),
+            onProjectionUpdated: (projection, roomDirectoryPath) => RenderProjection(projection, roomDirectoryPath),
             daemonUrl: daemonUrl);
 
         // M16 Phase 4 (issue #153): adapter names are offered from the registry this window was
@@ -241,7 +241,7 @@ public partial class MainWindow : Window
         ViewModel.Chat.PopulateAvailableAdapters();
 
         _liveRefreshTimer.Tick += (_, _) => _ = RefreshAsync();
-        OpenButton.Click += (_, _) => _ = OpenAsync(TaskDirectoryPathBox.Text ?? string.Empty);
+        OpenButton.Click += (_, _) => _ = OpenAsync(RoomDirectoryPathBox.Text ?? string.Empty);
         RefreshButton.Click += (_, _) => _ = RefreshAsync();
         CompareButton.Click += (_, _) => _ = CompareToTemplateAsync(TemplateComparePathBox.Text ?? string.Empty);
         RunButton.Click += (_, _) => _ = OnRunButtonClickAsync();
@@ -268,21 +268,21 @@ public partial class MainWindow : Window
         };
         CheckBindingsAgainstTemplateButton.Click += (_, _) => RefreshBindingsTemplateCrossCheck();
         NavHomeButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Home;
-        NavTaskButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Task;
+        NavRoomButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Task;
         NavAuthorButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Author;
         NavRemoteButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Remote;
         // #336: Chat and Tasks are no longer rail destinations. Chat is reached by opening a session
         // (the switcher routes to the right pane); the management surface is reached from the foot of
         // the switcher list.
-        SwitcherManageButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Tasks;
-        SwitcherRefreshButton.Click += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
-        TasksViewControl.TasksRefreshButton.Click += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
-        TasksViewControl.TasksIncludeArchivedCheckBox.IsCheckedChanged += (_, _) => _ = ViewModel.Tasks.RefreshAsync(_session);
+        SwitcherManageButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Rooms;
+        SwitcherRefreshButton.Click += (_, _) => _ = ViewModel.Rooms.RefreshAsync(_session);
+        RoomsViewControl.RoomsRefreshButton.Click += (_, _) => _ = ViewModel.Rooms.RefreshAsync(_session);
+        RoomsViewControl.RoomsIncludeArchivedCheckBox.IsCheckedChanged += (_, _) => _ = ViewModel.Rooms.RefreshAsync(_session);
         // Bulk select (issue #288): these two need the session the same way the single-row actions'
-        // closures do (TasksViewModel.RefreshAsync wires those per row), but the bulk actions live on
-        // TasksViewModel itself rather than per-row, so they're wired here instead.
-        TasksViewControl.TasksBulkArchiveButton.Click += (_, _) => _ = ViewModel.Tasks.BulkArchiveAsync(_session);
-        TasksViewControl.TasksBulkDeleteConfirmButton.Click += (_, _) => _ = ViewModel.Tasks.ConfirmBulkDeleteAsync(_session);
+        // closures do (RoomsViewModel.RefreshAsync wires those per row), but the bulk actions live on
+        // RoomsViewModel itself rather than per-row, so they're wired here instead.
+        RoomsViewControl.RoomsBulkArchiveButton.Click += (_, _) => _ = ViewModel.Rooms.BulkArchiveAsync(_session);
+        RoomsViewControl.RoomsBulkDeleteConfirmButton.Click += (_, _) => _ = ViewModel.Rooms.ConfirmBulkDeleteAsync(_session);
         ChatSendButton.Click += (_, _) => _ = SendChatMessageAsync();
         ChatStartNewButton.Click += (_, _) => _ = StartNewChatAsync();
         ChatCommandsButton.Click += (_, _) => _ = ToggleChatCommandsAsync();
@@ -290,7 +290,7 @@ public partial class MainWindow : Window
         ChatModeDefaultButton.Click += (_, _) => _ = SetChatModeAsync("default");
         ChatModePlanButton.Click += (_, _) => _ = SetChatModeAsync("plan");
         // Per-item command-picker selection (M24 Phase 2 follow-up): the same "sender's DataContext
-        // is the bound item" idiom TaskView/AuthorView already use for per-item buttons, wired via
+        // is the bound item" idiom RoomView/AuthorView already use for per-item buttons, wired via
         // event bubbling since ChatCommandsList's buttons come from a DataTemplate, not named XAML.
         ChatViewControl.ChatCommandsList.AddHandler(Button.ClickEvent, OnChatCommandItemClick);
         // M24 Phase 1's live in-turn streaming (issue #262): the daemon broadcasts every session's
@@ -298,7 +298,7 @@ public partial class MainWindow : Window
         // directory is actually open in the Chat view right now.
         _session.SessionProgressReceived += (directoryPath, _, progressEvent) =>
         {
-            if (ViewModel.Chat.TaskDirectoryPath == directoryPath)
+            if (ViewModel.Chat.RoomDirectoryPath == directoryPath)
             {
                 ViewModel.Chat.AppendProgress(progressEvent);
             }
@@ -306,22 +306,22 @@ public partial class MainWindow : Window
         // #336: the switcher list is permanently visible, so it no longer gets a section activation to
         // rebuild on. Every projection push updates its row instead — including pushes for sessions
         // this client is not currently viewing, which is exactly the case the detail pane's own
-        // filter (TaskSession.ShouldApplyProjectionPush, #262) deliberately drops.
+        // filter (RoomClient.ShouldApplyProjectionPush, #262) deliberately drops.
         _session.FleetProjectionReceived += (directoryPath, projection) =>
-            ViewModel.Tasks.ApplyProjectionPush(directoryPath, projection);
+            ViewModel.Rooms.ApplyProjectionPush(directoryPath, projection);
         // Selecting a row *is* opening the record — the switcher has no separate "open" action. Guarded
         // against re-entry: OpenAsync itself refreshes the fleet list, which re-finds and re-assigns
         // CurrentItem, and without this an open would recurse through its own selection change.
-        ViewModel.Tasks.PropertyChanged += (_, e) =>
+        ViewModel.Rooms.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName != nameof(TasksViewModel.CurrentItem) || _isOpeningFromSwitcher)
+            if (e.PropertyName != nameof(RoomsViewModel.CurrentItem) || _isOpeningFromSwitcher)
             {
                 return;
             }
 
-            if (ViewModel.Tasks.CurrentItem is { } row && row.TaskDirectoryPath != _session.CurrentTaskDirectoryPath)
+            if (ViewModel.Rooms.CurrentItem is { } row && row.RoomDirectoryPath != _session.CurrentRoomDirectoryPath)
             {
-                _ = OpenFromSwitcherAsync(row.TaskDirectoryPath);
+                _ = OpenFromSwitcherAsync(row.RoomDirectoryPath);
             }
         };
         RemoteToggleButton.Click += (_, _) => _ = ViewModel.Remote.ToggleRemoteAsync(_session);
@@ -373,9 +373,9 @@ public partial class MainWindow : Window
             // M24 Phase 5 (#278): the fleet list rebuilds on every activation, same reasoning as
             // Home's own rebuild-on-activation — archive/unarchive/delete elsewhere (or from
             // another client) shouldn't require leaving and re-entering this view to see reflected.
-            if (section == ShellSection.Tasks)
+            if (section == ShellSection.Rooms)
             {
-                _ = ViewModel.Tasks.RefreshAsync(_session);
+                _ = ViewModel.Rooms.RefreshAsync(_session);
             }
         };
         _pairingCountdownTimer.Tick += (_, _) =>
@@ -403,16 +403,16 @@ public partial class MainWindow : Window
                 _ = ViewModel.Remote.RefreshPairedClientsAsync(_session);
             }
         };
-        // M19 Phase 4 (#189): Save & Run without leaving the flow — each run gets a fresh task
-        // directory beside the authored files (one workspace per workflow, tasks inside it), then
+        // M19 Phase 4 (#189): Save & Run without leaving the flow — each run gets a fresh room
+        // directory beside the authored files (one workspace per workflow, rooms inside it), then
         // the shell navigates to the Task view and drives the same RunAsync as the Run button.
         ViewModel.NewWorkflow.RunRequested += async (workflowFilePath, bindingsFilePath) =>
         {
-            var taskDirectoryPath = System.IO.Path.Combine(
+            var roomDirectoryPath = System.IO.Path.Combine(
                 System.IO.Path.GetDirectoryName(workflowFilePath)!,
-                $"task-{DateTime.Now:yyyyMMdd-HHmmss}");
+                $"room-{DateTime.Now:yyyyMMdd-HHmmss}");
             ViewModel.CurrentSection = ShellSection.Task;
-            await RunAsync(taskDirectoryPath, workflowFilePath, bindingsFilePath);
+            await RunAsync(roomDirectoryPath, workflowFilePath, bindingsFilePath);
         };
         // #211: the Outputs preview box is imperative control state, not bound — nothing cleared
         // or refreshed it when the drill-in moved to a different step, so it kept showing the
@@ -534,26 +534,26 @@ public partial class MainWindow : Window
 
         // #336: the switcher is chrome, not a destination, so nothing will ever "activate" it into
         // existence — it has to be populated once at startup and kept current by pushes thereafter.
-        await ViewModel.Tasks.RefreshAsync(_session, cancellationToken);
+        await ViewModel.Rooms.RefreshAsync(_session, cancellationToken);
 
         BindingsFilePathBox.Text = await _session.LoadLastBindingsFilePathAsync(cancellationToken);
         WorkflowTemplatePathBox.Text = await _session.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
     }
 
     /// <summary>
-    /// The full "open a task directory" action (UI spec §3.1): loads and renders it via
+    /// The full "open a room directory" action (UI spec §3.1): loads and renders it via
     /// <see cref="LoadAsync"/>, then — only on success — records it as the most recently opened
     /// directory and starts/stops live re-projection (M14 Phase 2, issue #119) depending on whether
     /// the projected workflow has reached a terminal state. This is what <see cref="OpenButton"/>
-    /// and a Home task card's Open both call; <see cref="App"/>'s CLI-argument
+    /// and a Home room card's Open both call; <see cref="App"/>'s CLI-argument
     /// launch path calls it too, so a directory opened that way is remembered exactly like one
     /// opened by hand.
     /// <para>
-    /// If <paramref name="taskDirectoryPath"/> names a file rather than a directory, it is opened as
+    /// If <paramref name="roomDirectoryPath"/> names a file rather than a directory, it is opened as
     /// a raw <c>WorkflowDefinition</c> template instead (M14 Phase 3, issue #120: the DAG view
-    /// renders both bound tasks and not-yet-instantiated templates). A template is not a task —
+    /// renders both bound rooms and not-yet-instantiated templates). A template is not a room —
     /// there is no execution state to remember a re-projection cadence for, so it is neither
-    /// recorded to <see cref="LocalUiConfigurationStore"/> (that store is task-directory recents
+    /// recorded to <see cref="LocalUiConfigurationStore"/> (that store is room-directory recents
     /// specifically, per its Phase 2 decision of record) nor live-refreshed.
     /// </para>
     /// </summary>
@@ -567,7 +567,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Opens the record a switcher row points at (#336). Routing between the chat and workflow panes
     /// is <see cref="OpenAsync"/>'s existing job — it already decides by whether the directory has
-    /// session metadata, the same structural fact <see cref="TaskFleetItem.IsSession"/> carries, so
+    /// session metadata, the same structural fact <see cref="RoomFleetItem.IsSession"/> carries, so
     /// this deliberately does not re-derive it here.
     /// </summary>
     /// <remarks>
@@ -578,12 +578,12 @@ public partial class MainWindow : Window
     /// <c>_ = SomethingAsync()</c> in this file rather than something new; a general answer for
     /// surfacing background-work failures in the UI belongs with #462, not bolted on here.
     /// </remarks>
-    private async Task OpenFromSwitcherAsync(string taskDirectoryPath)
+    private async Task OpenFromSwitcherAsync(string roomDirectoryPath)
     {
         _isOpeningFromSwitcher = true;
         try
         {
-            await OpenAsync(taskDirectoryPath);
+            await OpenAsync(roomDirectoryPath);
         }
         finally
         {
@@ -591,16 +591,16 @@ public partial class MainWindow : Window
         }
     }
 
-    public async Task OpenAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public async Task OpenAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
-        TaskDirectoryPathBox.Text = taskDirectoryPath;
+        RoomDirectoryPathBox.Text = roomDirectoryPath;
 
-        if (File.Exists(taskDirectoryPath) && !Directory.Exists(taskDirectoryPath))
+        if (File.Exists(roomDirectoryPath) && !Directory.Exists(roomDirectoryPath))
         {
             ViewModel.CurrentSection = ShellSection.Task;
-            WorkflowTemplatePathBox.Text = taskDirectoryPath;
-            _session.SetCurrentTaskDirectory(null);
-            await LoadTemplateAsync(taskDirectoryPath, cancellationToken);
+            WorkflowTemplatePathBox.Text = roomDirectoryPath;
+            _session.SetCurrentRoomDirectory(null);
+            await LoadTemplateAsync(roomDirectoryPath, cancellationToken);
             _liveRefreshTimer.Stop();
             return;
         }
@@ -608,17 +608,17 @@ public partial class MainWindow : Window
         BindingsFilePathBox.Text = await _session.LoadLastBindingsFilePathAsync(cancellationToken);
         WorkflowTemplatePathBox.Text = await _session.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
 
-        _session.SetCurrentTaskDirectory(taskDirectoryPath);
+        _session.SetCurrentRoomDirectory(roomDirectoryPath);
 
-        await LoadAsync(taskDirectoryPath, cancellationToken);
+        await LoadAsync(roomDirectoryPath, cancellationToken);
 
         // M24 Phase 1 (issue #262): a directory that materialized an interactive session
-        // (.aer/session.json present) routes to the dedicated Chat view instead of the generic
-        // Task view opened above — see TaskSession.LoadSessionMetadataAsync's remarks.
-        var sessionMetadata = await _session.LoadSessionMetadataAsync(taskDirectoryPath, cancellationToken).ConfigureAwait(true);
+        // (.aer/room.json marker with Kind=Interactive) routes to the dedicated Chat view instead of the generic
+        // Task view opened above — see RoomClient.LoadSessionMetadataAsync's remarks.
+        var sessionMetadata = await _session.LoadSessionMetadataAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
         if (sessionMetadata != null)
         {
-            ViewModel.Chat.LoadFromMetadata(sessionMetadata, taskDirectoryPath);
+            ViewModel.Chat.LoadFromMetadata(sessionMetadata, roomDirectoryPath);
             ViewModel.CurrentSection = ShellSection.Chat;
             await RefreshChatModeAsync(sessionMetadata.SessionId, cancellationToken).ConfigureAwait(true);
         }
@@ -630,7 +630,7 @@ public partial class MainWindow : Window
 
         if (_session.LastLoadSucceeded)
         {
-            await _session.RecordOpenedAsync(taskDirectoryPath, cancellationToken);
+            await _session.RecordOpenedAsync(roomDirectoryPath, cancellationToken);
             await RefreshRecordListsAsync(cancellationToken);
         }
 
@@ -639,15 +639,16 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// The mutation seam this phase exists to prove (issue #137): a Run action that either starts a
-    /// fresh task from <paramref name="workflowTemplateFilePath"/> + <paramref name="bindingsFilePath"/>,
-    /// or resumes an already-bound <paramref name="taskDirectoryPath"/> after a pause or stop — the
+    /// fresh room from <paramref name="workflowTemplateFilePath"/> + <paramref name="bindingsFilePath"/>,
+    /// or resumes an already-bound <paramref name="roomDirectoryPath"/> after a pause or stop — the
     /// same <c>RunCommand.ExecuteAsync</c> call <c>aer run</c> makes, reused in-process rather than
     /// spawning the installed binary (the seam decision this phase resolves). Bindings are never
-    /// persisted in a task directory (M14 Phase 2's decision of record) and the template is only
+    /// record-once-ok: #443 src/Aer.Ui.Core/BindingsEditorViewModel.cs
+    /// persisted in a room directory (M14 Phase 2's decision of record) and the template is only
     /// ever <em>bound from</em> on a fresh start (<see cref="RunOptions.WorkflowFilePath"/>'s own
     /// remarks, which also cover what a resume now reads it for), so both are asked for here rather
     /// than inferred — "ask, don't infer," the same discipline the recents list already follows for
-    /// task-directory discovery (UI spec §3.1).
+    /// room-directory discovery (UI spec §3.1).
     /// <para>
     /// The pump itself runs on a background thread (<see cref="Task.Run(Func{Task})"/>): a live
     /// execution can take however long a real worker takes, and the UI thread must never await that
@@ -659,30 +660,30 @@ public partial class MainWindow : Window
     /// </para>
     /// </summary>
     public async Task RunAsync(
-        string taskDirectoryPath, string? workflowTemplateFilePath, string bindingsFilePath, CancellationToken cancellationToken = default)
+        string roomDirectoryPath, string? workflowTemplateFilePath, string bindingsFilePath, CancellationToken cancellationToken = default)
     {
-        TaskDirectoryPathBox.Text = taskDirectoryPath;
+        RoomDirectoryPathBox.Text = roomDirectoryPath;
         // Kept in sync here, not just read from at Run-button-click time, so a later decision —
         // whose bindings path the session asks this same box for at call time ("ask, don't infer",
         // M14 Phase 2's decision of record) — has a value even when RunAsync was invoked directly
         // (a test, or a future non-button caller) rather than through the click handler.
         BindingsFilePathBox.Text = bindingsFilePath;
 
-        await _session.RunAsync(taskDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken);
+        await _session.RunAsync(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken);
     }
 
     /// <summary>
     /// The Template Picker's chat/codebase session creation (M24 Phase 1 desktop wiring, issue #262)
-    /// — <see cref="TaskSession.StartInteractiveSessionAsync"/> exposed the same way <see cref="RunAsync"/>
+    /// — <see cref="RoomClient.StartInteractiveSessionAsync"/> exposed the same way <see cref="RunAsync"/>
     /// exposes the run mutation, so a modal window with no session reference of its own can still go
     /// through the daemon-first path instead of materializing directly in-process.
     /// </summary>
-    public Task<TaskSession.SessionStartOutcome> StartInteractiveSessionAsync(StartSessionRequest request, CancellationToken cancellationToken = default)
+    public Task<RoomClient.SessionStartOutcome> StartInteractiveSessionAsync(StartSessionRequest request, CancellationToken cancellationToken = default)
         => _session.StartInteractiveSessionAsync(request, cancellationToken);
 
     /// <summary>
     /// The Chat view's Send button (M24 Phase 1, issue #262): dispatches the next turn via
-    /// <see cref="TaskSession.SendSessionMessageAsync"/> and marks it in flight
+    /// <see cref="RoomClient.SendSessionMessageAsync"/> and marks it in flight
     /// (<see cref="ChatViewModel.BeginSend"/>) — completion is observed by the same live-refresh
     /// poll <see cref="RefreshAsync"/> already drives, not by awaiting this call any further.
     /// </summary>
@@ -690,7 +691,7 @@ public partial class MainWindow : Window
     {
         var chat = ViewModel.Chat;
         var message = chat.InputText.Trim();
-        if (message.Length == 0 || chat.TaskDirectoryPath is not { } taskDirectoryPath)
+        if (message.Length == 0 || chat.RoomDirectoryPath is not { } roomDirectoryPath)
         {
             return;
         }
@@ -698,7 +699,7 @@ public partial class MainWindow : Window
         chat.BeginSend(message, chat.Messages.Count(m => m.IsFromUser));
 
         var outcome = await _session.SendSessionMessageAsync(
-            new SendSessionMessageRequest(DirectoryPath: taskDirectoryPath, Message: message)).ConfigureAwait(true);
+            new SendSessionMessageRequest(DirectoryPath: roomDirectoryPath, Message: message)).ConfigureAwait(true);
 
         if (outcome.ErrorMessage is { } error)
         {
@@ -741,9 +742,9 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _session.SetCurrentTaskDirectory(metadata.TaskDirectoryPath);
-            await _session.RecordOpenedAsync(metadata.TaskDirectoryPath).ConfigureAwait(true);
-            chat.LoadFromMetadata(metadata, metadata.TaskDirectoryPath);
+            _session.SetCurrentRoomDirectory(metadata.RoomDirectoryPath);
+            await _session.RecordOpenedAsync(metadata.RoomDirectoryPath).ConfigureAwait(true);
+            chat.LoadFromMetadata(metadata, metadata.RoomDirectoryPath);
             await RefreshRecordListsAsync(CancellationToken.None).ConfigureAwait(true);
             UpdateLiveRefreshTimer();
         }
@@ -812,9 +813,9 @@ public partial class MainWindow : Window
 
             case "/clear":
                 var (cleared, clearError) = await _session.ClearSessionAsync(sessionId).ConfigureAwait(true);
-                if (cleared != null && chat.TaskDirectoryPath is { } taskDirectoryPath)
+                if (cleared != null && chat.RoomDirectoryPath is { } roomDirectoryPath)
                 {
-                    chat.LoadFromMetadata(cleared, taskDirectoryPath);
+                    chat.LoadFromMetadata(cleared, roomDirectoryPath);
                     chat.StatusText = "Room context cleared.";
                 }
                 else
@@ -857,30 +858,30 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The Run button's click handler (review follow-up, issue #250): on a task that hasn't
-    /// finished, this is exactly the old unconditional resume-in-place call. On a finished task —
+    /// The Run button's click handler (review follow-up, issue #250): on a room that hasn't
+    /// finished, this is exactly the old unconditional resume-in-place call. On a finished room —
     /// <see cref="MainWindowViewModel.IsTaskFinished"/> — resuming the same directory is a proven
-    /// no-op (see that property's remarks), so this clones the currently-open task's recorded
-    /// <c>.aer/workflow-path</c>/bindings file into a fresh sibling <c>task-{timestamp}</c> directory
+    /// no-op (see that property's remarks), so this clones the currently-open room's recorded
+    /// <c>.aer/workflow-path</c>/bindings file into a fresh sibling <c>room-{timestamp}</c> directory
     /// instead, the same naming <see cref="MainWindow"/>'s "Save &amp; Run" and template flows
-    /// already use, and runs that. The finished task's own directory is left untouched.
+    /// already use, and runs that. The finished room's own directory is left untouched.
     /// </summary>
     private async Task OnRunButtonClickAsync()
     {
-        var taskDirectoryPath = TaskDirectoryPathBox.Text ?? string.Empty;
+        var roomDirectoryPath = RoomDirectoryPathBox.Text ?? string.Empty;
         var workflowTemplateFilePath = WorkflowTemplatePathBox.Text;
         var bindingsFilePath = BindingsFilePathBox.Text ?? string.Empty;
 
-        if (ViewModel.IsTaskFinished && !string.IsNullOrWhiteSpace(taskDirectoryPath))
+        if (ViewModel.IsRoomFinished && !string.IsNullOrWhiteSpace(roomDirectoryPath))
         {
-            var parentDirectory = System.IO.Path.GetDirectoryName(taskDirectoryPath);
-            if (!string.IsNullOrEmpty(parentDirectory))
+            var parentDirectory = System.IO.Path.GetDirectoryName(roomDirectoryPath);
+            if (!string.IsNullOrWhiteSpace(parentDirectory))
             {
-                taskDirectoryPath = System.IO.Path.Combine(parentDirectory, $"task-{DateTime.Now:yyyyMMdd-HHmmss}");
+                roomDirectoryPath = System.IO.Path.Combine(parentDirectory, $"room-{DateTime.Now:yyyyMMdd-HHmmss}");
             }
         }
 
-        await RunAsync(taskDirectoryPath, workflowTemplateFilePath, bindingsFilePath);
+        await RunAsync(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath);
     }
 
     /// <summary>
@@ -917,7 +918,8 @@ public partial class MainWindow : Window
     /// legitimately do the same) — a no-op save writes nothing and increments nothing, and a
     /// brand-new template's first save has no predecessor to distinguish from, so it saves the
     /// version as entered. Deliberately not gated on <see cref="MainWindowViewModel.IsMutationInFlight"/>:
-    /// a template file is not durable task state, no §15 task lock is involved, and an edit is
+    /// record-once-ok: #443 src/Aer.Ui.Core/TemplateEditorViewModel.cs
+    /// a template file is not durable room state, no §15 room lock is involved, and an edit is
     /// visible only to future instantiations regardless (UI spec §5).
     /// </summary>
     public async Task SaveTemplateAsync(string templateFilePath, CancellationToken cancellationToken = default)
@@ -933,7 +935,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Opens <paramref name="bindingsFilePath"/> into the bindings editor (M16 Phase 4, issue #153)
     /// via <see cref="BindingsProjectionLoader"/> — never a second parser. Bindings are a UI/CLI
-    /// input, never durable task state (UI spec §4, §9; M14 Phase 2's decision of record), so unlike
+    /// input, never durable room state (UI spec §4, §9; M14 Phase 2's decision of record), so unlike
     /// <see cref="OpenAsync"/> there is no read-only counterpart this editor has to stay separate
     /// from: authoring is the only surface a bindings file has in this UI.
     /// </summary>
@@ -973,7 +975,7 @@ public partial class MainWindow : Window
     /// </para>
     /// <para>
     /// Advisory display only, never a save gate (§9): bindings are deliberately not template data
-    /// and never persisted in a task directory, so <see cref="SaveBindingsAsync"/> never consults
+    /// and never persisted in a room directory, so <see cref="SaveBindingsAsync"/> never consults
     /// this. Called explicitly — after New/Open/Save bindings and after adding a row — rather than
     /// wired to any template-editor change notification, since this phase does not touch that
     /// surface's events either.
@@ -983,7 +985,7 @@ public partial class MainWindow : Window
         => ViewModel.BindingsEditor.RefreshTemplateCrossCheck(ViewModel.TemplateEditor.Baseline);
 
     /// <summary>
-    /// Re-projects the currently open task directory in place (M14 Phase 2's change-observation
+    /// Re-projects the currently open room directory in place (M14 Phase 2's change-observation
     /// requirement, issue #119) — a no-op if nothing has been opened yet. Public and directly
     /// awaitable for the same reason <see cref="LoadAsync"/> is (issue #118): a test can drive
     /// exactly one re-projection deterministically, rather than pumping the dispatcher and waiting
@@ -992,27 +994,27 @@ public partial class MainWindow : Window
     /// </summary>
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
-        if (_session.CurrentTaskDirectoryPath is not { } currentTaskDirectoryPath)
+        if (_session.CurrentRoomDirectoryPath is not { } currentRoomDirectoryPath)
         {
             return;
         }
 
-        await LoadAsync(currentTaskDirectoryPath, cancellationToken);
+        await LoadAsync(currentRoomDirectoryPath, cancellationToken);
 
         // M24 Phase 1 (issue #262): the chat step is paused indefinitely between turns, never
         // Terminal, so ShouldLiveRefresh (and therefore this tick) keeps running the whole time a
         // session is open — exactly the completion signal ChatViewModel.LoadFromMetadata relies on
         // instead of a second polling loop or a push from POST /api/sessions/send.
-        if (ViewModel.IsChatVisible)
+        if (ViewModel.IsChatVisible && _session.IsClientMode)
         {
-            var sessionMetadata = await _session.LoadSessionMetadataAsync(currentTaskDirectoryPath, cancellationToken).ConfigureAwait(true);
+            var sessionMetadata = await _session.LoadSessionMetadataAsync(currentRoomDirectoryPath, cancellationToken).ConfigureAwait(true);
             if (sessionMetadata != null)
             {
-                ViewModel.Chat.LoadFromMetadata(sessionMetadata, currentTaskDirectoryPath);
+                ViewModel.Chat.LoadFromMetadata(sessionMetadata, currentRoomDirectoryPath);
             }
         }
 
-        // While the poller is observing an open task, a visible Home stays live too — the cards
+        // While the poller is observing an open room, a visible Home stays live too — the cards
         // and inbox ride the same tick rather than owning a second timer (HomeViewModel's
         // scan-scope decision of record).
         if (ViewModel.IsHomeVisible)
@@ -1025,43 +1027,43 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// The seam this phase exists to prove (issue #118), reaching the screen: loads
-    /// <paramref name="taskDirectoryPath"/> through <see cref="TaskProjectionLoader"/> and renders
+    /// <paramref name="roomDirectoryPath"/> through <see cref="RoomProjectionLoader"/> and renders
     /// its per-step statuses as plain <see cref="TextBlock"/> rows — deliberately minimal, per
     /// Phase 1's exclusion of "any styling worth defending". Public and directly awaitable (rather
     /// than fired from the constructor or a <c>Loaded</c> event) so a test can drive it
     /// deterministically without pumping the dispatcher on a timer. Extended in Phase 2 (issue #119)
-    /// to also render the fuller <see cref="TaskProjection.History"/> surface, but
+    /// to also render the fuller <see cref="RoomProjection.History"/> surface, but
     /// <see cref="StatusText"/>/<see cref="StepsPanel"/>'s own rendering is untouched from Phase 1.
     /// </summary>
-    public async Task LoadAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
+    public async Task LoadAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
     {
-        var outcome = await _session.LoadAsync(taskDirectoryPath, cancellationToken);
+        var outcome = await _session.LoadAsync(roomDirectoryPath, cancellationToken);
 
         if (outcome.Projection is not { } projection)
         {
             // A real GUI has no stderr/exit-code convention to fail into (Aer.Cli's Program.cs
-            // boundary) — an invalid task directory or a malformed snapshot/event log renders as an
+            // boundary) — an invalid room directory or a malformed snapshot/event log renders as an
             // in-window message instead. The session has already cleared the mutation surfaces.
             StatusText.Text = outcome.ErrorMessage;
             ClearProjectionPanels();
-            ViewModel.IsTaskFinished = false;
+            ViewModel.IsRoomFinished = false;
             return;
         }
 
-        RenderProjection(projection, taskDirectoryPath);
+        RenderProjection(projection, roomDirectoryPath);
     }
 
     private string? _lastRenderedProjectionFingerprint;
 
     /// <summary>
-    /// Renders a loaded <see cref="TaskProjection"/> across all view panels without re-querying the session.
+    /// Renders a loaded <see cref="RoomProjection"/> across all view panels without re-querying the session.
     /// </summary>
-    public void RenderProjection(TaskProjection projection, string taskDirectoryPath)
+    public void RenderProjection(RoomProjection projection, string roomDirectoryPath)
     {
         var stepsFingerprint = string.Join(",", projection.State.Steps.Select(s => $"{s.StepId.Value}:{s.Status}:{s.LatestExecutionId?.Value}"));
         var attemptsCount = projection.History.AttemptsByStepId.Sum(kv => kv.Value.Count);
         var convLength = _conversationOutputDirectory != null && File.Exists(System.IO.Path.Combine(_conversationOutputDirectory, "transcript.jsonl")) ? new FileInfo(System.IO.Path.Combine(_conversationOutputDirectory, "transcript.jsonl")).Length : 0;
-        var fingerprint = $"{taskDirectoryPath}|{projection.State.Status}|{stepsFingerprint}|{attemptsCount}|{projection.History.Decisions.Count}|{projection.Lineage.Executions.Count}|{convLength}"; // vocabulary-ok: state fingerprint key
+        var fingerprint = $"{roomDirectoryPath}|{projection.State.Status}|{stepsFingerprint}|{attemptsCount}|{projection.History.Decisions.Count}|{projection.Lineage.Executions.Count}|{convLength}"; // vocabulary-ok: state fingerprint key
 
         if (_lastRenderedProjectionFingerprint == fingerprint)
         {
@@ -1069,16 +1071,16 @@ public partial class MainWindow : Window
         }
         _lastRenderedProjectionFingerprint = fingerprint;
 
-        TaskDirectoryPathBox.Text = taskDirectoryPath;
+        RoomDirectoryPathBox.Text = roomDirectoryPath;
 
-        var workflowPathFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "workflow-path");
+        var workflowPathFile = System.IO.Path.Combine(roomDirectoryPath, ".aer", "workflow-path");
         if (File.Exists(workflowPathFile))
         {
             try { WorkflowTemplatePathBox.Text = File.ReadAllText(workflowPathFile).Trim(); } catch { }
         }
         else
         {
-            var fallbackWorkflowJson = System.IO.Path.Combine(taskDirectoryPath, "workflow.json");
+            var fallbackWorkflowJson = System.IO.Path.Combine(roomDirectoryPath, "workflow.json");
             if (File.Exists(fallbackWorkflowJson))
             {
                 WorkflowTemplatePathBox.Text = fallbackWorkflowJson;
@@ -1089,13 +1091,13 @@ public partial class MainWindow : Window
             }
         }
 
-        var bindingsPathFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "bindings-path"); // vocabulary-ok: technical file path
+        var bindingsPathFile = System.IO.Path.Combine(roomDirectoryPath, ".aer", "bindings-path"); // vocabulary-ok: technical file path
         if (File.Exists(bindingsPathFile))
         {
             try { BindingsFilePathBox.Text = File.ReadAllText(bindingsPathFile).Trim(); } catch { }
         }
 
-        ViewModel.IsTaskFinished = projection.State.Status == WorkflowStatus.Terminal;
+        ViewModel.IsRoomFinished = projection.State.Status == WorkflowStatus.Terminal;
         StatusText.Text = $"Workflow status: {projection.State.Status}"; // vocabulary-ok: technical status display
 
         StepsPanel.Children.Clear();
@@ -1110,32 +1112,32 @@ public partial class MainWindow : Window
         RenderExecutionHistory(projection);
         RenderDecisions(projection);
         RenderSupplementaryExecutions(projection);
-        RenderArtifactLineage(projection, taskDirectoryPath);
-        RenderConversationExecutions(projection, taskDirectoryPath);
+        RenderArtifactLineage(projection, roomDirectoryPath);
+        RenderConversationExecutions(projection, roomDirectoryPath);
         RenderConversation();
 
-        var workerAdapters = GetWorkerAdapters(taskDirectoryPath, BindingsFilePathBox.Text);
+        var workerAdapters = GetWorkerAdapters(roomDirectoryPath, BindingsFilePathBox.Text);
 
         // M19 Phase 3 (#188): the per-step drill-in — built after the session has rebuilt
         // PausedSteps, so each paused step's inline decision card is the same live VM instance.
-        ViewModel.RebuildTaskSteps(
-            projection, taskDirectoryPath,
+        ViewModel.RebuildRoomSteps(
+            projection, roomDirectoryPath,
             previewFileAsync: filePath => ShowArtifactPreviewAsync(filePath),
             showConversation: ShowConversation,
             workerAdapters: workerAdapters);
     }
 
-    private static Dictionary<string, string> GetWorkerAdapters(string taskDirectoryPath, string? bindingsFilePath)
+    private static Dictionary<string, string> GetWorkerAdapters(string roomDirectoryPath, string? bindingsFilePath)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var targetBindingsFile = bindingsFilePath;
         if (string.IsNullOrWhiteSpace(targetBindingsFile) || !File.Exists(targetBindingsFile))
         {
-            targetBindingsFile = System.IO.Path.Combine(taskDirectoryPath, "bindings.json"); // vocabulary-ok: technical file path
+            targetBindingsFile = System.IO.Path.Combine(roomDirectoryPath, "bindings.json"); // vocabulary-ok: technical file path
         }
         if (!File.Exists(targetBindingsFile))
         {
-            var metaFile = System.IO.Path.Combine(taskDirectoryPath, ".aer", "bindings-path"); // vocabulary-ok: technical file path
+            var metaFile = System.IO.Path.Combine(roomDirectoryPath, ".aer", "bindings-path"); // vocabulary-ok: technical file path
             if (File.Exists(metaFile))
             {
                 try { targetBindingsFile = File.ReadAllText(metaFile).Trim(); } catch { }
@@ -1163,7 +1165,7 @@ public partial class MainWindow : Window
         return result;
     }
 
-    /// <summary>Clears every read-only projection panel — the error-path counterpart of a successful render, shared by task and template loads.</summary>
+    /// <summary>Clears every read-only projection panel — the error-path counterpart of a successful render, shared by room and template loads.</summary>
     private void ClearProjectionPanels()
     {
         _lastRenderedProjectionFingerprint = null;
@@ -1177,22 +1179,22 @@ public partial class MainWindow : Window
         ClearConversation();
         ClearArtifactPreview();
         DiffPanel.Children.Clear();
-        ViewModel.ClearTaskSteps();
+        ViewModel.ClearRoomSteps();
     }
 
     /// <summary>
     /// Renders a raw, not-yet-instantiated <see cref="WorkflowDefinition"/> template's DAG
     /// (M14 Phase 3, issue #120; UI spec §5, §10) — the counterpart to <see cref="LoadAsync"/> for
-    /// paths that name a file rather than a task directory. There is no <see cref="FlowState"/> to
-    /// overlay (a template is not bound to any task, so it has never executed) and no execution
-    /// history/decisions/supplementary-execution surface either — those are all per-task facts;
+    /// paths that name a file rather than a room directory. There is no <see cref="FlowState"/> to
+    /// overlay (a template is not bound to any room, so it has never executed) and no execution
+    /// history/decisions/supplementary-execution surface either — those are all per-room facts;
     /// only the graph itself is meaningful for a template.
     /// </summary>
     private async Task LoadTemplateAsync(string templateFilePath, CancellationToken cancellationToken)
     {
         var outcome = await _session.LoadTemplateAsync(templateFilePath, cancellationToken);
 
-        ViewModel.IsTaskFinished = false;
+        ViewModel.IsRoomFinished = false;
 
         if (outcome.Definition is not { } definition)
         {
@@ -1203,10 +1205,10 @@ public partial class MainWindow : Window
 
         StatusText.Text =
             $"Template: {definition.WorkflowTemplateId} v{definition.WorkflowTemplateVersion} " +
-            $"({definition.Steps.Count} step(s)) — not a task, no execution state.";
+            $"({definition.Steps.Count} step(s)) — not a room, no execution state.";
         ClearProjectionPanels();
         RenderDag(definition.Steps, statusByStepId: null);
-        ViewModel.TaskHeadlineText = "A workflow file — not a running task.";
+        ViewModel.RoomHeadlineText = "A workflow file — not a running room.";
     }
 
     /// <summary>The one status system's token keys (M19 Phase 5, #190) — line color and area tint per <see cref="StepStatus"/>, resolved from the active theme at render time so the DAG follows light/dark like every other surface.</summary>
@@ -1247,21 +1249,21 @@ public partial class MainWindow : Window
     /// by lines (one per <see cref="DagEdge"/>): solid for an ordinary <c>DependsOn</c> dependency,
     /// dashed for a declared <c>PausePoint.SupersedeTargets</c> entry (UI spec §10; issue #120).
     /// <paramref name="statusByStepId"/> is <c>null</c> for a raw template — nothing to overlay — or
-    /// populated from the bound task's <see cref="FlowState"/> for a real task directory; either way
+    /// populated from the bound room's <see cref="FlowState"/> for a real room directory; either way
     /// every node still renders, just without a status-derived background in the template case.
     /// </summary>
     private void RenderDag(IReadOnlyList<WorkflowStepDefinition> steps, IReadOnlyDictionary<StepId, StepStatus>? statusByStepId)
         => RenderDag(
             DagLayoutEngine.Layout(steps), DagCanvas, statusByStepId,
-            // M19 Phase 3 (#188): a node click opens that step's drill-in — task canvas only; the
-            // template editor's preview has no task state to drill into.
+            // M19 Phase 3 (#188): a node click opens that step's drill-in — room canvas only; the
+            // template editor's preview has no room state to drill into.
             onNodeSelect: stepId => ViewModel.SelectStepById(stepId.Value));
 
     /// <summary>
     /// Re-layouts and renders <see cref="TemplateEditorViewModel.PreviewLayout"/> into
     /// <see cref="TemplateEditorDagCanvas"/> (M16 Phase 2, issue #151) — a dedicated canvas, not the
     /// read-only <see cref="DagCanvas"/>, so the editor's live preview can never collide with an
-    /// independently-opened task or template's read-only rendering (Phase 1's separate-surfaces
+    /// independently-opened room or template's read-only rendering (Phase 1's separate-surfaces
     /// decision, extended to the graph view). <see langword="null"/> (an invalid or empty in-progress
     /// graph) clears the canvas rather than rendering a stale layout.
     /// </summary>
@@ -1321,7 +1323,7 @@ public partial class MainWindow : Window
         foreach (var node in layout.Nodes)
         {
             var status = statusByStepId?.GetValueOrDefault(node.StepId);
-            // A bound task's node carries its status as border + tint (the one status system);
+            // A bound room's node carries its status as border + tint (the one status system);
             // a raw template's node is a plain surface — nothing has executed, nothing to say.
             var (borderBrush, background) = status is { } knownStatus && StatusTokenKeys.TryGetValue(knownStatus, out var keys)
                 ? (Token(keys.Border), Token(keys.Background))
@@ -1409,7 +1411,7 @@ public partial class MainWindow : Window
     /// <c>SupersedeTargets</c> — the read-model surface <see cref="Aer.Flow.Domain.FlowState"/>
     /// alone does not carry (issue #119).
     /// </summary>
-    private void RenderExecutionHistory(TaskProjection projection)
+    private void RenderExecutionHistory(RoomProjection projection)
     {
         HistoryPanel.Children.Clear();
         var stepDefinitionByStepId = projection.Snapshot.Steps.ToDictionary(step => step.StepId);
@@ -1477,7 +1479,7 @@ public partial class MainWindow : Window
     /// The Ctrl+C equivalent (§9's host-initiated stop; M15 Phase 4, issue #140): cancels whichever
     /// pump this window's own Run/Decide action currently has in flight — a no-op when nothing is.
     /// Fire-and-forget by design, mirroring <c>Aer.Cli.Program.cs</c>'s <c>Console.CancelKeyPress</c>
-    /// handler: signalling <see cref="TaskSession.RequestHostStop"/> is only the signal.
+    /// handler: signalling <see cref="RoomClient.RequestHostStop"/> is only the signal.
     /// <see cref="RunAsync"/>/<see cref="DecideAsync"/>'s own awaited pump is what actually drives
     /// §9's intent-first record for every execution still in flight, then the durable
     /// <c>ExecutionCancelled</c> §7's second reflection phase needs, and clears
@@ -1589,7 +1591,7 @@ public partial class MainWindow : Window
 
 
 
-    private void RenderDecisions(TaskProjection projection)
+    private void RenderDecisions(RoomProjection projection)
     {
         DecisionsPanel.Children.Clear();
         foreach (var decision in projection.History.Decisions)
@@ -1608,7 +1610,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void RenderSupplementaryExecutions(TaskProjection projection)
+    private void RenderSupplementaryExecutions(RoomProjection projection)
     {
         SupplementaryPanel.Children.Clear();
         foreach (var execution in projection.History.StepLessExecutions)
@@ -1625,18 +1627,18 @@ public partial class MainWindow : Window
     /// Renders <see cref="ArtifactLineage"/> (M14 Phase 4, issue #121): one block per execution,
     /// naming its declared inputs' resolved producers, then a row of buttons — one per file actually
     /// present in its output directory — each wired to <see cref="ShowArtifactPreviewAsync"/>.
-    /// <paramref name="taskDirectoryPath"/> is <see cref="LoadAsync"/>'s own parameter, not
-    /// <see cref="TaskSession.CurrentTaskDirectoryPath"/>: <c>LoadAsync</c> is a supported, directly-callable
+    /// <paramref name="roomDirectoryPath"/> is <see cref="LoadAsync"/>'s own parameter, not
+    /// <see cref="RoomClient.CurrentRoomDirectoryPath"/>: <c>LoadAsync</c> is a supported, directly-callable
     /// entry point in its own right (issue #118) that a caller may invoke without ever going through
     /// <see cref="OpenAsync"/> (which is the only place that field is set) — the rendered buttons must
     /// resolve against the directory this exact call just loaded, not a field that might still be
     /// null or, worse, stale from a previously opened task.
     /// </summary>
-    private void RenderArtifactLineage(TaskProjection projection, string taskDirectoryPath)
+    private void RenderArtifactLineage(RoomProjection projection, string roomDirectoryPath)
     {
         LineagePanel.Children.Clear();
 
-        var artifactsRootPath = System.IO.Path.Combine(taskDirectoryPath, ArtifactsDirectoryName);
+        var artifactsRootPath = System.IO.Path.Combine(roomDirectoryPath, ArtifactsDirectoryName);
 
         foreach (var execution in projection.Lineage.Executions)
         {
@@ -1732,11 +1734,11 @@ public partial class MainWindow : Window
     /// superseded step lists one row per attempt that recorded a transcript, each opening its own
     /// conversation.
     /// </summary>
-    private void RenderConversationExecutions(TaskProjection projection, string taskDirectoryPath)
+    private void RenderConversationExecutions(RoomProjection projection, string roomDirectoryPath)
     {
         ConversationExecutionsPanel.Children.Clear();
 
-        var artifactsRootPath = System.IO.Path.Combine(taskDirectoryPath, ArtifactsDirectoryName);
+        var artifactsRootPath = System.IO.Path.Combine(roomDirectoryPath, ArtifactsDirectoryName);
 
         foreach (var execution in projection.Lineage.Executions)
         {
@@ -1795,7 +1797,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // A selection can legitimately point at nothing durable by the next refresh (the task
+        // A selection can legitimately point at nothing durable by the next refresh (the room
         // directory was deleted or recreated) — clear rather than render a guess (§12).
         if (TranscriptProjectionLoader.Load(_conversationOutputDirectory) is not { } transcript)
         {
@@ -1861,8 +1863,8 @@ public partial class MainWindow : Window
     /// <summary>
     /// The snapshot-vs-template diff surface (UI spec §5; M14 Phase 4, issue #121): loads
     /// <paramref name="templateFilePath"/> via <see cref="TemplateProjectionLoader"/> and compares it
-    /// against the currently open task's bound snapshot via <see cref="SnapshotTemplateDiffer"/>.
-    /// Requires a task directory to already be open — <see cref="TaskSession.LastSnapshot"/> is only ever set by
+    /// against the currently open room's bound snapshot via <see cref="SnapshotTemplateDiffer"/>.
+    /// Requires a room directory to already be open — <see cref="RoomClient.LastSnapshot"/> is only ever set by
     /// <see cref="LoadAsync"/>'s success path, never by opening a raw template on its own, since a
     /// template with nothing bound to it has nothing to diff against.
     /// </summary>
@@ -1872,7 +1874,7 @@ public partial class MainWindow : Window
 
         if (_session.LastSnapshot is not { } snapshot)
         {
-            DiffPanel.Children.Add(new TextBlock { Text = "Open a task directory before comparing it to a template." });
+            DiffPanel.Children.Add(new TextBlock { Text = "Open a room directory before comparing it to a template." });
             return;
         }
 
@@ -1895,7 +1897,7 @@ public partial class MainWindow : Window
         {
             DiffPanel.Children.Add(new TextBlock
             {
-                Text = "This file is a different template than the one the task is bound to — a " +
+                Text = "This file is a different template than the one the room is bound to — a " +
                        "mismatch, not a divergence; no diff is shown.",
             });
             return;
@@ -1960,7 +1962,7 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Rebuilds Home's task cards and decision inbox from Local UI Configuration + durable task contents (M19 Phase 2, #187) — the successor of the M14 recents panel, now HomeViewModel's own read model.</summary>
+    /// <summary>Rebuilds Home's room cards and decision inbox from Local UI Configuration + durable room contents (M19 Phase 2, #187) — the successor of the M14 recents panel, now HomeViewModel's own read model.</summary>
     private Task RefreshHomeAsync(CancellationToken cancellationToken)
         => ViewModel.Home.RefreshAsync(_session, path => OpenAsync(path), cancellationToken);
 
@@ -1972,12 +1974,12 @@ public partial class MainWindow : Window
     /// <para>
     /// These must refresh together, and the first cut of #336 is why this exists as one call rather
     /// than two adjacent ones. The switcher was populated once at startup and kept live by projection
-    /// pushes thereafter — but a push only ever *updates an existing row*, so a task created after
+    /// pushes thereafter — but a push only ever *updates an existing row*, so a room created after
     /// launch never joined the list at all. Found by running the app, not by a test: a freshly
     /// created session vanished from every surface except the folder picker.
     /// </para>
     /// <para>
-    /// Deliberately not called from the live-refresh poller tick — that fires repeatedly while a task
+    /// Deliberately not called from the live-refresh poller tick — that fires repeatedly while a room
     /// runs, and a full fleet re-fetch per tick would be pure waste. Status changes are exactly what
     /// the push fan-out already carries; this is only for records appearing or disappearing.
     /// </para>
@@ -1985,13 +1987,13 @@ public partial class MainWindow : Window
     internal async Task RefreshRecordListsAsync(CancellationToken cancellationToken = default)
     {
         await RefreshHomeAsync(cancellationToken);
-        await ViewModel.Tasks.RefreshAsync(_session, cancellationToken);
+        await ViewModel.Rooms.RefreshAsync(_session, cancellationToken);
     }
 
     /// <summary>
     /// Polling, not a <see cref="System.IO.FileSystemWatcher"/> (issue #119's named open question):
     /// simplest thing that works identically across the win/linux/mac CI matrix without depending on
-    /// a given filesystem's watch semantics inside a container. Runs only while a task is open and
+    /// a given filesystem's watch semantics inside a container. Runs only while a room is open and
     /// not yet <see cref="WorkflowStatus.Terminal"/> — once nothing further can change (spec §12),
     /// there is nothing left to observe.
     /// </summary>

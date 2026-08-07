@@ -3,8 +3,8 @@ using Aer.Flow.Domain;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// A task directory's projected state, reconstructed purely from durable data (UI spec §3, §11):
-/// the bound <see cref="WorkflowDefinitionSnapshot"/> a task is permanently attached to, the
+/// A room directory's projected state, reconstructed purely from durable data (UI spec §3, §11):
+/// the bound <see cref="WorkflowDefinitionSnapshot"/> a room is permanently attached to, the
 /// <see cref="FlowState"/> that snapshot and its Flow Event Store project to, and the fuller
 /// <see cref="ExecutionHistory"/> that state alone doesn't carry (M14 Phase 2, issue #119). The
 /// Snapshot/State pairing is deliberately the same one <c>Aer.Cli.CommandResult</c> uses on the
@@ -19,5 +19,5 @@ namespace Aer.Ui.Core;
 /// <see cref="History"/>, following the same "derived from the same events, owned by <c>Aer.Ui</c>"
 /// shape <see cref="History"/> established (Phase 2).
 /// </param>
-public sealed record TaskProjection(
+public sealed record RoomProjection(
     WorkflowDefinitionSnapshot Snapshot, FlowState State, ExecutionHistory History, ArtifactLineage Lineage);

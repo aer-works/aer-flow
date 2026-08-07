@@ -1,7 +1,7 @@
 namespace Aer.Cli;
 
 /// <summary>
-/// Parses <c>aer cancel</c>'s arguments: <c>aer cancel &lt;task-dir&gt; --execution &lt;execution-id&gt;
+/// Parses <c>aer cancel</c>'s arguments: <c>aer cancel &lt;room-dir&gt; --execution &lt;execution-id&gt;
 /// --bindings &lt;bindings-file&gt; [--workflow-id &lt;id&gt;]</c>. Never throws a bare
 /// <see cref="InvalidOperationException"/> for a malformed invocation — every failure here is a
 /// <see cref="CliArgumentException"/> (CLAUDE.md's error-handling rules), mirroring
@@ -10,11 +10,11 @@ namespace Aer.Cli;
 public static class CancelOptionsParser
 {
     private const string Usage =
-        "Usage: aer cancel <task-dir> --execution <execution-id> --bindings <bindings-file> [--workflow-id <id>]";
+        "Usage: aer cancel <room-dir> --execution <execution-id> --bindings <bindings-file> [--workflow-id <id>]";
 
     public static CancelOptions Parse(IReadOnlyList<string> args)
     {
-        string? taskDirectoryPath = null;
+        string? roomDirectoryPath = null;
         string? executionId = null;
         string? bindingsFilePath = null;
         string? workflowId = null;
@@ -40,20 +40,20 @@ public static class CancelOptionsParser
                         throw new CliArgumentException($"Unknown option '{arg}'. {Usage}");
                     }
 
-                    if (taskDirectoryPath is not null)
+                    if (roomDirectoryPath is not null)
                     {
                         throw new CliArgumentException($"Unexpected extra argument '{arg}'. {Usage}");
                     }
 
-                    taskDirectoryPath = arg;
+                    roomDirectoryPath = arg;
                     i++;
                     break;
             }
         }
 
-        if (taskDirectoryPath is null)
+        if (roomDirectoryPath is null)
         {
-            throw new CliArgumentException($"Missing required <task-dir> argument. {Usage}");
+            throw new CliArgumentException($"Missing required <room-dir> argument. {Usage}");
         }
 
         if (executionId is null)
@@ -67,7 +67,7 @@ public static class CancelOptionsParser
         }
 
         return new CancelOptions(
-            TaskDirectoryPath.Resolve(taskDirectoryPath), executionId, bindingsFilePath, workflowId);
+            RoomDirectoryPath.Resolve(roomDirectoryPath), executionId, bindingsFilePath, workflowId);
     }
 
     private static string RequireValue(IReadOnlyList<string> args, ref int index, string optionName)

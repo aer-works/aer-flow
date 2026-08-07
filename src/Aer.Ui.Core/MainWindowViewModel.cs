@@ -20,25 +20,25 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>
     /// Which shell section is active (M19 Phase 2, #187) — pure presentation state (like a text
-    /// box's contents, UI spec §4), never a projected fact. Opening a task navigates to
+    /// box's contents, UI spec §4), never a projected fact. Opening a room navigates to
     /// <see cref="ShellSection.Task"/>; everything else is the user's own navigation.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsHomeVisible))]
-    [NotifyPropertyChangedFor(nameof(IsTaskVisible))]
+    [NotifyPropertyChangedFor(nameof(IsRoomVisible))]
     [NotifyPropertyChangedFor(nameof(IsAuthorVisible))]
     [NotifyPropertyChangedFor(nameof(IsRemoteVisible))]
     [NotifyPropertyChangedFor(nameof(IsChatVisible))]
-    [NotifyPropertyChangedFor(nameof(IsTasksVisible))]
+    [NotifyPropertyChangedFor(nameof(IsRoomsVisible))]
     [NotifyPropertyChangedFor(nameof(IsDetailVisible))]
     private ShellSection currentSection = ShellSection.Home;
 
     public bool IsHomeVisible => CurrentSection == ShellSection.Home;
-    public bool IsTaskVisible => CurrentSection == ShellSection.Task;
+    public bool IsRoomVisible => CurrentSection == ShellSection.Task;
     public bool IsAuthorVisible => CurrentSection == ShellSection.Author;
     public bool IsRemoteVisible => CurrentSection == ShellSection.Remote;
     public bool IsChatVisible => CurrentSection == ShellSection.Chat;
-    public bool IsTasksVisible => CurrentSection == ShellSection.Tasks;
+    public bool IsRoomsVisible => CurrentSection == ShellSection.Rooms;
 
     /// <summary>
     /// Whether the shell is showing an opened record, whichever shape it has (#336). The switcher
@@ -48,7 +48,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// record is a session or a workflow. Both enum members survive because the two panes are still
     /// genuinely different views; what went away is the user having to know which one they wanted.
     /// </summary>
-    public bool IsDetailVisible => IsTaskVisible || IsChatVisible;
+    public bool IsDetailVisible => IsRoomVisible || IsChatVisible;
 
     /// <summary>The Enable Remote Access view's state (M21 Phase 3, issue #234) — see <see cref="RemoteViewModel"/>.</summary>
     public RemoteViewModel Remote { get; } = new();
@@ -56,8 +56,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>An open chat/codebase session's state (M24 Phase 1 desktop wiring, issue #262) — see <see cref="ChatViewModel"/>.</summary>
     public ChatViewModel Chat { get; } = new();
 
-    /// <summary>The fleet management view's state (M24 Phase 5, #278) — see <see cref="TasksViewModel"/>.</summary>
-    public TasksViewModel Tasks { get; } = new();
+    /// <summary>The fleet management view's state (M24 Phase 5, #278) — see <see cref="RoomsViewModel"/>.</summary>
+    public RoomsViewModel Rooms { get; } = new();
 
     /// <summary>
     /// The template editor's state (M16 Phase 1, issue #150) — the authoring surface, deliberately
@@ -71,7 +71,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// The worker-bindings editor's state (M16 Phase 4, issue #153) — the second authoring surface,
     /// alongside <see cref="TemplateEditor"/>, riding the same MVVM shape for the same reason: it is
     /// two-way bound. Bindings are a separate concern from template editing (UI spec §4, §9) — never
-    /// persisted in a task directory, never touching a bound snapshot.
+    /// persisted in a room directory, never touching a bound snapshot.
     /// </summary>
     public BindingsEditorViewModel BindingsEditor { get; } = new();
 
@@ -89,7 +89,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// running underneath, reading as a blank/broken panel rather than an honest empty state.
     /// "Is anything running?" is one of #495's three room questions, answered once (#615): the
     /// change-notification wiring lives on <see cref="RunningExecutions"/> itself because the room
-    /// (<c>TaskSession.RebuildRunningExecutions</c>) clears and refills that collection in place on
+    /// (<c>RoomClient.RebuildRunningExecutions</c>) clears and refills that collection in place on
     /// this same long-lived instance — the collection the room fills IS the stated answer, and this
     /// property only maps it to a bool, so no surface re-counts it (MainWindow's code-behind
     /// previously did, a second copy of the same answer).
@@ -103,7 +103,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>
     /// True for the duration of any mutation call this UI process itself is driving — a Run or a
-    /// decision — the window's own pump holding the task's §15 lock for that call's entire duration.
+    /// decision — the window's own pump holding the room's §15 lock for that call's entire duration.
     /// Every <see cref="PausedSteps"/> entry's <see cref="PausedStepViewModel.IsEnabled"/> mirrors
     /// this, so a second mutation can never be started from this same process while one is already in
     /// flight (a competing *external* process's lock hold instead surfaces as a
@@ -117,30 +117,30 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private bool isMutationInFlight;
 
     /// <summary>
-    /// Owner feedback: "does Run make sense on a finished task? or is it a re-run?" — it's a re-run,
+    /// Owner feedback: "does Run make sense on a finished room? or is it a re-run?" — it's a re-run,
     /// but not in place: <c>MutationInterface.StartWorkflowAsync</c>'s pump finds nothing ready and
-    /// nothing in flight for an already-<see cref="Aer.Flow.Domain.WorkflowStatus.Terminal"/> task's
+    /// nothing in flight for an already-<see cref="Aer.Flow.Domain.WorkflowStatus.Terminal"/> room's
     /// own directory and returns the same state unchanged, a safe but silent no-op, so resuming the
     /// same directory was never an option. <c>MainWindow</c>'s Run click handler checks this flag and,
-    /// when true, clones the open task's recorded workflow/bindings files into a fresh sibling
-    /// <c>task-{timestamp}</c> directory (the same naming the "Save &amp; Run" and template flows
-    /// already use) instead of resuming in place — the finished task's own directory and history are
+    /// when true, clones the open room's recorded workflow/bindings files into a fresh sibling
+    /// <c>room-{timestamp}</c> directory (the same naming the "Save &amp; Run" and template flows
+    /// already use) instead of resuming in place — the finished room's own directory and history are
     /// left untouched. Set by <c>MainWindow.RenderProjection</c> from the loaded projection's
     /// <c>State.Status</c>, alongside every other read-only render there.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RunButtonToolTipText))]
-    private bool isTaskFinished;
+    private bool isRoomFinished;
 
     public bool CanRun => !IsMutationInFlight;
 
     public string RunButtonToolTipText => IsMutationInFlight
         ? "Execution is currently in flight."
-        : IsTaskFinished
-            ? "This task has finished — Run starts a fresh task cloned from it."
-            : "Start a fresh task from a workflow file, or resume the task open above.";
+        : IsRoomFinished
+            ? "This room has finished — Run starts a fresh room cloned from it."
+            : "Start a fresh room from a workflow file, or resume the room open above.";
 
-    /// <summary>In-window message surface for a Run's progress ("Running…") or failure — moved here from a directly-set TextBlock when the orchestration moved to <see cref="TaskSession"/> (M19 Phase 2, #187).</summary>
+    /// <summary>In-window message surface for a Run's progress ("Running…") or failure — moved here from a directly-set TextBlock when the orchestration moved to <see cref="RoomClient"/> (M19 Phase 2, #187).</summary>
     [ObservableProperty]
     private string runStatusText = string.Empty;
 
@@ -166,8 +166,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasRoomTurnHostBanner => RoomTurnHostBanner is not null;
 
-    /// <summary>The open task's steps as the drill-in surface (M19 Phase 3, #188) — rebuilt wholesale on every load/refresh by <see cref="RebuildTaskSteps"/>.</summary>
-    public ObservableCollection<StepItemViewModel> TaskSteps { get; } = [];
+    /// <summary>The open room's steps as the drill-in surface (M19 Phase 3, #188) — rebuilt wholesale on every load/refresh by <see cref="RebuildRoomSteps"/>.</summary>
+    public ObservableCollection<StepItemViewModel> RoomSteps { get; } = [];
 
     /// <summary>The step whose drill-in is open. Re-anchored by step id across rebuilds; defaults needs-you-first (paused, else running, else the first step).</summary>
     [ObservableProperty]
@@ -176,13 +176,13 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public bool HasSelectedStep => SelectedStep is not null;
 
-    /// <summary>The task-level plain-language headline (the vocabulary map's primary text) — the precise <c>Workflow status:</c> line lives in the Details disclosure.</summary>
+    /// <summary>The room-level plain-language headline (the vocabulary map's primary text) — the precise <c>Workflow status:</c> line lives in the Details disclosure.</summary>
     [ObservableProperty]
-    private string taskHeadlineText = "No task open.";
+    private string roomHeadlineText = "No room open.";
 
     partial void OnSelectedStepChanged(StepItemViewModel? value)
     {
-        foreach (var step in TaskSteps)
+        foreach (var step in RoomSteps)
         {
             step.IsSelected = ReferenceEquals(step, value);
         }
@@ -194,18 +194,18 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// Routes "Ask <worker> to fix it" (#617) to the Chat section with the input drafted — a
     /// message naming the step and quoting the reason text. When no session is open, the new-chat
-    /// bar is pre-filled too — the failing step's adapter and the failed task's own directory — so
+    /// bar is pre-filled too — the failing step's adapter and the failed room's own directory — so
     /// starting the conversation is one click into the right room with the draft already waiting;
     /// found live, where the draft alone landed invisibly behind "No room open." while the tests
     /// (which read the property, not the screen) stayed green. When a session is already open the
     /// draft lands in that session's input instead, and the adapter selection below is inert
     /// there — <see cref="ChatViewModel.NewChatAdapter"/> is consulted only by the start-new-chat
     /// flow, never by an open session's send path, which keeps speaking to whatever vendor the
-    /// session was started with. The open session is always this task's own: the window's
-    /// navigation resyncs Chat to whichever directory populates <see cref="TaskSteps"/>
+    /// session was started with. The open session is always this room's own: the window's
+    /// navigation resyncs Chat to whichever directory populates <see cref="RoomSteps"/>
     /// (<c>MainWindow.OpenAsync</c>), and the banner test pins that invariant.
     /// </summary>
-    public void AskWorkerToFix(string adapter, string stepId, string reason, string taskDirectoryPath)
+    public void AskWorkerToFix(string adapter, string stepId, string reason, string roomDirectoryPath)
     {
         // The banner always supplies the step's own adapter; no invented fallback vendor here — if
         // that adapter is not available on this host, the picker's first available stands in and
@@ -222,7 +222,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         if (!Chat.IsSessionOpen)
         {
-            Chat.NewChatWorkingDirectory = taskDirectoryPath;
+            Chat.NewChatWorkingDirectory = roomDirectoryPath;
             Chat.RefreshNewChatAdapterSelection();
         }
 
@@ -236,56 +236,56 @@ public sealed partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Rebuilds <see cref="TaskSteps"/> from a fresh projection (M19 Phase 3, #188). The preview
+    /// Rebuilds <see cref="RoomSteps"/> from a fresh projection (M19 Phase 3, #188). The preview
     /// and conversation delegates are the skin's render targets — the same inversion
-    /// <see cref="TaskSession"/> uses, keeping this assembly Avalonia-free.
+    /// <see cref="RoomClient"/> uses, keeping this assembly Avalonia-free.
     /// </summary>
-    public void RebuildTaskSteps(
-        TaskProjection projection,
-        string taskDirectoryPath,
+    public void RebuildRoomSteps(
+        RoomProjection projection,
+        string roomDirectoryPath,
         Func<string, Task> previewFileAsync,
         Action<string, string> showConversation,
         IReadOnlyDictionary<string, string>? workerAdapters = null)
     {
         var previousSelectedStepId = SelectedStep?.StepId;
 
-        TaskSteps.Clear();
-        // reRunAction only for a Terminal task: Run's re-run-as-clone flow (see IsTaskFinished)
+        RoomSteps.Clear();
+        // reRunAction only for a Terminal room: Run's re-run-as-clone flow (see IsRoomFinished)
         // exists only then. While a sibling branch still runs or waits on a decision, the same
         // click resumes the directory in place — for a Failed step with no pending obligation the
-        // pump returns unchanged, a silent no-op — so the banner hides Try again until the task
+        // pump returns unchanged, a silent no-op — so the banner hides Try again until the room
         // finishes (FailedStepBannerViewModel.CanTryAgain). Gated on the projection parameter, not
-        // the IsTaskFinished property, so it cannot depend on the skin's render order.
+        // the IsRoomFinished property, so it cannot depend on the skin's render order.
         var reRunAvailable = projection.State.Status == Aer.Flow.Domain.WorkflowStatus.Terminal;
         foreach (var item in StepItemProjector.Build(
-            projection, taskDirectoryPath, PausedSteps, previewFileAsync, showConversation,
+            projection, roomDirectoryPath, PausedSteps, previewFileAsync, showConversation,
             select: item => SelectedStep = item,
             workerAdapters: workerAdapters,
             reRunAction: reRunAvailable ? () => ReRunRequested?.Invoke() : null,
-            askWorkerToFixAction: (adapter, stepId, reason) => AskWorkerToFix(adapter, stepId, reason, taskDirectoryPath)))
+            askWorkerToFixAction: (adapter, stepId, reason) => AskWorkerToFix(adapter, stepId, reason, roomDirectoryPath)))
         {
-            TaskSteps.Add(item);
+            RoomSteps.Add(item);
         }
 
-        TaskHeadlineText = PlainLanguage.ForWorkflow(projection);
+        RoomHeadlineText = PlainLanguage.ForWorkflow(projection);
         SelectedStep =
-            TaskSteps.FirstOrDefault(step => step.StepId == previousSelectedStepId) ??
-            TaskSteps.FirstOrDefault(step => step.IsPaused) ??
-            TaskSteps.FirstOrDefault(step => step.Status == Aer.Flow.Domain.StepStatus.Running) ??
-            TaskSteps.FirstOrDefault();
+            RoomSteps.FirstOrDefault(step => step.StepId == previousSelectedStepId) ??
+            RoomSteps.FirstOrDefault(step => step.IsPaused) ??
+            RoomSteps.FirstOrDefault(step => step.Status == Aer.Flow.Domain.StepStatus.Running) ??
+            RoomSteps.FirstOrDefault();
     }
 
-    /// <summary>Clears the drill-in surface — the error-path counterpart of <see cref="RebuildTaskSteps"/>.</summary>
-    public void ClearTaskSteps()
+    /// <summary>Clears the drill-in surface — the error-path counterpart of <see cref="RebuildRoomSteps"/>.</summary>
+    public void ClearRoomSteps()
     {
-        TaskSteps.Clear();
+        RoomSteps.Clear();
         SelectedStep = null;
-        TaskHeadlineText = "No task open.";
+        RoomHeadlineText = "No room open.";
     }
 
     /// <summary>Selects a step by id — the DAG canvas's node-click entry point (the canvas stays code-behind until Phase 5 makes it a custom control).</summary>
     public void SelectStepById(string stepId)
-        => SelectedStep = TaskSteps.FirstOrDefault(step => step.StepId == stepId) ?? SelectedStep;
+        => SelectedStep = RoomSteps.FirstOrDefault(step => step.StepId == stepId) ?? SelectedStep;
 
     partial void OnCurrentSectionChanged(ShellSection value) => SectionChanged?.Invoke(value);
 

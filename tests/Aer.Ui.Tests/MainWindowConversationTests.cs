@@ -23,19 +23,19 @@ public class MainWindowConversationTests
     private static readonly StepId Critic = new("critic");
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-conversation-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-conversation-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     private static string TurnLine(int sequence, string role, string vendor, string prompt, string text)
         => $"{{\"Sequence\":{sequence},\"Role\":\"{role}\",\"Vendor\":\"{vendor}\",\"Prompt\":\"{prompt}\",\"Text\":\"{text}\"}}";
 
-    private static async Task<string> CreatePumpedTaskDirectoryAsync(CancellationToken cancellationToken)
+    private static async Task<string> CreatePumpedRoomDirectoryAsync(CancellationToken cancellationToken)
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-conversation-window-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-conversation-window-{Guid.NewGuid():N}");
 
         var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, cancellationToken);
         var snapshot = SnapshotBinder.Bind(definition);
-        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), cancellationToken);
+        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), cancellationToken);
 
         var bindings = new Dictionary<string, WorkerBinding>
         {
@@ -53,7 +53,7 @@ public class MainWindowConversationTests
                 TimeSpan.FromSeconds(30)),
         };
 
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         await using (var writer = new FlowEventLogWriter(logPath))
         {
             var reader = new FlowEventLogReader(logPath);
@@ -61,32 +61,32 @@ public class MainWindowConversationTests
 
             await MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-ui-conversation-window-e2e"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
-                Path.Combine(taskDirectory, "artifacts"),
+                Path.Combine(roomDirectory, "artifacts"),
                 reader,
                 writer,
                 dispatcher,
                 cancellationToken: cancellationToken);
         }
 
-        return taskDirectory;
+        return roomDirectory;
     }
 
     private static async Task<(MainWindow Window, string TranscriptDirectory)> LoadWithTranscriptOnStepAsync(
-        string taskDirectory, StepId stepId, string transcriptContent, CancellationToken cancellationToken)
+        string roomDirectory, StepId stepId, string transcriptContent, CancellationToken cancellationToken)
     {
-        var projection = await TaskProjectionLoader.LoadAsync(taskDirectory, cancellationToken);
+        var projection = await RoomProjectionLoader.LoadAsync(roomDirectory, cancellationToken);
         var executionId = projection.Lineage.Executions.Single(e => e.StepId == stepId).ExecutionId;
-        var outputDirectory = Path.Combine(taskDirectory, "artifacts", $"execution_{executionId}");
+        var outputDirectory = Path.Combine(roomDirectory, "artifacts", $"execution_{executionId}");
         await File.WriteAllTextAsync(
             Path.Combine(outputDirectory, TranscriptProjectionLoader.TranscriptFileName),
             transcriptContent,
             cancellationToken);
 
         var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-        await window.LoadAsync(taskDirectory, cancellationToken);
+        await window.LoadAsync(roomDirectory, cancellationToken);
         return (window, outputDirectory);
     }
 
@@ -96,11 +96,11 @@ public class MainWindowConversationTests
     [AvaloniaFact]
     public async Task Only_executions_whose_output_directory_has_a_transcript_get_a_conversation_row()
     {
-        var taskDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var (window, _) = await LoadWithTranscriptOnStepAsync(
-                taskDirectory, Architect,
+                roomDirectory, Architect,
                 TurnLine(1, "initiator", "claude", "seed", "opening") + "\n",
                 TestContext.Current.CancellationToken);
 
@@ -112,18 +112,18 @@ public class MainWindowConversationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task ShowConversation_renders_turns_in_file_order_with_prompt_collapsed()
     {
-        var taskDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var (window, transcriptDirectory) = await LoadWithTranscriptOnStepAsync(
-                taskDirectory, Architect,
+                roomDirectory, Architect,
                 TurnLine(1, "initiator", "claude", "the-seed-prompt", "opening argument") + "\n" +
                 TurnLine(2, "responder", "agy", "threaded-context", "counter argument") + "\n",
                 TestContext.Current.CancellationToken);
@@ -148,18 +148,18 @@ public class MainWindowConversationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task A_malformed_line_renders_as_an_explicit_marker_between_intact_turns()
     {
-        var taskDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var (window, transcriptDirectory) = await LoadWithTranscriptOnStepAsync(
-                taskDirectory, Architect,
+                roomDirectory, Architect,
                 TurnLine(1, "initiator", "claude", "p", "first") + "\n" +
                 "{\"Sequence\":2,\"Role\":\"respon" + "\n" +
                 TurnLine(3, "initiator", "claude", "p", "third") + "\n",
@@ -176,18 +176,18 @@ public class MainWindowConversationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task Refresh_rerenders_the_selected_conversation_and_picks_up_appended_turns()
     {
-        var taskDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var (window, transcriptDirectory) = await LoadWithTranscriptOnStepAsync(
-                taskDirectory, Architect,
+                roomDirectory, Architect,
                 TurnLine(1, "initiator", "claude", "p", "first") + "\n",
                 TestContext.Current.CancellationToken);
 
@@ -202,24 +202,24 @@ public class MainWindowConversationTests
                 Path.Combine(transcriptDirectory, TranscriptProjectionLoader.TranscriptFileName),
                 TurnLine(2, "responder", "agy", "p", "second") + "\n",
                 TestContext.Current.CancellationToken);
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             Assert.Equal(2, conversationPanel.Children.OfType<Border>().Count());
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task An_execution_without_a_transcript_gets_no_conversation_row_at_all()
     {
-        var taskDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var entriesPanel = window.FindViewControl<StackPanel>("ConversationExecutionsPanel")!;
             Assert.Empty(entriesPanel.Children);
@@ -227,7 +227,7 @@ public class MainWindowConversationTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 }

@@ -6,9 +6,9 @@ using Avalonia.Platform.Storage;
 namespace Aer.Ui.Views;
 
 /// <summary>The Task view (M19 Phase 3, #188): needs-you-first inline decisions, the DAG as the primary surface with per-step drill-in, plain-language primary text, and the full precise record in the Details disclosure. Rendering is driven by the shell (<c>MainWindow</c>), which owns the session.</summary>
-public partial class TaskView : UserControl
+public partial class RoomView : UserControl
 {
-    public TaskView() => InitializeComponent();
+    public RoomView() => InitializeComponent();
 
     /// <summary>
     /// The feedback-file picker (the phase's "picker, not a typed path" requirement) — a real OS

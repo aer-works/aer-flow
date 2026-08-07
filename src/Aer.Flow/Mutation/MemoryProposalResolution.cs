@@ -107,7 +107,7 @@ public static class MemoryProposalResolution
                 .ConfigureAwait(false);
         }
 
-        // No lane and no execution: the subject IS the held-work ref itself (the capture file). Not
+        // No workflow and no execution: the subject IS the held-work ref itself (the capture file). Not
         // wrapped in an ExecutionId, which is Core's join key and joins to nothing here (#855).
         var citation = new HeldWorkCitation(
             @ref.Value, approve ? ApprovedEventType : RejectedEventType);

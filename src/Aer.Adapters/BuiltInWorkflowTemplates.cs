@@ -116,7 +116,7 @@ public static class BuiltInWorkflowTemplates
         string? secondaryAdapter = null,
         string? customPrompt = null,
         string? secondaryCustomPrompt = null,
-        string? taskDirectoryPath = null)
+        string? roomDirectoryPath = null)
     {
         var normalizedPrimary = string.IsNullOrWhiteSpace(primaryAdapter) ? "claude" : primaryAdapter.Trim().ToLowerInvariant();
         var normalizedSecondary = string.IsNullOrWhiteSpace(secondaryAdapter) ? normalizedPrimary : secondaryAdapter.Trim().ToLowerInvariant();
@@ -126,7 +126,7 @@ public static class BuiltInWorkflowTemplates
         {
             var (def, bindings, _) = InteractiveSessionMaterializer.Materialize(
                 sessionId: Guid.NewGuid().ToString("N")[..12],
-                taskDirectoryPath: string.Empty,
+                roomDirectoryPath: string.Empty,
                 adapter: normalizedPrimary,
                 initialMessage: customPrompt);
             return (def, bindings);
@@ -159,7 +159,7 @@ public static class BuiltInWorkflowTemplates
                         model: null),
                 ]);
 
-            var sidecarDirectory = string.IsNullOrWhiteSpace(taskDirectoryPath) ? Path.GetTempPath() : taskDirectoryPath;
+            var sidecarDirectory = string.IsNullOrWhiteSpace(roomDirectoryPath) ? Path.GetTempPath() : roomDirectoryPath;
             Directory.CreateDirectory(sidecarDirectory);
             var sidecarPath = Path.Combine(sidecarDirectory, "dialogue-config.json");
             File.WriteAllText(sidecarPath, JsonSerializer.Serialize(dialogueConfig, new JsonSerializerOptions { WriteIndented = true }));
@@ -299,37 +299,42 @@ public static class BuiltInWorkflowTemplates
 
     /// <summary>
     /// Materializes and persists the template definition (<c>workflow.json</c>) and bindings (<c>bindings.json</c>)
-    /// into <paramref name="taskDirectoryPath"/>, along with <c>.aer/workflow-path</c> and <c>.aer/bindings-path</c> metadata.
+    /// into <paramref name="roomDirectoryPath"/>, along with <c>.aer/workflow-path</c> and <c>.aer/bindings-path</c> metadata.
     /// </summary>
     public static async Task MaterializeToDirectoryAsync(
         string templateId,
         string primaryAdapter,
         string? secondaryAdapter,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         string? customPrompt = null,
         string? secondaryCustomPrompt = null,
         CancellationToken cancellationToken = default)
     {
-        var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
+        var workflowFilePath = Path.Combine(roomDirectoryPath, "workflow.json");
         if (File.Exists(workflowFilePath))
         {
-            throw new TaskDirectoryAlreadyExistsException(
-                TaskLifecycle.IsArchived(taskDirectoryPath)
-                    ? $"A task already exists at '{taskDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
-                    : $"A task already exists at '{taskDirectoryPath}'. Choose a different task/session name.");
+            throw new RoomDirectoryAlreadyExistsException(
+                RoomLifecycle.IsArchived(roomDirectoryPath)
+                    ? $"A room already exists at '{roomDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
+                    : $"A room already exists at '{roomDirectoryPath}'. Choose a different room/session name.");
         }
 
-        Directory.CreateDirectory(taskDirectoryPath);
-        var (definition, bindings) = Materialize(templateId, primaryAdapter, secondaryAdapter, customPrompt, secondaryCustomPrompt, taskDirectoryPath);
+        Directory.CreateDirectory(roomDirectoryPath);
+        var (definition, bindings) = Materialize(templateId, primaryAdapter, secondaryAdapter, customPrompt, secondaryCustomPrompt, roomDirectoryPath);
 
-        var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
+        var bindingsFilePath = Path.Combine(roomDirectoryPath, "bindings.json");
 
         await WorkflowDefinitionWriter.SaveToFileAsync(definition, workflowFilePath, cancellationToken).ConfigureAwait(false);
         await WorkerBindingConfigWriter.SaveToFileAsync(bindings, bindingsFilePath, cancellationToken).ConfigureAwait(false);
 
-        var aerDir = Path.Combine(taskDirectoryPath, ".aer");
+        var aerDir = Path.Combine(roomDirectoryPath, ".aer");
         Directory.CreateDirectory(aerDir);
         await File.WriteAllTextAsync(Path.Combine(aerDir, "workflow-path"), workflowFilePath, cancellationToken).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(aerDir, "bindings-path"), bindingsFilePath, cancellationToken).ConfigureAwait(false);
+
+        // Records this room's kind on disk so it is self-describing rather than inferred from a
+        // missing session marker (0013). Defensive: an absent room.json already reads as a workflow
+        // room, but writing it keeps ReadRoomKind authoritative for every room the app creates.
+        await InteractiveSessionMaterializer.WriteWorkflowRoomMarkerAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(false);
     }
 }

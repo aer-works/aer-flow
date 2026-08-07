@@ -13,25 +13,25 @@ namespace Aer.Ui.Tests;
 /// directory — a real bound snapshot and a real Flow Event Store, produced through the exact same
 /// <c>MutationInterface.StartWorkflowAsync</c> write path <c>Aer.Cli</c>'s <c>aer run</c> uses
 /// (<c>Aer.Flow.Tests.EndToEnd.WorkflowEndToEndTests</c>' convention), then read back exclusively
-/// through <see cref="TaskProjectionLoader"/> — never by constructing a <see cref="FlowState"/> by
+/// through <see cref="RoomProjectionLoader"/> — never by constructing a <see cref="FlowState"/> by
 /// hand.
 /// </summary>
-public class TaskProjectionLoaderTests
+public class RoomProjectionLoaderTests
 {
     private static readonly StepId Architect = new("architect");
     private static readonly StepId Critic = new("critic");
     private static readonly StepId Publisher = new("publisher");
 
     [Fact]
-    public async Task Loads_a_bound_snapshot_and_projects_state_from_a_real_task_directory()
+    public async Task Loads_a_bound_snapshot_and_projects_state_from_a_real_room_directory()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-task-{Guid.NewGuid():N}");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
-            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
@@ -49,7 +49,7 @@ public class TaskProjectionLoaderTests
                     TimeSpan.FromSeconds(30)),
             };
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             await using (var writer = new FlowEventLogWriter(logPath))
             {
                 var reader = new FlowEventLogReader(logPath);
@@ -57,17 +57,17 @@ public class TaskProjectionLoaderTests
 
                 await MutationInterface.StartWorkflowAsync(
                     new WorkflowId("wf-ui-e2e"),
-                    taskDirectory,
+                    roomDirectory,
                     snapshot,
                     bindings,
-                    Path.Combine(taskDirectory, "artifacts"),
+                    Path.Combine(roomDirectory, "artifacts"),
                     reader,
                     writer,
                     dispatcher,
                     cancellationToken: TestContext.Current.CancellationToken);
             }
 
-            var projection = await TaskProjectionLoader.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            var projection = await RoomProjectionLoader.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             // Not Assert.Equal(snapshot, projection.Snapshot): WorkflowDefinitionSnapshot's Steps
             // is a List<T>, which has no value-equality override, so a record freshly deserialized
@@ -96,7 +96,7 @@ public class TaskProjectionLoaderTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -104,12 +104,12 @@ public class TaskProjectionLoaderTests
     public async Task LoadFleetStatusAsync_ReportsStatusAndArchivedStateWithoutRequiringLineageProjection()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-fleet-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-fleet-{Guid.NewGuid():N}");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
-            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
@@ -127,19 +127,19 @@ public class TaskProjectionLoaderTests
                     TimeSpan.FromSeconds(30)),
             };
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             await using (var writer = new FlowEventLogWriter(logPath))
             {
                 var reader = new FlowEventLogReader(logPath);
                 var dispatcher = new CoreDispatcher(writer);
                 await MutationInterface.StartWorkflowAsync(
-                    new WorkflowId("wf-ui-fleet"), taskDirectory, snapshot, bindings,
-                    Path.Combine(taskDirectory, "artifacts"), reader, writer, dispatcher,
+                    new WorkflowId("wf-ui-fleet"), roomDirectory, snapshot, bindings,
+                    Path.Combine(roomDirectory, "artifacts"), reader, writer, dispatcher,
                     cancellationToken: TestContext.Current.CancellationToken);
             }
 
-            var fleetItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
-            Assert.Equal(Path.GetFileName(taskDirectory), fleetItem.FriendlyName);
+            var fleetItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
+            Assert.Equal(Path.GetFileName(roomDirectory), fleetItem.FriendlyName);
             Assert.Equal(snapshot.WorkflowTemplateId.Value, fleetItem.TypeLabel);
             Assert.Equal(WorkflowStatus.Terminal.ToString(), fleetItem.StatusText);
             Assert.Equal(0, fleetItem.PausedStepCount);
@@ -151,66 +151,95 @@ public class TaskProjectionLoaderTests
             Assert.NotEqual(default, fleetItem.Updated);
             Assert.True(fleetItem.Updated >= fleetItem.Created);
             Assert.Equal(
-                new DateTimeOffset(File.GetLastWriteTimeUtc(Path.Combine(taskDirectory, "snapshot.json"))),
+                new DateTimeOffset(File.GetLastWriteTimeUtc(Path.Combine(roomDirectory, "snapshot.json"))),
                 fleetItem.Created);
             Assert.Equal(
-                new DateTimeOffset(File.GetLastWriteTimeUtc(Path.Combine(taskDirectory, "flow.jsonl"))),
+                new DateTimeOffset(File.GetLastWriteTimeUtc(Path.Combine(roomDirectory, "flow.jsonl"))),
                 fleetItem.Updated);
 
-            await TaskLifecycle.ArchiveAsync(taskDirectory, TestContext.Current.CancellationToken);
-            var archivedItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await RoomLifecycle.ArchiveAsync(roomDirectory, TestContext.Current.CancellationToken);
+            var archivedItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
             Assert.True(archivedItem.IsArchived);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task LoadFleetStatusAsync_ForASessionNeverRun_ReportsNotYetRunInsteadOfThrowing()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-fleet-session-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-fleet-session-{Guid.NewGuid():N}");
         try
         {
             await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
-                "sess-fleet", taskDirectory, "claude", cancellationToken: TestContext.Current.CancellationToken);
+                "sess-fleet", roomDirectory, "claude", cancellationToken: TestContext.Current.CancellationToken);
 
-            var fleetItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
+            var fleetItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
             Assert.Equal("interactive session", fleetItem.TypeLabel);
             Assert.Equal("Not yet run", fleetItem.StatusText);
             Assert.Equal(0, fleetItem.PausedStepCount);
             Assert.False(fleetItem.IsArchived);
 
             // #322: a session (even one that never ran, so has no snapshot) takes its created/updated
-            // straight from the durable in-data source, .aer/session.json -- not from filesystem times.
+            // straight from the durable in-data source, .aer/room.json -- not from filesystem times.
             var metadata = await InteractiveSessionMaterializer.LoadMetadataAsync(
-                Path.Combine(taskDirectory, ".aer", "session.json"), TestContext.Current.CancellationToken);
+                Path.Combine(roomDirectory, ".aer", "room.json"), TestContext.Current.CancellationToken);
             Assert.NotNull(metadata);
             Assert.Equal(metadata.CreatedAt, fleetItem.Created);
             Assert.Equal(metadata.UpdatedAt, fleetItem.Updated);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
-    public async Task A_directory_with_no_snapshot_is_reported_as_not_a_task_directory()
+    public async Task LoadFleetStatusAsync_ForAWorkflowRoom_LabelsWorkflowFromRoomKindMarker()
     {
-        var notATaskDirectory = Path.Combine(Path.GetTempPath(), $"ui-not-a-task-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(notATaskDirectory);
+        // Polarity partner to the interactive case above (#443): a workflow room writes .aer/room.json
+        // with Kind=Workflow at materialization, and the fleet label must read that marker as
+        // "workflow", never "interactive session". Together the two tests pin RoomProjectionLoader's
+        // kind discrimination on room.json in both directions, from the marker itself rather than from
+        // a file's mere presence.
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-fleet-workflow-{Guid.NewGuid():N}");
         try
         {
-            var exception = await Assert.ThrowsAsync<InvalidTaskDirectoryException>(
-                () => TaskProjectionLoader.LoadAsync(notATaskDirectory, TestContext.Current.CancellationToken));
+            await BuiltInWorkflowTemplates.MaterializeToDirectoryAsync(
+                "solo-run", "claude", null, roomDirectory, "a prompt",
+                cancellationToken: TestContext.Current.CancellationToken);
 
-            Assert.Contains(notATaskDirectory, exception.Message);
+            Assert.Equal(
+                RoomKind.Workflow,
+                await InteractiveSessionMaterializer.ReadRoomKindAsync(roomDirectory, TestContext.Current.CancellationToken));
+
+            var fleetItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
+            Assert.NotEqual("interactive session", fleetItem.TypeLabel);
+            Assert.Equal("workflow", fleetItem.TypeLabel);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(notATaskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task A_directory_with_no_snapshot_is_reported_as_not_a_room_directory()
+    {
+        var notARoomDirectory = Path.Combine(Path.GetTempPath(), $"ui-not-a-task-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(notARoomDirectory);
+        try
+        {
+            var exception = await Assert.ThrowsAsync<InvalidRoomDirectoryException>(
+                () => RoomProjectionLoader.LoadAsync(notARoomDirectory, TestContext.Current.CancellationToken));
+
+            Assert.Contains(notARoomDirectory, exception.Message);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(notARoomDirectory);
         }
     }
 
@@ -218,45 +247,45 @@ public class TaskProjectionLoaderTests
     public async Task LoadFleetStatusAsync_TaskWithJournalEvents_ReportsNewestEventTimestamp()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-lastact-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-lastact-{Guid.NewGuid():N}");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
-            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             await using (var writer = new FlowEventLogWriter(logPath))
             {
                 await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(new ExecutionId("exec-1")), TestContext.Current.CancellationToken);
             }
 
-            var fleetItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
+            var fleetItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
             Assert.NotNull(fleetItem.LastActivityAt);
             Assert.True(fleetItem.LastActivityAt >= fleetItem.Created);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task LoadFleetStatusAsync_EmptyNoJournalTask_FallsBackToDurableCreatedAt()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-lastact-empty-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-lastact-empty-{Guid.NewGuid():N}");
         try
         {
             await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
-                "sess-empty", taskDirectory, "claude", cancellationToken: TestContext.Current.CancellationToken);
+                "sess-empty", roomDirectory, "claude", cancellationToken: TestContext.Current.CancellationToken);
 
-            var fleetItem = await TaskProjectionLoader.LoadFleetStatusAsync(taskDirectory, TestContext.Current.CancellationToken);
+            var fleetItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
             Assert.NotNull(fleetItem.LastActivityAt);
             Assert.Equal(fleetItem.Created, fleetItem.LastActivityAt);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -287,8 +316,8 @@ public class TaskProjectionLoaderTests
                 await writerB.AppendAsync(new FlowEvent.ExecutionSucceeded(new ExecutionId("exec-b1")), TestContext.Current.CancellationToken);
             }
 
-            var itemA = await TaskProjectionLoader.LoadFleetStatusAsync(dirA, TestContext.Current.CancellationToken);
-            var itemB = await TaskProjectionLoader.LoadFleetStatusAsync(dirB, TestContext.Current.CancellationToken);
+            var itemA = await RoomProjectionLoader.LoadFleetStatusAsync(dirA, TestContext.Current.CancellationToken);
+            var itemB = await RoomProjectionLoader.LoadFleetStatusAsync(dirB, TestContext.Current.CancellationToken);
 
             Assert.NotNull(itemA.LastActivityAt);
             Assert.NotNull(itemB.LastActivityAt);
@@ -299,7 +328,7 @@ public class TaskProjectionLoaderTests
                 await writerA.AppendAsync(new FlowEvent.ExecutionSucceeded(new ExecutionId("exec-a2")), TestContext.Current.CancellationToken);
             }
 
-            var itemAUpdated = await TaskProjectionLoader.LoadFleetStatusAsync(dirA, TestContext.Current.CancellationToken);
+            var itemAUpdated = await RoomProjectionLoader.LoadFleetStatusAsync(dirA, TestContext.Current.CancellationToken);
             Assert.True(itemAUpdated.LastActivityAt > itemA.LastActivityAt);
             Assert.True(itemAUpdated.LastActivityAt >= itemB.LastActivityAt);
         }

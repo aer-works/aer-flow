@@ -3,10 +3,10 @@ using Aer.Flow.Domain;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// Whether — and how — a task's bound <see cref="WorkflowDefinitionSnapshot"/> has diverged from
+/// Whether — and how — a room's bound <see cref="WorkflowDefinitionSnapshot"/> has diverged from
 /// the live template it originated from (UI spec §5; M14 Phase 4, issue #121). A snapshot is frozen
 /// at bind time (Flow spec §11.2) and never re-synced, so any edit to the template afterward is
-/// invisible to the running task — this type is what makes that gap visible instead of silently
+/// invisible to the running room — this type is what makes that gap visible instead of silently
 /// rendering the live template in the snapshot's place.
 /// </summary>
 /// <param name="TemplateIdMismatch">

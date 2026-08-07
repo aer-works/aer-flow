@@ -24,18 +24,18 @@ public class MainWindowArtifactLineageAndDiffTests
     private static readonly StepId Publisher = new("publisher");
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-lineage-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-lineage-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     private static List<string> TextsOf(StackPanel panel) => panel.Children.OfType<TextBlock>().Select(block => block.Text!).ToList();
 
-    private static async Task<string> CreatePumpedTaskDirectoryAsync(CancellationToken cancellationToken)
+    private static async Task<string> CreatePumpedRoomDirectoryAsync(CancellationToken cancellationToken)
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-lineage-window-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-lineage-window-{Guid.NewGuid():N}");
 
         var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, cancellationToken);
         var snapshot = SnapshotBinder.Bind(definition);
-        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), cancellationToken);
+        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), cancellationToken);
 
         var bindings = new Dictionary<string, WorkerBinding>
         {
@@ -53,7 +53,7 @@ public class MainWindowArtifactLineageAndDiffTests
                 TimeSpan.FromSeconds(30)),
         };
 
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         await using (var writer = new FlowEventLogWriter(logPath))
         {
             var reader = new FlowEventLogReader(logPath);
@@ -61,27 +61,27 @@ public class MainWindowArtifactLineageAndDiffTests
 
             await MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-ui-lineage-window-e2e"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
-                Path.Combine(taskDirectory, "artifacts"),
+                Path.Combine(roomDirectory, "artifacts"),
                 reader,
                 writer,
                 dispatcher,
                 cancellationToken: cancellationToken);
         }
 
-        return taskDirectory;
+        return roomDirectory;
     }
 
     [AvaloniaFact]
     public async Task LoadAsync_renders_every_executions_output_files_and_resolved_input_links()
     {
-        var taskDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var lineagePanel = window.FindViewControl<StackPanel>("LineagePanel")!;
             var texts = TextsOf(lineagePanel);
@@ -102,19 +102,19 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task ShowArtifactPreviewAsync_reads_the_real_output_files_content()
     {
-        var taskDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
-            var projection = await TaskProjectionLoader.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            var projection = await RoomProjectionLoader.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
             var architectExecutionId = projection.Lineage.Executions.Single(e => e.StepId == Architect).ExecutionId;
-            var filePath = Path.Combine(taskDirectory, "artifacts", $"execution_{architectExecutionId}", "plan");
+            var filePath = Path.Combine(roomDirectory, "artifacts", $"execution_{architectExecutionId}", "plan");
 
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
 
@@ -124,7 +124,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -133,12 +133,12 @@ public class MainWindowArtifactLineageAndDiffTests
     {
         // Proves the real wiring end to end: LoadAsync (not OpenAsync) is what renders these
         // buttons, so the closure each button captures must resolve against LoadAsync's own
-        // taskDirectoryPath parameter, never the OpenAsync-only _currentTaskDirectoryPath field.
-        var taskDirectory = await CreatePumpedTaskDirectoryAsync(TestContext.Current.CancellationToken);
+        // roomDirectoryPath parameter, never the OpenAsync-only _currentRoomDirectoryPath field.
+        var roomDirectory = await CreatePumpedRoomDirectoryAsync(TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var lineagePanel = window.FindViewControl<StackPanel>("LineagePanel")!;
             var planButton = lineagePanel.Children.OfType<WrapPanel>()
@@ -162,7 +162,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -207,15 +207,15 @@ public class MainWindowArtifactLineageAndDiffTests
             new WorkflowStepDefinition(Critic, "critic", ["plan"], ["review"], DependsOn: [Architect], RetryPolicy: new RetryPolicy(1)),
         ]);
 
-    private static async Task<string> CreateBoundTaskDirectoryAsync(WorkflowDefinitionSnapshot snapshot, CancellationToken cancellationToken)
+    private static async Task<string> CreateBoundRoomDirectoryAsync(WorkflowDefinitionSnapshot snapshot, CancellationToken cancellationToken)
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-diff-task-{Guid.NewGuid():N}");
-        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), cancellationToken);
-        await using (new FlowEventLogWriter(Path.Combine(taskDirectory, "flow.jsonl")))
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-diff-task-{Guid.NewGuid():N}");
+        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), cancellationToken);
+        await using (new FlowEventLogWriter(Path.Combine(roomDirectory, "flow.jsonl")))
         {
         }
 
-        return taskDirectory;
+        return roomDirectory;
     }
 
     private static async Task<string> WriteTemplateFileAsync(WorkflowDefinition definition, CancellationToken cancellationToken)
@@ -235,7 +235,7 @@ public class MainWindowArtifactLineageAndDiffTests
             await window.CompareToTemplateAsync(templatePath, TestContext.Current.CancellationToken);
 
             Assert.Equal(
-                ["Open a task directory before comparing it to a template."],
+                ["Open a room directory before comparing it to a template."],
                 TextsOf(window.FindViewControl<StackPanel>("DiffPanel")!));
         }
         finally
@@ -248,12 +248,12 @@ public class MainWindowArtifactLineageAndDiffTests
     public async Task CompareToTemplateAsync_reports_no_divergence_for_a_structurally_identical_template()
     {
         var snapshot = SnapshotBinder.Bind(BaselineTemplate());
-        var taskDirectory = await CreateBoundTaskDirectoryAsync(snapshot, TestContext.Current.CancellationToken);
+        var roomDirectory = await CreateBoundRoomDirectoryAsync(snapshot, TestContext.Current.CancellationToken);
         var templatePath = await WriteTemplateFileAsync(BaselineTemplate(), TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             await window.CompareToTemplateAsync(templatePath, TestContext.Current.CancellationToken);
 
@@ -262,7 +262,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
             FileCleanup.Delete(templatePath);
         }
     }
@@ -271,13 +271,13 @@ public class MainWindowArtifactLineageAndDiffTests
     public async Task CompareToTemplateAsync_reports_a_mismatch_for_an_unrelated_template_never_a_diff()
     {
         var snapshot = SnapshotBinder.Bind(BaselineTemplate());
-        var taskDirectory = await CreateBoundTaskDirectoryAsync(snapshot, TestContext.Current.CancellationToken);
+        var roomDirectory = await CreateBoundRoomDirectoryAsync(snapshot, TestContext.Current.CancellationToken);
         var unrelatedTemplate = BaselineTemplate() with { WorkflowTemplateId = new WorkflowTemplateId("something-else") };
         var templatePath = await WriteTemplateFileAsync(unrelatedTemplate, TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             await window.CompareToTemplateAsync(templatePath, TestContext.Current.CancellationToken);
 
@@ -287,7 +287,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
             FileCleanup.Delete(templatePath);
         }
     }
@@ -296,7 +296,7 @@ public class MainWindowArtifactLineageAndDiffTests
     public async Task CompareToTemplateAsync_reports_added_removed_and_changed_steps()
     {
         var snapshot = SnapshotBinder.Bind(BaselineTemplate());
-        var taskDirectory = await CreateBoundTaskDirectoryAsync(snapshot, TestContext.Current.CancellationToken);
+        var roomDirectory = await CreateBoundRoomDirectoryAsync(snapshot, TestContext.Current.CancellationToken);
 
         var editedTemplate = new WorkflowDefinition(
             new WorkflowTemplateId("architect-critic"),
@@ -311,7 +311,7 @@ public class MainWindowArtifactLineageAndDiffTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             await window.CompareToTemplateAsync(templatePath, TestContext.Current.CancellationToken);
 
@@ -322,7 +322,7 @@ public class MainWindowArtifactLineageAndDiffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
             FileCleanup.Delete(templatePath);
         }
     }

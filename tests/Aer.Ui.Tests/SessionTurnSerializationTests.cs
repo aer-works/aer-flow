@@ -7,7 +7,7 @@ namespace Aer.Ui.Tests;
 /// #393: turns must be serialised per session directory. <c>ExecuteSessionTurnAsync</c> reads the
 /// projection, branches on it, and -- in the re-materialize branch -- deletes
 /// <c>snapshot.json</c>/<c>flow.jsonl</c>/<c>artifacts</c> before <c>RunAsync</c> takes Flow's
-/// per-task-directory lock, so that window sat outside every lock; and turns run fire-and-forget
+/// per-room-directory lock, so that window sat outside every lock; and turns run fire-and-forget
 /// behind an already-returned 200, so overlapping sends genuinely interleave there.
 ///
 /// These cover the lock's <em>identity</em> -- that one directory maps to exactly one semaphore.

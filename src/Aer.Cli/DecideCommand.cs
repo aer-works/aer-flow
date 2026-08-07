@@ -25,7 +25,7 @@ public static class DecideCommand
     private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="SnapshotLoadException">
-    /// The task directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
+    /// The room directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
     /// persisted snapshot is malformed.
     /// </exception>
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
@@ -34,10 +34,11 @@ public static class DecideCommand
     /// </exception>
     /// <exception cref="InvalidExternalDecisionException">The decision violates one of §17.2's rules.</exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
-    /// Another Flow instance already holds this task directory's lock.
+    /// record-once-ok: #443 src/Aer.Cli/RunCommand.cs
+    /// Another Flow instance already holds this room directory's lock.
     /// </exception>
     /// <exception cref="Aer.Flow.Store.FlowJournalHeldException">
-    /// Another process — most likely a live <c>aer run</c> engine — already holds this task's
+    /// Another process — most likely a live <c>aer run</c> engine — already holds this room's
     /// <c>flow.jsonl</c> open (#816).
     /// </exception>
     /// <param name="inFlightExecutions">
@@ -60,15 +61,15 @@ public static class DecideCommand
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(adapters);
 
-        var snapshotPath = Path.Combine(options.TaskDirectoryPath, SnapshotFileName);
-        var logPath = Path.Combine(options.TaskDirectoryPath, LogFileName);
-        var artifactsRootPath = Path.Combine(options.TaskDirectoryPath, ArtifactsDirectoryName);
+        var snapshotPath = Path.Combine(options.RoomDirectoryPath, SnapshotFileName);
+        var logPath = Path.Combine(options.RoomDirectoryPath, LogFileName);
+        var artifactsRootPath = Path.Combine(options.RoomDirectoryPath, ArtifactsDirectoryName);
 
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.TaskDirectoryPath}' has no bound snapshot — 'aer decide' " +
-                "targets a task 'aer run' has already started, and never binds one fresh.");
+                $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer decide' " +
+                "targets a room 'aer run' has already started, and never binds one fresh.");
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
@@ -76,7 +77,7 @@ public static class DecideCommand
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
         var (provisionedConfig, provisionedWorktrees) =
-            WorktreeWorkspaces.Provision(bindingConfig, options.TaskDirectoryPath);
+            WorktreeWorkspaces.Provision(bindingConfig, options.RoomDirectoryPath);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
         var workerBindings = WorkerBindingResolver.Resolve(
             provisionedConfig, adapters, profiles, Path.GetDirectoryName(options.BindingsFilePath), onWorkerStdoutLine);
@@ -91,7 +92,7 @@ public static class DecideCommand
 
         var state = await MutationInterface.RecordDecisionAsync(
                 workflowId,
-                options.TaskDirectoryPath,
+                options.RoomDirectoryPath,
                 snapshot,
                 workerBindings,
                 artifactsRootPath,
@@ -108,6 +109,6 @@ public static class DecideCommand
 
         var worktreeTeardowns = WorktreeProvisioner.TeardownIfTerminal(state.Status, provisionedWorktrees);
 
-        return new CommandResult(state, snapshot, TaskDirectoryPath: options.TaskDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
+        return new CommandResult(state, snapshot, RoomDirectoryPath: options.RoomDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
     }
 }

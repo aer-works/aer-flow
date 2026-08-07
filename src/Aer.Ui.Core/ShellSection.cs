@@ -8,5 +8,5 @@ public enum ShellSection
     Author,
     Remote,
     Chat,
-    Tasks,
+    Rooms,
 }

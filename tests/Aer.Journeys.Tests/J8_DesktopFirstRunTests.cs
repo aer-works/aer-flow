@@ -25,7 +25,7 @@ namespace Aer.Journeys.Tests;
 public class J8_DesktopFirstRunTests
 {
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-journeys-j8-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-journeys-j8-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     [AvaloniaFact]
     public void Empty_first_run_home_offers_real_first_actions_not_a_blank_wall()

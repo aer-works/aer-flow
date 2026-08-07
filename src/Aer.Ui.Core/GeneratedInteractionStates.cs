@@ -10,7 +10,8 @@ namespace Aer.Ui.Core;
 /// <summary>
 /// The interaction states — the situations every surface must handle (#616; ratified
 /// thirteen on #495). A different population from <see cref="AerStatus"/>: that is the
-/// task-lifecycle vocabulary, this is the screen-situation inventory; they overlap at
+/// room-lifecycle vocabulary, this is the screen-situation inventory; they overlap at
+/// record-once-ok: #443 design/interaction-states.json
 /// Cancelled/Failed only. 0020's rules govern consumption: rendering is a projection,
 /// absence is not a state — which is why the presentation methods below throw on an
 /// unmapped member instead of answering with a default.

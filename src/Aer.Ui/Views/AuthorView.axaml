@@ -127,12 +127,12 @@
       <!-- #219: hidden by default — the raw template/bindings editors used to sit permanently
            visible below the guided flow, one long scrollable list mixing a beginner path with an
            expert one with no signal about which to use. Collapsed here (Padding="0": Expander
-           already pads its content, see the same reasoning on TaskView's Details expander), the
+           already pads its content, see the same reasoning on RoomView's Details expander), the
            guided card above is unambiguously the primary, default path. -->
       <Border Classes="card" Padding="0">
       <Expander Header="Advanced — edit the files directly" IsExpanded="False">
       <StackPanel Spacing="{DynamicResource Space.3}" Margin="16,8,16,16">
-      <TextBlock Classes="heading" Text="Template editor (create or edit a template file — never a bound task):" />
+      <TextBlock Classes="heading" Text="Template editor (create or edit a template file — never a bound room):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="Template file:" VerticalAlignment="Center" />
         <TextBox x:Name="TemplateEditorPathBox" Width="360" />
@@ -227,7 +227,7 @@
       </StackPanel>
 
       <!-- vocabulary-ok: technical worker-bindings editor heading -->
-      <TextBlock Classes="heading" Text="Worker-bindings editor (create or edit a bindings file — never persisted in a task directory):" />
+      <TextBlock Classes="heading" Text="Worker-bindings editor (create or edit a bindings file — never persisted in a room directory):" />
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="Bindings file:" VerticalAlignment="Center" /> <!-- vocabulary-ok: technical file label -->
         <TextBox x:Name="BindingsEditorPathBox" Width="360" />

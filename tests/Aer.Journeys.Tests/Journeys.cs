@@ -143,7 +143,7 @@ public static class Journeys
             new("desktop first-run empty state", Runner.DesktopHeadless, Coverage.DrivenGreen,
                 "J8_DesktopFirstRunTests: an empty Home renders \"No tasks yet.\" with real Start-from-template / Create-workflow actions (#190), not a blank wall. Green — this leg is kept."),
             new("phone empty task list dead-ends (#337)", Runner.PhoneWidget, Coverage.DrivenRed,
-                "j8_first_run_phone_test: an empty TasksScreen shows only \"No tasks or sessions yet.\" text with no primary action. Red until it offers a real next step."),
+                "j8_first_run_phone_test: an empty RoomsScreen shows only \"No tasks or sessions yet.\" text with no primary action. Red until it offers a real next step."),
         ], [337, 338, 339]),
 
         new("J9",

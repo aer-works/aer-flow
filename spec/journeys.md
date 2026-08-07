@@ -66,7 +66,7 @@ going back to the machine.
   manual reload.
 - **Path** *(illustrative)* — start a review-run on the desktop · it pauses at its gate · the phone
   shows it waiting on you · you decide and approve · it resumes and finishes · the desk updates.
-- **Today** — the phone's inbox is scoped to the daemon's single open task, so a desk-started run
+- **Today** — the phone's inbox is scoped to the daemon's single open room, so a desk-started run
   often isn't there to approve.
 - **Serves** — #335, #319, #330
 
@@ -112,8 +112,8 @@ first — held apart from what's still running and what already finished.
 - **Path** *(illustrative)* — reopen the app · the first thing you see is the short list of decisions
   waiting · running work is visible but secondary · finished work (failures correctly labelled) is
   available, not in your face.
-- **Today** — a running task shows the phone "Nothing is waiting on you" and nothing else (#337);
-  failed tasks list as `Terminal`/finished (#355). The vendor audit (#527) settled *where the signal
+- **Today** — a running room shows the phone "Nothing is waiting on you" and nothing else (#337);
+  failed rooms list as `Terminal`/finished (#355). The vendor audit (#527) settled *where the signal
   comes from*, which this journey had never pinned down: both vendor events that could have announced
   a pause — `PermissionRequest` and `Notification` — are silent under `-p`, so
   [0030](../docs/decisions/0030-aer-is-its-own-notifier.md) makes AER the notifier. It follows that
@@ -155,7 +155,7 @@ object, the same state, not two disconnected views.
 - **Path** *(illustrative)* — start work on the desktop · the phone shows it appear and track state
   live · (and the reverse) · both agree on what it is and where it's at.
 - **Today** — desktop-started work never broadcasts, so paired phones never see it (#330); starting a
-  non-chat template from the phone leaves it on "No task is open" while the daemon reports it running
+  non-chat template from the phone leaves it on "No room is open" while the daemon reports it running
   (#348).
 - **Serves** — #330, #348, #335
 
@@ -442,25 +442,25 @@ case that pays for the whole idea.
 
 **Status:** Fails — automated + human
 
-Work you started runs as several lanes while you're away. Each moment that needs or informs you — a
-lane finished, failed, or waiting on your call — reaches your phone without you asking; acting from
+Work you started runs as several workflows while you're away. Each moment that needs or informs you — a
+workflow finished, failed, or waiting on your call — reaches your phone without you asking; acting from
 the phone keeps the room moving; and at no point after initiation is the desktop required.
 
 - **Spans** — daemon → paired phone → daemon · *the operating loop: wake events out, decisions back
   (#778's fast-fire orchestrator turns, #799's wake-bridge, decision 0030's AER-as-notifier)*
-- **Passes when** — a multi-lane room, initiated from either surface, delivers lane-terminal and
+- **Passes when** — a multi-workflow room, initiated from either surface, delivers workflow-terminal and
   needs-you events to a paired phone via AER's own notifier; a decision answered from the phone
   advances the room; and the cycle repeats at least twice with the desktop untouched after
   initiation. The notification informs and opens, never carries the verdict (decision 0018).
-- **Path** *(illustrative)* — dispatch two lanes · pocket the phone · a lane finishes and the phone
+- **Path** *(illustrative)* — dispatch two workflows · pocket the phone · a workflow finishes and the phone
   says so · a review verdict needs you; the phone opens it; you answer · the room dispatches the
-  follow-up · the second lane's moment arrives the same way · the desk was never touched.
+  follow-up · the second workflow's moment arrives the same way · the desk was never touched.
 - **Verify** — the phone half is a human walk (real device, real notification); the daemon-side
   event→notification pipeline and the decision round-trip are automated. "Nothing needed you" must
   be evidenced by AER's own gate state, never by the absence of a notification — J3's 0030 rule,
   verbatim.
-- **Today** — nothing delivers. Push exists on no surface, lane events are relayed by a human
-  orchestrator hand-tailing journals, and the decision inbox is scoped to a single open task. #806
+- **Today** — nothing delivers. Push exists on no surface, workflow events are relayed by a human
+  orchestrator hand-tailing journals, and the decision inbox is scoped to a single open room. #806
   records the measured session behind this journey — a full build day driven from a pocket through
   a harness never designed for it, every workaround in it a requirement here. `docs/plan.md` §M26
   names this journey as the milestone's demo bar.

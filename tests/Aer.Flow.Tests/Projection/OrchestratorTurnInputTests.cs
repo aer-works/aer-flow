@@ -33,7 +33,7 @@ public class OrchestratorTurnInputTests
         var roomDir = await CreateTestRoomAsync();
         try
         {
-            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedWorkflowTerminated);
             var input = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
 
             Assert.True(input.IsColdStart);
@@ -54,7 +54,7 @@ public class OrchestratorTurnInputTests
         var roomDir = await CreateTestRoomAsync();
         try
         {
-            var wake1 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var wake1 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedWorkflowTerminated);
             var turn1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake1], TestContext.Current.CancellationToken);
             Assert.True(turn1.IsColdStart);
             Assert.Single(turn1.EventDelta);
@@ -71,7 +71,7 @@ public class OrchestratorTurnInputTests
                 await writer.AppendAsync(escalated, TestContext.Current.CancellationToken);
             }
 
-            var wake2 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.EscalatedLaneTerminated);
+            var wake2 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.EscalatedWorkflowTerminated);
             var turn2 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake2], TestContext.Current.CancellationToken);
 
             Assert.False(turn2.IsColdStart);
@@ -93,7 +93,7 @@ public class OrchestratorTurnInputTests
         var roomDir = await CreateTestRoomAsync();
         try
         {
-            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedWorkflowTerminated);
             var turnAttempt1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.Single(turnAttempt1.EventDelta);
 
@@ -117,7 +117,7 @@ public class OrchestratorTurnInputTests
         var roomDir = await CreateTestRoomAsync();
         try
         {
-            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedWorkflowTerminated);
             var turn1 = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
             Assert.Single(turn1.EventDelta);
 
@@ -181,7 +181,7 @@ public class OrchestratorTurnInputTests
         var roomDir = await CreateTestRoomAsync();
         try
         {
-            var wake1 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var wake1 = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedWorkflowTerminated);
             var wake2 = new RoomWake(new HeldWorkRef("lane-2"), RoomWakeKind.DispatchOrphaned);
 
             var input = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake1, wake2], TestContext.Current.CancellationToken);
@@ -202,7 +202,7 @@ public class OrchestratorTurnInputTests
         var roomDir = await CreateTestRoomAsync();
         try
         {
-            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedLaneTerminated);
+            var wake = new RoomWake(new HeldWorkRef("lane-1"), RoomWakeKind.DispatchedWorkflowTerminated);
             var turn = await OrchestratorTurnInput.AssembleAsync(roomDir, [wake], TestContext.Current.CancellationToken);
 
             // Assembly alone must leave NO cursor on disk -- only an explicit CommitTurn does,

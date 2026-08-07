@@ -7,7 +7,7 @@ namespace Aer.Cli;
 /// on the CLI). Mirrors <see cref="CancelOptions"/>'s shape: a mutation command never binds a fresh
 /// snapshot (§11.2).
 /// </summary>
-/// <param name="TaskDirectoryPath">An already-started task's durable state directory.</param>
+/// <param name="RoomDirectoryPath">An already-started room's durable state directory.</param>
 /// <param name="ExecutionId">
 /// The execution this decision resolves — the reference the pause-aware output
 /// (<see cref="FlowStateReporter"/>) reports so a terminal user knows what to pass here. Ordinarily
@@ -25,7 +25,7 @@ namespace Aer.Cli;
 /// <param name="BindingsFilePath">The worker-binding config file (M11 Phase 1's sidecar shape).</param>
 /// <param name="WorkflowId">Defaults to the bound snapshot's <c>WorkflowTemplateId</c> when not given, same as <c>aer run</c>.</param>
 public sealed record DecideOptions(
-    string TaskDirectoryPath,
+    string RoomDirectoryPath,
     string ExecutionId,
     DecisionType DecisionType,
     StepId? TargetStepId,

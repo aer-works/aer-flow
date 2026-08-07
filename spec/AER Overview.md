@@ -26,12 +26,11 @@ No existing tool does this well under the three constraints that actually apply 
 > toll you pay first ([0014](../docs/decisions/0014-shapes-are-a-list-not-a-canvas.md)). Read §2 as
 > what the engine guarantees, and 0012 as what the person meets.
 >
-> The user-facing noun for that unit **will be room**
+> The user-facing noun for that unit **is room**
 > ([0013](../docs/decisions/0013-room-is-the-user-facing-noun.md)), with `session` narrowing to the
-> vendor CLI's resumable thread. **That rename has not shipped** — the product and this spec still
-> say *task* throughout, and they change together in `#443`. A document that adopted the new word
-> ahead of the code would just be a translation map pointed the other way, which
-> [0002](../docs/decisions/0002-one-vocabulary.md) exists to forbid.
+> vendor CLI's resumable thread. `#443` converged the identifiers and spec terms, so the engine,
+> this spec, and the product now say *room* with one voice — which is what
+> [0002](../docs/decisions/0002-one-vocabulary.md) requires: one word, no translation map.
 
 Concretely, that means:
 

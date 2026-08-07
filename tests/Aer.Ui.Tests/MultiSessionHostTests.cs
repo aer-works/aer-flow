@@ -137,13 +137,13 @@ public class MultiSessionHostTests : IAsyncLifetime
         // Stop alpha by name. A null ExecutionId is the "stop this session's pump" request the
         // desktop Stop button and the phone both send.
         var stop = await _client.PostAsJsonAsync(
-            $"{_baseUrl}/api/tasks/cancel",
-            new CancelTaskRequest(alpha, null),
+            $"{_baseUrl}/api/rooms/cancel",
+            new CancelRoomRequest(alpha, null),
             TestContext.Current.CancellationToken);
         Assert.True(stop.IsSuccessStatusCode);
 
         // Synchronize on the kill before writing alpha.release (#826): the 200 response from
-        // /api/tasks/cancel is an intent acknowledgment, not a kill receipt. CancellationRequested
+        // /api/rooms/cancel is an intent acknowledgment, not a kill receipt. CancellationRequested
         // is flushed to disk BEFORE TryCancel is invoked on the dispatch token. Wait for
         // FlowEvent.ExecutionCancelled in alpha's task journal (flow.jsonl), which is written by
         // MutationInterface.DispatchAndRecordOutcomeAsync AFTER CoreDispatcher completes process
@@ -176,12 +176,12 @@ public class MultiSessionHostTests : IAsyncLifetime
         Assert.NotEqual(alpha, beta);
     }
 
-    /// <summary>Starts a session whose worker parks, and returns its task directory path.</summary>
+    /// <summary>Starts a session whose worker parks, and returns its room directory path.</summary>
     private async Task<string> StartBlockedSessionAsync(string sessionKey)
     {
         var request = new StartSessionRequest(
             Adapter: "claude",
-            TaskName: sessionKey + "-" + Guid.NewGuid().ToString("N"),
+            RoomName: sessionKey + "-" + Guid.NewGuid().ToString("N"),
             InitialMessage: $"hold here {sessionKey}");
 
         var response = await _client.PostAsJsonAsync($"{_baseUrl}/api/sessions/start", request, TestContext.Current.CancellationToken);
@@ -189,8 +189,8 @@ public class MultiSessionHostTests : IAsyncLifetime
 
         var metadata = await response.Content.ReadFromJsonAsync<SessionMetadata>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(metadata);
-        Assert.False(string.IsNullOrWhiteSpace(metadata.TaskDirectoryPath));
-        return metadata.TaskDirectoryPath;
+        Assert.False(string.IsNullOrWhiteSpace(metadata.RoomDirectoryPath));
+        return metadata.RoomDirectoryPath;
     }
 
     private static async Task WaitForMarkerAsync(string markerPath, string because)

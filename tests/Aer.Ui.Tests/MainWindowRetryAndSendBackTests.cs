@@ -24,20 +24,20 @@ public class MainWindowRetryAndSendBackTests
         new Dictionary<string, IWorkerAdapter> { ["shell"] = new ShellCommandWorkerAdapter() };
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-retry-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-retry-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     [AvaloniaFact]
     public async Task Retry_with_a_revision_file_supplies_the_artifact_then_reruns_the_paused_step_and_the_workflow_runs_to_terminal()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-retry-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteRetryWithRevisionWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteRetryWithRevisionBindingsAsync(testRoot);
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
-            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             Assert.Equal("Workflow status: Paused", statusText.Text);
@@ -81,14 +81,14 @@ public class MainWindowRetryAndSendBackTests
     public async Task Send_back_offers_only_declared_SupersedeTargets_supplies_the_artifact_and_reruns_the_target()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-sendback-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteSupersedeWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteSupersedeBindingsAsync(testRoot);
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
-            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             Assert.Equal("Workflow status: Paused", statusText.Text);

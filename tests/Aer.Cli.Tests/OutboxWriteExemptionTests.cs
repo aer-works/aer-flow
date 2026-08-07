@@ -114,7 +114,7 @@ public class OutboxWriteExemptionTests
     [Fact]
     public void A_relative_outbox_is_refused_rather_than_resolved_against_the_workers_cwd()
     {
-        // Measured on a live run: a relative --task-dir emitted AER_OUTPUT_DIR as
+        // Measured on a live run: a relative --room-dir emitted AER_OUTPUT_DIR as
         // `task2\artifacts\execution_<id>`. This process inherits the vendor CLI's cwd, which is the
         // workspace, so resolving it here certified a directory *inside the workspace* as the outbox
         // and allowed the write. The worker's report landed there, AER looked at the real path, found
@@ -124,7 +124,8 @@ public class OutboxWriteExemptionTests
         Assert.False(OutboxPath.IsInside(Path.Combine(relative, "review.md"), relative));
 
         // And the operator is told which of the two things went wrong. The generic withheld-tool
-        // message sends them to their permission grant for a fault that is in their --task-dir.
+        // message sends them to their permission grant for a fault that is in their --room-dir.
+        // record-once-ok: #443 src/Aer.Cli/HookCheckCommand.cs
         using var stderr = new StringWriter();
         var exitCode = HookCheckCommand.Execute(
             new StringReader(Payload("Write", new { file_path = Path.Combine(relative, "review.md") })),

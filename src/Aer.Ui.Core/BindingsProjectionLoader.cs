@@ -7,7 +7,7 @@ namespace Aer.Ui.Core;
 /// — the bindings counterpart to <see cref="TemplateProjectionLoader"/>. Reuses
 /// <see cref="WorkerBindingConfigParser.LoadFromFileAsync"/> exactly as every other consumer does —
 /// never a second parser — the same "consume the read model as a library" seam
-/// <see cref="TaskProjectionLoader"/> and <see cref="TemplateProjectionLoader"/> already established.
+/// <see cref="RoomProjectionLoader"/> and <see cref="TemplateProjectionLoader"/> already established.
 /// <para>
 /// Only wraps the missing-file case: <see cref="WorkerBindingConfigParser.LoadFromFileAsync"/> reads
 /// the file with a plain <see cref="File.ReadAllTextAsync(string, CancellationToken)"/> call, which

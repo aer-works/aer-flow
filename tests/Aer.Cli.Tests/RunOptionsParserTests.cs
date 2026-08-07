@@ -4,7 +4,7 @@ namespace Aer.Cli.Tests;
 public class RunOptionsParserTests
 {
     [Fact]
-    public void A_workflow_file_and_bindings_option_parse_with_a_derived_default_task_directory()
+    public void A_workflow_file_and_bindings_option_parse_with_a_derived_default_room_directory()
     {
         var options = RunOptionsParser.Parse(["workflow.json", "--bindings", "bindings.json"]);
 
@@ -12,17 +12,17 @@ public class RunOptionsParserTests
         Assert.Equal("bindings.json", options.BindingsFilePath);
         Assert.Equal(
             Path.Combine(Directory.GetCurrentDirectory(), ".aer", "workflow"),
-            options.TaskDirectoryPath);
+            options.RoomDirectoryPath);
         Assert.Null(options.WorkflowId);
     }
 
     [Fact]
-    public void An_explicit_task_dir_and_workflow_id_override_the_defaults()
+    public void An_explicit_room_dir_and_workflow_id_override_the_defaults()
     {
         var options = RunOptionsParser.Parse(
-            ["workflow.json", "--bindings", "bindings.json", "--task-dir", "/tmp/task", "--workflow-id", "wf-1"]);
+            ["workflow.json", "--bindings", "bindings.json", "--room-dir", "/tmp/task", "--workflow-id", "wf-1"]);
 
-        Assert.Equal(Path.GetFullPath("/tmp/task"), options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("/tmp/task"), options.RoomDirectoryPath);
         Assert.Equal("wf-1", options.WorkflowId);
     }
 

@@ -495,7 +495,7 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             $"Cannot dispatch '{program}': its command line assembles to about {length} characters, "
             + $"past the {ceiling} this platform is guarded at. Its longest single argument is "
             + $"{longest} characters — a worker's prompt is passed inline as one argument. Hand large "
-            + "content to the worker as a file it reads under its read-files grant (as the review lane "
+            + "content to the worker as a file it reads under its read-files grant (as the review workflow "
             + "does), rather than inlining it in the prompt.");
     }
 
@@ -529,7 +529,7 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
                 $"Cannot dispatch '{program}': one of its arguments is about {bytes} bytes, past the "
                 + $"{maxArgStrlen}-byte per-argument limit this platform enforces (MAX_ARG_STRLEN). A "
                 + "worker's prompt is passed inline as one argument. Hand large content to the worker as "
-                + "a file it reads under its read-files grant (as the review lane does), rather than "
+                + "a file it reads under its read-files grant (as the review workflow does), rather than "
                 + "inlining it in the prompt.");
         }
     }
@@ -588,7 +588,7 @@ public sealed class CoreDispatcher(ICoreEventLogWriter coreEventLogWriter) : ICo
             $"Cannot dispatch '{program}': its command line and environment assemble to about {total} "
             + $"bytes, past this platform's {argMax}-byte ARG_MAX (a combined limit on arguments and "
             + "environment). A worker's prompt is passed inline as one argument. Hand large content to "
-            + "the worker as a file it reads under its read-files grant (as the review lane does), "
+            + "the worker as a file it reads under its read-files grant (as the review workflow does), "
             + "rather than inlining it in the prompt.");
     }
 

@@ -7,7 +7,7 @@ story (M21–M24). It pairs with a running `Aer.Daemon`, then drives real work f
   via Go CGO — no separate Tailscale app install; see `docs/milestone-history.md`, M21).
 - **Decision inbox** — Approve / Reject / Cancel a paused step, with the artifact to review shown
   before deciding, and artifact-referenced send-back (Supersede) with no host filesystem access.
-- **Live task & chat streaming** — task projection and in-turn progress pushed over WebSockets
+- **Live room & chat streaming** — room projection and in-turn progress pushed over WebSockets
   (`InboxScreen`, `ChatScreen`), filtered per client so two devices can view different work.
 - **Start work** — the built-in template picker and Unified Task Creation (Chat / Codebase session /
   Two-Vendor Dialogue) front doors (M22, M24).

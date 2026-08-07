@@ -2,7 +2,7 @@
   "$about": [
     "The authoritative register of interaction states — the situations every surface must handle",
     "(#616, ratified thirteen on #495, 2026-08-04). This is a DIFFERENT population from",
-    "tokens.json /status: that file is the task-lifecycle vocabulary, this one is screen",
+    "tokens.json /status: that file is the room-lifecycle vocabulary, this one is screen",
     "situations; they overlap at cancelled/failed only, by cross-reference. 0020's rules govern",
     "consumption: rendering is a projection, absence is not a state, one object per entry point.",
     "",
@@ -46,7 +46,7 @@
       "name": "Folder gone",
       "behaviour": "The room is greyed and marked unavailable, never an error dialog, and never silently dropped from the list.",
       "provenance": "M25 design pass, 2026-07-24",
-      "coverage": { "renderedBy": ["src/Aer.Ui.Core/HomeViewModel.cs", "src/Aer.Ui.Core/TaskProjectionLoader.cs"] }
+      "coverage": { "renderedBy": ["src/Aer.Ui.Core/HomeViewModel.cs", "src/Aer.Ui.Core/RoomProjectionLoader.cs"] }
     },
     "cancelled": {
       "name": "Cancelled",
@@ -58,13 +58,13 @@
       "name": "Failed",
       "behaviour": "Reads as failed, shows the error text in place, and offers the failing worker as the first way to fix it.",
       "provenance": "M25 design pass, 2026-07-24; #617 deepens it",
-      "coverage": { "renderedBy": ["src/Aer.Ui.Core/HomeViewModel.cs", "src/Aer.Ui/Converters/StatusIconConverters.cs", "src/Aer.Ui.Core/TaskStepsViewModel.cs", "src/Aer.Ui/Views/TaskView.axaml"] }
+      "coverage": { "renderedBy": ["src/Aer.Ui.Core/HomeViewModel.cs", "src/Aer.Ui/Converters/StatusIconConverters.cs", "src/Aer.Ui.Core/RoomStepViewModels.cs", "src/Aer.Ui/Views/RoomView.axaml"] }
     },
     "archived": {
       "name": "Archived",
       "behaviour": "Out of the default list, still searchable, restorable in one action.",
       "provenance": "M25 design pass, 2026-07-24",
-      "coverage": { "renderedBy": ["src/Aer.Ui.Core/TaskProjectionLoader.cs", "src/Aer.Ui.Core/TasksViewModel.cs"] }
+      "coverage": { "renderedBy": ["src/Aer.Ui.Core/RoomProjectionLoader.cs", "src/Aer.Ui.Core/RoomsViewModel.cs"] }
     },
     "longOutput": {
       "name": "Long output",

@@ -4,6 +4,21 @@ using Aer.Flow.Templates;
 
 namespace Aer.Adapters;
 
+/// <summary>
+/// What a room contains, recorded in its <c>.aer/room.json</c> marker so no caller has to infer it
+/// from a file's mere presence (decision 0013 makes the room the single record noun; a room holds
+/// either an interactive session or a workflow execution). An absent marker is read as
+/// <see cref="Workflow"/> — a workflow room needs none, an interactive one always writes its session
+/// metadata here — which preserves the pre-0013 rule that <c>.aer/session.json</c>'s presence meant
+/// "interactive" exactly, now keyed on an explicit field rather than a filename.
+/// </summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
+public enum RoomKind
+{
+    Interactive,
+    Workflow,
+}
+
 public sealed record SessionTurn(
     int TurnIndex,
     string Vendor,
@@ -16,7 +31,7 @@ public sealed record SessionTurn(
 
 public sealed record SessionMetadata(
     string SessionId,
-    string TaskDirectoryPath,
+    string RoomDirectoryPath,
     string CurrentAdapter,
     string? CurrentVendorSessionId,
     string? Model,
@@ -29,15 +44,20 @@ public sealed record SessionMetadata(
     // False until a turn actually completes against CurrentVendorSessionId (M24 Phase 5.1, #285):
     // the id is minted client-side at materialization/handoff time, before the vendor CLI has ever
     // heard of it, so its mere presence can't tell a caller whether `--resume` is safe yet. Absent
-    // in session.json files written before this field existed -- System.Text.Json defaults it to
+    // in room.json files written before this field existed -- System.Text.Json defaults it to
     // false on load, which is the safe direction (worst case: one redundant `--session-id` retry
     // instead of a guaranteed-failing `--resume`).
-    bool VendorSessionEstablished = false);
+    bool VendorSessionEstablished = false,
+    // The room-kind marker (0013). Always Interactive for a serialized SessionMetadata -- this file
+    // *is* an interactive room's marker; a workflow room writes a minimal marker instead. Defaulted
+    // so room.json files written before this field existed still load as the interactive rooms they
+    // were, and so ReadRoomKind can key on it without a second file.
+    RoomKind Kind = RoomKind.Interactive);
 
 public sealed record StartSessionRequest(
     string? Adapter = null,
     string? Model = null,
-    string? TaskName = null,
+    string? RoomName = null,
     string? DirectoryPath = null,
     string? WorkingDirectory = null,
     string? InitialMessage = null,
@@ -241,7 +261,7 @@ public static class InteractiveSessionMaterializer
     /// <summary>
     /// The directory a session's vendor process runs in (its cwd). When the session is attached to a
     /// codebase that working directory is used; when it is directory-less the process runs in the
-    /// session's own directory (its task dir under <c>~/.aer/sessions/</c>) rather than inheriting the
+    /// session's own directory (its room dir under <c>~/.aer/rooms/</c>) rather than inheriting the
     /// daemon/app cwd (#407). Defense in depth alongside <see cref="DefaultGrantForWorkingDirectory"/>:
     /// a directory-less session is already fail-closed (#321), so it cannot act on any cwd today, but
     /// starting it in a neutral, session-owned dir means a future tool or vector that reads the cwd
@@ -254,7 +274,7 @@ public static class InteractiveSessionMaterializer
 
     public static (WorkflowDefinition Definition, IReadOnlyDictionary<string, WorkerBindingConfigEntry> Bindings, SessionMetadata Metadata) Materialize(
         string sessionId,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         string adapter,
         string? model = null,
         string? workingDirectory = null,
@@ -357,7 +377,7 @@ public static class InteractiveSessionMaterializer
 
         var metadata = new SessionMetadata(
             SessionId: sessionId,
-            TaskDirectoryPath: taskDirectoryPath,
+            RoomDirectoryPath: roomDirectoryPath,
             CurrentAdapter: normalizedAdapter,
             CurrentVendorSessionId: vendorSessionId,
             Model: model,
@@ -375,24 +395,24 @@ public static class InteractiveSessionMaterializer
     /// Computes a session's directory path the same way for every caller -- the daemon's
     /// POST /api/sessions/start handler and the desktop's in-process fallback both need this, and
     /// disagreeing between them is exactly the bug that made a session creatable but unreachable by
-    /// id (fixed in Aer.Daemon.Program's session lookups). A caller-supplied <paramref name="taskName"/>
+    /// id (fixed in Aer.Daemon.Program's session lookups). A caller-supplied <paramref name="roomName"/>
     /// produces a differently-named folder than the "session-{id}" fallback used when it is omitted.
     /// </summary>
-    public static string ResolveTaskDirectoryPath(string sessionId, string? taskName, string? directoryPathOverride)
+    public static string ResolveRoomDirectoryPath(string sessionId, string? roomName, string? directoryPathOverride)
     {
         if (directoryPathOverride != null && Path.IsPathRooted(directoryPathOverride))
         {
             return directoryPathOverride;
         }
 
-        var baseSessionsDir = AerPaths.Sessions;
-        var folderName = string.IsNullOrWhiteSpace(taskName) ? $"session-{sessionId}" : taskName.Trim();
-        return Path.GetFullPath(Path.Combine(baseSessionsDir, folderName));
+        var baseRoomsDir = AerPaths.Rooms;
+        var folderName = string.IsNullOrWhiteSpace(roomName) ? $"session-{sessionId}" : roomName.Trim();
+        return Path.GetFullPath(Path.Combine(baseRoomsDir, folderName));
     }
 
     public static async Task<SessionMetadata> MaterializeToDirectoryAsync(
         string sessionId,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         string adapter,
         string? model = null,
         string? workingDirectory = null,
@@ -401,26 +421,26 @@ public static class InteractiveSessionMaterializer
         PermissionGrant? grant = null,
         CancellationToken cancellationToken = default)
     {
-        var workflowFilePath = Path.Combine(taskDirectoryPath, "workflow.json");
+        var workflowFilePath = Path.Combine(roomDirectoryPath, "workflow.json");
         if (File.Exists(workflowFilePath))
         {
-            throw new TaskDirectoryAlreadyExistsException(
-                TaskLifecycle.IsArchived(taskDirectoryPath)
-                    ? $"A task already exists at '{taskDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
-                    : $"A task already exists at '{taskDirectoryPath}'. Choose a different task/session name.");
+            throw new RoomDirectoryAlreadyExistsException(
+                RoomLifecycle.IsArchived(roomDirectoryPath)
+                    ? $"A room already exists at '{roomDirectoryPath}' and is archived. Unarchive or delete it before reusing this name."
+                    : $"A room already exists at '{roomDirectoryPath}'. Choose a different room/session name.");
         }
 
-        Directory.CreateDirectory(taskDirectoryPath);
+        Directory.CreateDirectory(roomDirectoryPath);
         var (definition, bindings, metadata) = Materialize(
-            sessionId, taskDirectoryPath, adapter, model, workingDirectory, initialMessage, safetyCeiling, grant);
+            sessionId, roomDirectoryPath, adapter, model, workingDirectory, initialMessage, safetyCeiling, grant);
 
-        var bindingsFilePath = Path.Combine(taskDirectoryPath, "bindings.json");
-        var metadataFilePath = Path.Combine(taskDirectoryPath, ".aer", "session.json");
+        var bindingsFilePath = Path.Combine(roomDirectoryPath, "bindings.json");
+        var metadataFilePath = Path.Combine(roomDirectoryPath, ".aer", AerPaths.RoomMetadataFileName);
 
         await WorkflowDefinitionWriter.SaveToFileAsync(definition, workflowFilePath, cancellationToken).ConfigureAwait(false);
         await WorkerBindingConfigWriter.SaveToFileAsync(bindings, bindingsFilePath, cancellationToken).ConfigureAwait(false);
 
-        var aerDir = Path.Combine(taskDirectoryPath, ".aer");
+        var aerDir = Path.Combine(roomDirectoryPath, ".aer");
         Directory.CreateDirectory(aerDir);
         await File.WriteAllTextAsync(Path.Combine(aerDir, "workflow-path"), workflowFilePath, cancellationToken).ConfigureAwait(false);
         await File.WriteAllTextAsync(Path.Combine(aerDir, "bindings-path"), bindingsFilePath, cancellationToken).ConfigureAwait(false);
@@ -440,7 +460,7 @@ public static class InteractiveSessionMaterializer
     private static readonly TimeSpan MetadataIoRetryDelay = TimeSpan.FromMilliseconds(25);
 
     /// <summary>
-    /// Writes <c>session.json</c> so that a concurrent reader can neither fail the write nor observe
+    /// Writes an interactive room's <c>room.json</c> so that a concurrent reader can neither fail the write nor observe
     /// a half-written file.
     /// <para>
     /// Issue #341: this used a plain <c>File.WriteAllTextAsync</c> against the live path while
@@ -482,7 +502,7 @@ public static class InteractiveSessionMaterializer
     }
 
     /// <summary>
-    /// Reads <c>session.json</c> without denying a concurrent writer -- see
+    /// Reads an interactive room's <c>room.json</c> without denying a concurrent writer -- see
     /// <see cref="SaveMetadataAsync"/> for why that matters. Opening with
     /// <c>FileShare.ReadWrite | FileShare.Delete</c> also permits the replace this file's writer
     /// performs.
@@ -515,8 +535,126 @@ public static class InteractiveSessionMaterializer
             },
             cancellationToken).ConfigureAwait(false);
 
+        // A workflow room's marker is a minimal { "Kind": "Workflow" } with no SessionId; it
+        // deserializes to a SessionMetadata whose required fields defaulted to null. That is not
+        // interactive-session metadata, so report it as absent -- identical to the pre-0013 world
+        // where a workflow room simply had no session.json. Every caller that gated on a non-null
+        // load (the /api/sessions endpoints, the by-id scan, the broadcast SessionId probe) then
+        // behaves exactly as before, without a per-site kind check.
+        if (result is not null && string.IsNullOrEmpty(result.SessionId))
+        {
+            return null;
+        }
+
         return result;
     }
+
+    /// <summary>
+    /// Reads a room's <see cref="RoomKind"/> from its <c>.aer/room.json</c> marker without denying a
+    /// concurrent writer — opening with <c>FileShare.ReadWrite | FileShare.Delete</c> exactly as
+    /// <see cref="LoadMetadataAsync"/> does, because a plain <c>File.ReadAllText</c> reintroduces
+    /// #341's Windows write-denial. An absent marker is a workflow room; a present-but-unparseable
+    /// one is treated as interactive (its presence has always meant that) rather than crashing a
+    /// caller. This is the single seam the daemon, adapters, and UI route their old
+    /// <c>File.Exists(session.json)</c> kind-checks through.
+    /// </summary>
+    public static async Task<RoomKind> ReadRoomKindAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
+    {
+        var markerPath = Path.Combine(roomDirectoryPath, ".aer", AerPaths.RoomMetadataFileName);
+        if (!File.Exists(markerPath)) return RoomKind.Workflow;
+
+        var kind = RoomKind.Interactive;
+        try
+        {
+            await RetryOnSharingViolationAsync(
+                async () =>
+                {
+                    using var stream = new FileStream(
+                        markerPath, FileMode.Open, FileAccess.Read,
+                        FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096, useAsync: true);
+                    using var reader = new StreamReader(stream);
+                    kind = ParseRoomKind(await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false));
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (JsonException)
+        {
+            // RetryOnSharingViolationAsync already rode out the transient torn-read window, so a
+            // marker that still will not parse is corrupt rather than mid-write.
+            kind = RoomKind.Interactive;
+        }
+
+        return kind;
+    }
+
+    /// <summary>
+    /// Synchronous <see cref="ReadRoomKindAsync"/>, for the one caller that decides a kind while
+    /// building a process's environment (the agy HOME redirect) and is not on an async path.
+    /// </summary>
+    public static RoomKind ReadRoomKind(string roomDirectoryPath)
+    {
+        var markerPath = Path.Combine(roomDirectoryPath, ".aer", AerPaths.RoomMetadataFileName);
+        if (!File.Exists(markerPath)) return RoomKind.Workflow;
+
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                using var stream = new FileStream(
+                    markerPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(stream);
+                return ParseRoomKind(reader.ReadToEnd());
+            }
+            catch (Exception ex) when (attempt < MetadataIoAttempts
+                                       && ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                Thread.Sleep(MetadataIoRetryDelay);
+            }
+            catch (JsonException)
+            {
+                // Final attempt saw a corrupt (not merely mid-write) marker -- see ReadRoomKindAsync.
+                return RoomKind.Interactive;
+            }
+        }
+    }
+
+    private static RoomKind ParseRoomKind(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("Kind", out var kindEl)
+               && kindEl.ValueKind == JsonValueKind.String
+               && Enum.TryParse<RoomKind>(kindEl.GetString(), ignoreCase: true, out var parsed)
+            ? parsed
+            // A present marker with no parseable Kind is a pre-0013 interactive session file, whose
+            // presence alone denoted interactive.
+            : RoomKind.Interactive;
+    }
+
+    /// <summary>
+    /// Writes a workflow room's minimal <c>.aer/room.json</c> marker (<c>{ "Kind": "Workflow" }</c>)
+    /// at materialization, using the same write discipline as <see cref="SaveMetadataAsync"/>. The
+    /// marker is defensive rather than load-bearing — an absent one already reads as a workflow room
+    /// — but it makes the room self-describing on disk instead of implied by a missing file.
+    /// </summary>
+    public static async Task WriteWorkflowRoomMarkerAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
+    {
+        var markerPath = Path.Combine(roomDirectoryPath, ".aer", AerPaths.RoomMetadataFileName);
+        var dir = Path.GetDirectoryName(markerPath);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        var json = JsonSerializer.Serialize(
+            new WorkflowRoomMarker(RoomKind.Workflow),
+            new JsonSerializerOptions { WriteIndented = true });
+
+        await RetryOnSharingViolationAsync(
+            () => File.WriteAllTextAsync(markerPath, json, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private sealed record WorkflowRoomMarker(RoomKind Kind);
 
     /// <summary>
     /// Retries <paramref name="action"/> through the transient states of a concurrently

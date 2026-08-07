@@ -14,10 +14,10 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     /// <summary>Current remote-access state, for the Enable Remote Access view (M21 Phase 3, issue #234).</summary>
-    public sealed record RemoteAccessStatus(bool IsRemote, int Port, bool HasRunningTasks);
+    public sealed record RemoteAccessStatus(bool IsRemote, int Port, bool HasRunningRooms);
 
     /// <summary>A freshly generated pairing code, mirroring <c>/api/pairing/code</c>'s response shape.</summary>
     public sealed record PairingCode(string Code, int ExpiresInSeconds);
@@ -36,7 +36,7 @@ public sealed partial class TaskSession
             if (meta == null) return null;
 
             var port = new Uri(_activeDaemonUrl).Port;
-            return new RemoteAccessStatus(meta.IsRemote, port, meta.HasRunningTasks);
+            return new RemoteAccessStatus(meta.IsRemote, port, meta.HasRunningRooms);
         }
         catch
         {
@@ -150,7 +150,7 @@ public sealed partial class TaskSession
     /// (<c>Aer.Daemon/Program.cs</c> bakes the bind address in at startup) — so this shuts the
     /// daemon down and respawns it with/without <c>--remote</c>, reusing the same
     /// shutdown-then-respawn move <see cref="EnsureDaemonConnectedAsync"/> already makes on version
-    /// skew. Refuses while a task is in flight, since bouncing the daemon would orphan it.
+    /// skew. Refuses while a room is in flight, since bouncing the daemon would orphan it.
     /// </summary>
     public async Task<MutationOutcome> SetRemoteEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
     {
@@ -174,8 +174,8 @@ public sealed partial class TaskSession
             LogToggleDiagnostic("GetRemoteAccessStatusAsync returned null -> Could not reach Aer.Daemon."); // vocabulary-ok: diagnostic log
             return new MutationOutcome("Could not reach the Baton daemon.");
         }
-        LogToggleDiagnostic($"status: IsRemote={status.IsRemote}, HasRunningTasks={status.HasRunningTasks}, Port={status.Port}");
-        if (status.HasRunningTasks) return new MutationOutcome("Can't change remote access while a task is running — finish or pause it first.");
+        LogToggleDiagnostic($"status: IsRemote={status.IsRemote}, HasRunningRooms={status.HasRunningRooms}, Port={status.Port}");
+        if (status.HasRunningRooms) return new MutationOutcome("Can't change remote access while a room is running — finish or pause it first.");
         if (status.IsRemote == enabled) return new MutationOutcome(null);
 
         await ShutdownDaemonAsync().ConfigureAwait(true);

@@ -6,7 +6,7 @@ using Aer.Ui;
 namespace Aer.Ui.Tests.TestSupport;
 
 /// <summary>
-/// Serializes a <see cref="TaskProjection"/> (plus its <see cref="DagLayout"/>) into a stable,
+/// Serializes a <see cref="RoomProjection"/> (plus its <see cref="DagLayout"/>) into a stable,
 /// comparable text form for the M14 Phase 5 golden-projection gate (issue #122) — UI spec §11 made
 /// executable. Two things would otherwise defeat any golden comparison of the real read model: every
 /// ID minted via <c>Guid.NewGuid()</c> at bind/dispatch time (<see cref="ExecutionId"/>,
@@ -29,7 +29,7 @@ internal static class GoldenProjectionCanonicalizer
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public static string Canonicalize(TaskProjection projection, DagLayout dagLayout)
+    public static string Canonicalize(RoomProjection projection, DagLayout dagLayout)
     {
         var executionIdTokens = BuildExecutionIdTokens(projection);
         var decisionIdTokens = BuildDecisionIdTokens(projection.History.Decisions);
@@ -143,7 +143,7 @@ internal static class GoldenProjectionCanonicalizer
         };
     }
 
-    private static IReadOnlyDictionary<ExecutionId, string> BuildExecutionIdTokens(TaskProjection projection)
+    private static IReadOnlyDictionary<ExecutionId, string> BuildExecutionIdTokens(RoomProjection projection)
     {
         var tokens = new Dictionary<ExecutionId, string>();
         foreach (var execution in projection.Lineage.Executions)

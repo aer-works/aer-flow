@@ -8,9 +8,9 @@ one-liner, three separate times, and got three different bugs from it:
   * `WorkflowTemplateVersion` must be an int, not a semver string -- guessed wrong the first time.
   * `Steps[].Inputs` / `Contract.OptionalMetadata` must be JSON arrays, not objects -- guessed wrong
     the second time.
-  * A relative `--task-dir` resolves against the CLI's own cwd, but `agy` runs with cwd set to
+  * A relative `--room-dir` resolves against the CLI's own cwd, but `agy` runs with cwd set to
     `WorkingDirectory` (`GeminiWorkerAdapter.cs`'s own `--add-dir` comment explains why: `agy -p`
-    ignores the process working directory entirely) -- so a relative task-dir and an explicit
+    ignores the process working directory entirely) -- so a relative room-dir and an explicit
     `WorkingDirectory` silently produce an `AER_OUTPUT_DIR` the dispatched process resolves against
     the wrong root. The run exits 0, the workflow step is reported `Failed`, and `flow.jsonl` gives
     no hint why (`FailureClassification` is null). This actually happened; see git history around
@@ -1191,7 +1191,7 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     parser.add_argument("--timeout-minutes", type=int, default=None)
     parser.add_argument("--dry-run", action="store_true",
                         help="Resolve the template, run every guard, generate workflow/bindings, then stop without dispatching. Spends nothing.")
-    parser.add_argument("--scratch-root", type=Path, default=None, help="Where to write the generated workflow/bindings/task-dir. Default: <repo>/aer-agy-loop-scratch/runs/<uuid>.")
+    parser.add_argument("--scratch-root", type=Path, default=None, help="Where to write the generated workflow/bindings/room-dir. Default: <repo>/aer-agy-loop-scratch/runs/<uuid>.")
     parser.add_argument("--cli-path", type=Path, default=None, help="Path to Aer.Cli.exe. Default: a published COPY of the repo bin (refreshed when the repo bin is newer) so the engine never holds the repo's own binaries -- #717. Passing this flag skips the copy entirely.")
     parser.add_argument("--worktree", metavar="BRANCH", default=None, help="Provision (or reuse) a sibling git worktree of --working-directory on this existing branch -- submodules initialised, native lib built -- and dispatch there instead. #717: a worker that builds or tests never works in the live repo.")
     parser.add_argument("--review-ref", metavar="REF", default=None, help="Review a ref without checking it out: the ENGINE provisions a read-only worktree of --working-directory (defaults to the current directory) at REF and tears it down on completion (#669). No native build -- for reviews, which do not build. Mutually exclusive with --worktree; --working-directory becomes optional.")
@@ -1207,13 +1207,13 @@ def build_parser(argv=None) -> argparse.ArgumentParser:
     return parser
 
 
-def _print_vendor_logs(task_dir: Path) -> None:
+def _print_vendor_logs(room_dir: Path) -> None:
     """#983: the vendor CLI's own account of a failed run -- the tail of every vendor-*.log the
     bindings requested (build_bindings' vendor_log_dir). Printed only on failure paths, beside
     flow.jsonl: flow.jsonl says WHAT the engine saw (exit code, stderr tail), this says WHY the
     vendor died, which one opaque stderr line ("Agent execution terminated due to error.") never
     does."""
-    for vendor_log in sorted(task_dir.glob("vendor-*.log")):
+    for vendor_log in sorted(room_dir.glob("vendor-*.log")):
         print(f"\n--- {vendor_log.name} (last 20 lines) ---", file=sys.stderr)
         try:
             lines = vendor_log.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -1224,7 +1224,7 @@ def _print_vendor_logs(task_dir: Path) -> None:
             print(f" {line}", file=sys.stderr)
 
 
-def _print_flow_log(log_path: Path, log_bytes_before: int | None, log_mtime_before: float | None, task_dir: Path) -> None:
+def _print_flow_log(log_path: Path, log_bytes_before: int | None, log_mtime_before: float | None, room_dir: Path) -> None:
     print(f"\n--- flow.jsonl ({log_path}) ---", file=sys.stderr)
     if not log_path.exists():
         print("(not written -- `aer run` failed before recording anything)", file=sys.stderr)
@@ -1235,7 +1235,7 @@ def _print_flow_log(log_path: Path, log_bytes_before: int | None, log_mtime_befo
             fh.seek(log_bytes_before)
             fresh = fh.read()
         print(f"(the first {log_bytes_before} bytes belong to an EARLIER run in this reused"
-              " task-dir and are withheld -- flow.jsonl is append-only, so they would read as"
+              " room-dir and are withheld -- flow.jsonl is append-only, so they would read as"
               " this run's events. Only what this run appended is shown.)", file=sys.stderr)
         print(fresh, file=sys.stderr)
     elif log_mtime_before is not None and log_path.stat().st_mtime == log_mtime_before:
@@ -1244,7 +1244,7 @@ def _print_flow_log(log_path: Path, log_bytes_before: int | None, log_mtime_befo
         print("(NOT THIS RUN -- this log predates the dispatch and was not touched by it.", file=sys.stderr)
         print(" `aer run` failed before writing any event, so there are no diagnostics for this", file=sys.stderr)
         print(" run. The stale contents are withheld deliberately; they describe other work.", file=sys.stderr)
-        print(f" Cause is almost always a reused --scratch-root: {task_dir} already existed.", file=sys.stderr)
+        print(f" Cause is almost always a reused --scratch-root: {room_dir} already existed.", file=sys.stderr)
         print(" Omit --scratch-root to get a fresh runs/<uuid> directory.)", file=sys.stderr)
     else:
         print(log_path.read_text(encoding="utf-8"), file=sys.stderr)
@@ -1531,7 +1531,7 @@ def main() -> int:
     run_id = uuid.uuid4().hex[:12]
     scratch_root = (args.scratch_root or (repo_root / "aer-agy-loop-scratch" / "runs" / run_id)).resolve()
     scratch_root.mkdir(parents=True, exist_ok=True)
-    task_dir = scratch_root / "task-dir"
+    room_dir = scratch_root / "room-dir"
 
     if args.dialogue:
         dialogue_config_path = scratch_root / "dialogue-config.json"
@@ -1541,7 +1541,7 @@ def main() -> int:
             dialogue_worker_name, args.final_output, _forward_slashes(dialogue_config_path), dialogue_timeout)
     else:
         workflow = build_workflow(steps=step_specs)
-        bindings = build_bindings(steps=step_specs, vendor_log_dir=_forward_slashes(task_dir))
+        bindings = build_bindings(steps=step_specs, vendor_log_dir=_forward_slashes(room_dir))
 
     workflow_path = scratch_root / "workflow.json"
     bindings_path = scratch_root / "bindings.json"
@@ -1590,13 +1590,13 @@ def main() -> int:
 
     if args.dry_run:
         # Stops HERE, after the JSON is generated, not before. The three bugs this script exists to
-        # stop -- an int WorkflowTemplateVersion, arrays rather than objects, an absolute task-dir --
+        # stop -- an int WorkflowTemplateVersion, arrays rather than objects, an absolute room-dir --
         # all live in the build above, so a dry run that skipped it would validate the half that was
         # never the problem.
         print("[dispatch.py] DRY RUN -- nothing was dispatched and nothing was spent.")
         print(f"    workflow:   {workflow_path}")
         print(f"    bindings:   {bindings_path}")
-        print(f"    task-dir:   {_forward_slashes(task_dir)}")
+        print(f"    room-dir:   {_forward_slashes(room_dir)}")
         print(f"    Aer.Cli:    {cli_path}"
               f"{'' if cli_path.exists() else '   <-- NOT BUILT; a real run would fail here'}")
         if args.dialogue:
@@ -1614,11 +1614,11 @@ def main() -> int:
     # Captured BEFORE the run. A reused --scratch-root carries a previous dispatch's log, and
     # printing it on failure hands over another run's PID and exit reason as this run's diagnostics
     # -- which reads as "AER ran the wrong workflow" rather than "AER wrote nothing".
-    log_path = task_dir / "flow.jsonl"
+    log_path = room_dir / "flow.jsonl"
     # Both the mtime AND the byte length. flow.jsonl is APPEND-only -- `FlowEventLogWriter` appends
-    # lines and nothing truncates (the daemon has to DELETE the file to reset a task directory) -- so
+    # lines and nothing truncates (the daemon has to DELETE the file to reset a room directory) -- so
     # an mtime check alone only catches the zero-event case. If `aer run` writes even one event into a
-    # reused task-dir, the mtime moves, and printing the file hands over BOTH runs' events
+    # reused room-dir, the mtime moves, and printing the file hands over BOTH runs' events
     # interleaved, with the prior run's PID and exit reason reading as this run's. The length lets the
     # stale prefix be sliced off and labelled instead of silently prepended.
     log_bytes_before = log_path.stat().st_size if log_path.exists() else None
@@ -1645,8 +1645,8 @@ def main() -> int:
             str(workflow_path),
             "--bindings",
             str(bindings_path),
-            "--task-dir",
-            _forward_slashes(task_dir),
+            "--room-dir",
+            _forward_slashes(room_dir),
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1686,8 +1686,8 @@ def main() -> int:
             _print_workspace_truth(working_directory, head_before, head_before_err)
         if engine_stderr:
             print(engine_stderr, file=sys.stderr, end="")
-        _print_flow_log(log_path, log_bytes_before, log_mtime_before, task_dir)
-        _print_vendor_logs(task_dir)
+        _print_flow_log(log_path, log_bytes_before, log_mtime_before, room_dir)
+        _print_vendor_logs(room_dir)
         return 1
 
     result = subprocess.CompletedProcess(engine.args, engine.returncode, engine_stdout, engine_stderr)
@@ -1697,8 +1697,8 @@ def main() -> int:
     truth_ok = True if args.dialogue else _print_workspace_truth(working_directory, head_before, head_before_err)
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr, end="")
-        _print_flow_log(log_path, log_bytes_before, log_mtime_before, task_dir)
-        _print_vendor_logs(task_dir)
+        _print_flow_log(log_path, log_bytes_before, log_mtime_before, room_dir)
+        _print_vendor_logs(room_dir)
         return result.returncode
 
     if not truth_ok:
@@ -1706,7 +1706,7 @@ def main() -> int:
         return 1
 
     primary_output_name = args.final_output if args.dialogue else ("report.md" if args.lane else args.output_name)
-    artifacts_dir = task_dir / "artifacts"
+    artifacts_dir = room_dir / "artifacts"
     output_files = list(artifacts_dir.glob(f"*/{primary_output_name}")) if artifacts_dir.exists() else []
     if not output_files:
         print(f"error: workflow reported success but no '{primary_output_name}' artifact was found under {artifacts_dir}", file=sys.stderr)

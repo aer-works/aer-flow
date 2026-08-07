@@ -110,7 +110,7 @@ public static class WorkerBindingConfigParser
     /// A missing file (or missing parent directory), or malformed/invalid contents. A missing file
     /// surfaces as this typed exception, not the raw <see cref="FileNotFoundException"/> the CLI boundary
     /// cannot catch — the same translation <c>WorkflowDefinitionParser.LoadFromFileAsync</c> documents.
-    /// Every command that resumes a task (run/decide/supply/cancel) loads its <c>--bindings</c> through
+    /// Every command that resumes a room (run/decide/supply/cancel) loads its <c>--bindings</c> through
     /// here without a prior existence check, so this is the single place the missing-file case is caught
     /// for all of them.
     /// </exception>

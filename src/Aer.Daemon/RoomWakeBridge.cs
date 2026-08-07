@@ -11,13 +11,13 @@ namespace Aer.Daemon;
 /// "holder" shape as <c>BindingsPathHolder</c> in Program.cs. Nothing here is worth
 /// crash-proofing (#799's contract): on restart a fresh <see cref="RoomWakeBridge"/> starts
 /// dormant until re-pointed, and the wake set it then produces is identical because it is derived
-/// fresh from the room and lane journals, never carried over.
+/// fresh from the room and workflow journals, never carried over.
 /// </summary>
 public sealed class RoomWakeBridgeState
 {
     private volatile string? _roomDirectoryPath;
     private volatile IReadOnlyList<RoomWake> _currentWakes = [];
-    private volatile IReadOnlyList<LaneProbeFailure> _currentProbeFailures = [];
+    private volatile IReadOnlyList<WorkflowProbeFailure> _currentProbeFailures = [];
 
     public string? RoomDirectoryPath
     {
@@ -32,35 +32,35 @@ public sealed class RoomWakeBridgeState
     }
 
     /// <summary>
-    /// Refs whose lane probe threw on the latest tick — surfaced rather than logged-and-lost,
-    /// because a person asking "why is there no wake for that lane?" must be able to see the
+    /// Refs whose workflow probe threw on the latest tick — surfaced rather than logged-and-lost,
+    /// because a person asking "why is there no wake for that workflow?" must be able to see the
     /// answer ("any state should be surfaced", operator, 2026-07-30). A failed probe asserts
-    /// nothing about the lane; the next tick re-probes and self-heals once the write settles.
+    /// nothing about the workflow; the next tick re-probes and self-heals once the write settles.
     /// </summary>
-    public IReadOnlyList<LaneProbeFailure> CurrentProbeFailures
+    public IReadOnlyList<WorkflowProbeFailure> CurrentProbeFailures
     {
         get => _currentProbeFailures;
         internal set => _currentProbeFailures = value;
     }
 }
 
-/// <summary>One lane whose probe threw this tick: the ref and the exception's message.</summary>
-public sealed record LaneProbeFailure(HeldWorkRef Ref, string Error);
+/// <summary>One workflow whose probe threw this tick: the ref and the exception's message.</summary>
+public sealed record WorkflowProbeFailure(HeldWorkRef Ref, string Error);
 
 /// <summary>
-/// One tick's full derivation output: the wake set plus every lane whose probe failed. Never
+/// One tick's full derivation output: the wake set plus every workflow whose probe failed. Never
 /// persisted, like the wakes themselves.
 /// </summary>
-public sealed record RoomWakeTick(IReadOnlyList<RoomWake> Wakes, IReadOnlyList<LaneProbeFailure> ProbeFailures);
+public sealed record RoomWakeTick(IReadOnlyList<RoomWake> Wakes, IReadOnlyList<WorkflowProbeFailure> ProbeFailures);
 
 /// <summary>
 /// Daemon-hosted derivation of the room's wake set (#799): watches <c>room.jsonl</c> for appends
 /// by length-poll (<c>Aer.Cli.StatusCommand</c>'s own precedent — filesystem change notifications
 /// are unreliable cross-platform), recomputes which held-work refs are unresolved, and re-probes
-/// each of those lanes' <c>flow.jsonl</c> every tick via <see cref="LaneTerminalProbe"/> — taking no
-/// lane's <see cref="Aer.Flow.Concurrency.ConcurrencyGuard"/> for any of it.
+/// each of those workflows' <c>flow.jsonl</c> every tick via <see cref="WorkflowTerminalProbe"/> — taking no
+/// workflow's <see cref="Aer.Flow.Concurrency.ConcurrencyGuard"/> for any of it.
 /// <para>
-/// #878: that used to read "never taking the room's or any lane's" guard, and the room half was
+/// #878: that used to read "never taking the room's or any workflow's" guard, and the room half was
 /// false. The same tick also sweeps for new memory proposals, and escalating one goes through
 /// <c>RoomMutationInterface.DispatchHeldWorkAsync</c>, which <b>does</b> take the room's guard. It is
 /// conditional — a capture file already in the projected state is skipped, so an idle tick locks
@@ -106,7 +106,7 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
             }
             catch (Exception ex)
             {
-                // A malformed journal or a lane mid-write must not kill the bridge's own loop --
+                // A malformed journal or a workflow mid-write must not kill the bridge's own loop --
                 // the next tick re-reads from scratch and self-heals the moment the write settles.
                 Console.Error.WriteLine($"RoomWakeBridge: derivation failed, will retry next tick: {ex}");
             }
@@ -142,7 +142,7 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
     }
 
     /// <summary>
-    /// Public as the pure-plus-probe seam: room state and lane probes are computed here, but the
+    /// Public as the pure-plus-probe seam: room state and workflow probes are computed here, but the
     /// actual set assembly is <see cref="RoomWakeDerivation.DeriveWakes"/> alone — exercised
     /// directly by the pure-derivation unit tests without spinning up a hosted service.
     /// </summary>
@@ -154,8 +154,8 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
         var roomEvents = await reader.ReadAllRoomEventsAsync(cancellationToken).ConfigureAwait(false);
         var roomState = RoomProjector.Project(roomEvents);
 
-        var probes = new Dictionary<HeldWorkRef, LaneProbeResult>();
-        var probeFailures = new List<LaneProbeFailure>();
+        var probes = new Dictionary<HeldWorkRef, WorkflowProbeResult>();
+        var probeFailures = new List<WorkflowProbeFailure>();
         foreach (var (@ref, heldWork) in roomState.HeldWork)
         {
             if (heldWork.Status == HeldWorkStatus.Resolved)
@@ -170,13 +170,13 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
                 continue;
             }
 
-            // Per-ref isolation: one lane's transiently malformed or mid-write snapshot/journal
-            // must suppress only that lane's wake for this tick, never the whole room's recompute.
+            // Per-ref isolation: one workflow's transiently malformed or mid-write snapshot/journal
+            // must suppress only that workflow's wake for this tick, never the whole room's recompute.
             // The failed ref stays out of the probe dictionary -- DeriveWakes documents a missing
             // entry as "not (yet) probed, no wake" -- and is surfaced on the tick instead.
             try
             {
-                probes[@ref] = await LaneTerminalProbe.ProbeAsync(@ref.LaneDirectoryPath, cancellationToken)
+                probes[@ref] = await WorkflowTerminalProbe.ProbeAsync(@ref.AsWorkflowDirectoryPath(), cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -185,7 +185,7 @@ public sealed class RoomWakeBridge(RoomWakeBridgeState state) : BackgroundServic
             }
             catch (Exception ex)
             {
-                probeFailures.Add(new LaneProbeFailure(@ref, ex.Message));
+                probeFailures.Add(new WorkflowProbeFailure(@ref, ex.Message));
             }
         }
 

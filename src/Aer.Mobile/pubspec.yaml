@@ -35,9 +35,9 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
-  # REST calls to Aer.Daemon's /api/tasks/* and /api/pairing/* endpoints.
+  # REST calls to Aer.Daemon's /api/rooms/* and /api/pairing/* endpoints.
   http: ^1.2.2
-  # The live TaskProjection stream from Aer.Daemon's /api/ws.
+  # The live RoomProjection stream from Aer.Daemon's /api/ws.
   web_socket_channel: ^3.0.1
   # The paired-client bearer token is a credential, not preference data — stored in the
   # platform keystore (Android Keystore-backed EncryptedSharedPreferences), never plaintext.

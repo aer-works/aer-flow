@@ -3,7 +3,7 @@ using Aer.Flow.Domain;
 namespace Aer.Cli;
 
 /// <summary>
-/// Parses <c>aer decide</c>'s arguments: <c>aer decide &lt;task-dir&gt; --execution &lt;execution-id&gt;
+/// Parses <c>aer decide</c>'s arguments: <c>aer decide &lt;room-dir&gt; --execution &lt;execution-id&gt;
 /// --type resume|reject|retry-with-revision|supersede [--target-step &lt;step-id&gt;]
 /// [--supplementary &lt;execution-id&gt;] --bindings &lt;bindings-file&gt; [--workflow-id &lt;id&gt;]</c>.
 /// Never throws a bare <see cref="InvalidOperationException"/> for a malformed invocation — every
@@ -15,12 +15,12 @@ namespace Aer.Cli;
 public static class DecideOptionsParser
 {
     private const string Usage =
-        "Usage: aer decide <task-dir> --execution <execution-id> --type resume|reject|retry-with-revision|supersede " +
+        "Usage: aer decide <room-dir> --execution <execution-id> --type resume|reject|retry-with-revision|supersede " +
         "[--target-step <step-id>] [--supplementary <execution-id>] --bindings <bindings-file> [--workflow-id <id>]";
 
     public static DecideOptions Parse(IReadOnlyList<string> args)
     {
-        string? taskDirectoryPath = null;
+        string? roomDirectoryPath = null;
         string? executionId = null;
         string? typeText = null;
         string? targetStep = null;
@@ -58,20 +58,20 @@ public static class DecideOptionsParser
                         throw new CliArgumentException($"Unknown option '{arg}'. {Usage}");
                     }
 
-                    if (taskDirectoryPath is not null)
+                    if (roomDirectoryPath is not null)
                     {
                         throw new CliArgumentException($"Unexpected extra argument '{arg}'. {Usage}");
                     }
 
-                    taskDirectoryPath = arg;
+                    roomDirectoryPath = arg;
                     i++;
                     break;
             }
         }
 
-        if (taskDirectoryPath is null)
+        if (roomDirectoryPath is null)
         {
-            throw new CliArgumentException($"Missing required <task-dir> argument. {Usage}");
+            throw new CliArgumentException($"Missing required <room-dir> argument. {Usage}");
         }
 
         if (executionId is null)
@@ -92,7 +92,7 @@ public static class DecideOptionsParser
         var decisionType = ParseDecisionType(typeText);
 
         return new DecideOptions(
-            TaskDirectoryPath.Resolve(taskDirectoryPath),
+            RoomDirectoryPath.Resolve(roomDirectoryPath),
             executionId,
             decisionType,
             targetStep is null ? null : new StepId(targetStep),

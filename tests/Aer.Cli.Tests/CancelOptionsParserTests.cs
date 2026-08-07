@@ -4,11 +4,11 @@ namespace Aer.Cli.Tests;
 public class CancelOptionsParserTests
 {
     [Fact]
-    public void A_task_directory_execution_id_and_bindings_option_parse_with_null_workflow_id()
+    public void A_room_directory_execution_id_and_bindings_option_parse_with_null_workflow_id()
     {
         var options = CancelOptionsParser.Parse(["task", "--execution", "exec-1", "--bindings", "bindings.json"]);
 
-        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.RoomDirectoryPath);
         Assert.Equal("exec-1", options.ExecutionId);
         Assert.Equal("bindings.json", options.BindingsFilePath);
         Assert.Null(options.WorkflowId);
@@ -20,24 +20,24 @@ public class CancelOptionsParserTests
         var options = CancelOptionsParser.Parse(
             ["task", "--execution", "exec-1", "--bindings", "bindings.json", "--workflow-id", "wf-1"]);
 
-        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.RoomDirectoryPath);
         Assert.Equal("exec-1", options.ExecutionId);
         Assert.Equal("bindings.json", options.BindingsFilePath);
         Assert.Equal("wf-1", options.WorkflowId);
     }
 
     [Fact]
-    public void Options_may_precede_the_positional_task_directory()
+    public void Options_may_precede_the_positional_room_directory()
     {
         var options = CancelOptionsParser.Parse(["--execution", "exec-1", "--bindings", "bindings.json", "task"]);
 
-        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.RoomDirectoryPath);
         Assert.Equal("exec-1", options.ExecutionId);
         Assert.Equal("bindings.json", options.BindingsFilePath);
     }
 
     [Fact]
-    public void A_missing_task_directory_throws()
+    public void A_missing_room_directory_throws()
     {
         Assert.Throws<CliArgumentException>(() => CancelOptionsParser.Parse(["--execution", "exec-1", "--bindings", "bindings.json"]));
     }

@@ -36,10 +36,10 @@ public class WorkflowEndToEndTests
     public async Task A_three_step_linear_workflow_loaded_from_a_fixture_file_runs_to_completion()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-        var snapshotPath = Path.Combine(taskDirectory, "snapshot.json");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
+        var snapshotPath = Path.Combine(roomDirectory, "snapshot.json");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
@@ -67,7 +67,7 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-e2e"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-e2e"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(3, finalState.Steps.Count);
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
@@ -80,43 +80,43 @@ public class WorkflowEndToEndTests
             // The guard (§15) was held for the whole run above; its lock file is left on disk once
             // released, proving the run actually went through it and that release doesn't erase
             // the file (a sentinel-file scheme would instead delete it to signal "unlocked").
-            Assert.True(File.Exists(Path.Combine(taskDirectory, "flow.lock")));
+            Assert.True(File.Exists(Path.Combine(roomDirectory, "flow.lock")));
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
-    public async Task A_second_concurrent_run_against_the_same_task_directory_is_rejected()
+    public async Task A_second_concurrent_run_against_the_same_room_directory_is_rejected()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
 
-            using var heldByAnotherInstance = ConcurrencyGuard.Acquire(taskDirectory);
+            using var heldByAnotherInstance = ConcurrencyGuard.Acquire(roomDirectory);
 
-            await using var writer = new FlowEventLogWriter(Path.Combine(taskDirectory, "flow.jsonl"));
-            var reader = new FlowEventLogReader(Path.Combine(taskDirectory, "flow.jsonl"));
+            await using var writer = new FlowEventLogWriter(Path.Combine(roomDirectory, "flow.jsonl"));
+            var reader = new FlowEventLogReader(Path.Combine(roomDirectory, "flow.jsonl"));
             var dispatcher = new CoreDispatcher(writer);
 
             await Assert.ThrowsAsync<WorkflowLockedException>(() => MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-e2e-locked"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 new Dictionary<string, WorkerBinding>(),
-                Path.Combine(taskDirectory, "artifacts"),
+                Path.Combine(roomDirectory, "artifacts"),
                 reader,
                 writer,
                 dispatcher, cancellationToken: TestContext.Current.CancellationToken));
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -124,9 +124,9 @@ public class WorkflowEndToEndTests
     public async Task A_diamond_dag_workflow_loaded_from_a_fixture_file_runs_all_four_steps_to_completion()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "diamond-dag-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
@@ -157,7 +157,7 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-diamond"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-diamond"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(4, finalState.Steps.Count);
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
@@ -175,7 +175,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -183,10 +183,10 @@ public class WorkflowEndToEndTests
     public async Task A_mechanically_flaky_worker_retries_and_downstream_uses_the_successful_attempts_output()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "flaky-retry-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-        var markerFilePath = Path.Combine(taskDirectory, "flaky.marker");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
+        var markerFilePath = Path.Combine(roomDirectory, "flaky.marker");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
@@ -209,7 +209,7 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-flaky"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-flaky"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var stepStateById = finalState.Steps.ToDictionary(s => s.StepId);
             Assert.Equal(StepStatus.Succeeded, stepStateById[Flaky].Status);
@@ -233,7 +233,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -241,11 +241,11 @@ public class WorkflowEndToEndTests
     public async Task A_worker_using_bounded_self_iteration_retries_until_its_output_condition_is_satisfied()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "self-iteration-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-        var scriptDirectory = Path.Combine(taskDirectory, "scripts");
-        var markerFilePath = Path.Combine(taskDirectory, "reviewer.marker");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
+        var scriptDirectory = Path.Combine(roomDirectory, "scripts");
+        var markerFilePath = Path.Combine(roomDirectory, "reviewer.marker");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
@@ -268,7 +268,7 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-self-iteration"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-self-iteration"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var reviewerState = finalState.Steps.Single(s => s.StepId == Reviewer);
             Assert.Equal(StepStatus.Succeeded, reviewerState.Status);
@@ -289,7 +289,7 @@ public class WorkflowEndToEndTests
 
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -297,10 +297,10 @@ public class WorkflowEndToEndTests
     public async Task A_worker_reporting_a_permanent_failure_classification_is_not_retried_despite_remaining_budget()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "permanent-failure-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-        var scriptDirectory = Path.Combine(taskDirectory, "scripts");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
+        var scriptDirectory = Path.Combine(roomDirectory, "scripts");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
@@ -319,7 +319,7 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-permanent"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-permanent"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var permanentState = finalState.Steps.Single(s => s.StepId == Permanent);
             Assert.Equal(StepStatus.Failed, permanentState.Status);
@@ -331,7 +331,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -339,9 +339,9 @@ public class WorkflowEndToEndTests
     public async Task An_always_failing_worker_is_retried_exactly_up_to_MaxAttempts_then_stays_terminally_failed()
     {
         var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "exhaustion-workflow.json");
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
@@ -364,7 +364,7 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-exhaustion"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-exhaustion"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var stepStateById = finalState.Steps.ToDictionary(s => s.StepId);
             Assert.Equal(StepStatus.Failed, stepStateById[Flaky].Status);
@@ -384,7 +384,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -517,10 +517,10 @@ public class WorkflowEndToEndTests
     [Fact]
     public async Task ExecutionFailed_event_records_stderr_fragment_when_real_worker_exits_1_with_stderr()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-        var snapshotPath = Path.Combine(taskDirectory, "snapshot.json");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
+        var snapshotPath = Path.Combine(roomDirectory, "snapshot.json");
         try
         {
             var step = new WorkflowStepDefinition(
@@ -555,7 +555,7 @@ public class WorkflowEndToEndTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-stderr-test"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-stderr-test"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var events = await reader.ReadAllAsync(TestContext.Current.CancellationToken);
             var failedEvent = events.OfType<FlowEvent.ExecutionFailed>().Single();
@@ -565,7 +565,7 @@ public class WorkflowEndToEndTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 

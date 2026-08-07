@@ -2,7 +2,7 @@ namespace Aer.Adapters;
 
 /// <summary>
 /// The single seam through which every reference to AER's per-machine storage root — the
-/// <c>~/.aer</c> directory that holds tasks, sessions, profiles, the projects list, the daemon
+/// <c>~/.aer</c> directory that holds rooms, profiles, the projects list, the daemon
 /// token and paired-client records — is resolved. Before this type those seventeen sites each
 /// re-derived <c>Path.Combine(UserProfile, ".aer", …)</c> inline, so nothing could point the
 /// whole tree somewhere else at once; routing them here makes redirection a one-line change and
@@ -58,31 +58,35 @@ public static class AerPaths
     }
 
     /// <summary>
-    /// <c>{Root}/sessions</c> — <b>the</b> record root. Decision 0001 deletes "task" from the product
-    /// and defines a session as a running instance of a workflow, so this holds every record: a DAG
-    /// run is a session whose workflow is an authored pipeline, exactly as a chat is a session whose
-    /// workflow is the conversation shape.
+    /// <c>{Root}/rooms</c> — <b>the</b> record root: every room lives here, whatever its kind. What a
+    /// room's kind means and how its <c>.aer/room.json</c> marker (<see cref="RoomMetadataFileName"/>)
+    /// records it is defined on <see cref="RoomKind"/>; this type only names where rooms are stored.
     /// </summary>
-    public static string Sessions => Path.Combine(Root, SessionsDirectoryName);
+    public static string Rooms => Path.Combine(Root, RoomsDirectoryName);
 
-    /// <summary>Directory name of <see cref="Sessions"/> relative to a root.</summary>
-    public const string SessionsDirectoryName = "sessions";
+    /// <summary>Directory name of <see cref="Rooms"/> relative to a root.</summary>
+    public const string RoomsDirectoryName = "rooms";
+
+    /// <summary>
+    /// Filename, under a room's <c>.aer</c> directory, of the room marker whose <c>Kind</c> field
+    /// distinguishes an interactive-session room from a workflow room. For an interactive room this
+    /// file is the serialized session metadata (kind included); for a workflow room it is a minimal
+    /// <c>{ "Kind": "Workflow" }</c> marker. Its absence is read as a workflow room.
+    /// </summary>
+    public const string RoomMetadataFileName = "room.json";
 
     /// <summary>
     /// <c>{Root}/worker-launch</c> — files AER writes to pass per-spawn configuration to a vendor
     /// CLI via an explicit flag rather than the CLI's own directory-based discovery (#533). Unlike
-    /// <see cref="Sessions"/> this directory holds no operator-authored content: everything under it
+    /// <see cref="Rooms"/> this directory holds no operator-authored content: everything under it
     /// is AER-owned and machine-written, the vendor-specific filename and content chosen by whichever
     /// adapter in <c>Aer.Adapters</c> needs it (Architecture Rule 2) — this type only names where it
-    /// lives, the same role it already plays for <see cref="Sessions"/>.
+    /// lives, the same role it already plays for <see cref="Rooms"/>.
     /// </summary>
     public static string WorkerLaunchConfig => Path.Combine(Root, WorkerLaunchConfigDirectoryName);
 
     /// <summary>Directory name of <see cref="WorkerLaunchConfig"/> relative to a root.</summary>
     public const string WorkerLaunchConfigDirectoryName = "worker-launch";
-
-    /// <summary>Directory name of <see cref="LegacyTasks"/> relative to a root.</summary>
-    public const string LegacyTasksDirectoryName = "tasks";
 
     /// <summary>
     /// The canonical key for a record directory: absolute, with any trailing separator removed, so
@@ -113,12 +117,4 @@ public static class AerPaths
     /// remarks for why this errs toward treating two paths as one record.
     /// </summary>
     public static StringComparer RecordKeyComparer => StringComparer.OrdinalIgnoreCase;
-
-    /// <summary>
-    /// <c>{Root}/tasks</c> — the pre-#333 second root, <b>read by the migration only</b>. Nothing
-    /// else may write here or enumerate it: doing so would recreate the parallel-root split that
-    /// scattered <c>isSession</c> special-casing through the daemon and UI. New records always go to
-    /// <see cref="Sessions"/>. Retained (not deleted) after migration so the fold stays reversible.
-    /// </summary>
-    public static string LegacyTasks => Path.Combine(Root, LegacyTasksDirectoryName);
 }

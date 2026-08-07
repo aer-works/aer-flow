@@ -16,24 +16,24 @@ public static class WireFixtureGenerator
 
         var projection = BuildRepresentativeProjection();
 
-        // 1. TaskProjection REST (camelCase)
+        // 1. RoomProjection REST (camelCase)
         var restNode = JsonSerializer.SerializeToNode(projection, DaemonSerializerOptions.Rest)!.AsObject();
         restNode["directoryPath"] = "C:/tasks/foo";
         restNode["sessionId"] = "session-123";
         var workerAdaptersRest = new JsonObject { ["critic"] = "agy" };
         restNode["workerAdapters"] = workerAdaptersRest;
-        fixtures[Path.Combine(RelativeFixturesPath, "task_projection.rest.json")] = FormatJson(restNode, DaemonSerializerOptions.Rest);
+        fixtures[Path.Combine(RelativeFixturesPath, "room_projection.rest.json")] = FormatJson(restNode, DaemonSerializerOptions.Rest);
 
-        // 2. TaskProjection WS (PascalCase envelope)
+        // 2. RoomProjection WS (PascalCase envelope)
         var wsNode = JsonSerializer.SerializeToNode(projection, DaemonSerializerOptions.WebSocket)!.AsObject();
         wsNode["DirectoryPath"] = "C:/tasks/foo";
         wsNode["SessionId"] = "session-123";
         var workerAdaptersWs = new JsonObject { ["critic"] = "agy" };
         wsNode["WorkerAdapters"] = workerAdaptersWs;
-        fixtures[Path.Combine(RelativeFixturesPath, "task_projection.ws.json")] = FormatJson(wsNode, DaemonSerializerOptions.WebSocket);
+        fixtures[Path.Combine(RelativeFixturesPath, "room_projection.ws.json")] = FormatJson(wsNode, DaemonSerializerOptions.WebSocket);
 
-        // 3. TaskFleetItem REST (camelCase)
-        var fleetItem = new TaskFleetItem(
+        // 3. RoomFleetItem REST (camelCase)
+        var fleetItem = new RoomFleetItem(
             "C:/Users/pbree/.aer/tasks/foo",
             "foo",
             "solo-run-template",
@@ -46,13 +46,13 @@ public static class WireFixtureGenerator
             new DateTimeOffset(2026, 8, 3, 15, 0, 0, TimeSpan.Zero));
         fixtures[Path.Combine(RelativeFixturesPath, "fleet_item.rest.json")] = JsonSerializer.Serialize(fleetItem, IndentedOptions(DaemonSerializerOptions.Rest));
 
-        // 4. TaskFleetItem WS (PascalCase)
+        // 4. RoomFleetItem WS (PascalCase)
         fixtures[Path.Combine(RelativeFixturesPath, "fleet_item.ws.json")] = JsonSerializer.Serialize(fleetItem, IndentedOptions(DaemonSerializerOptions.WebSocket));
 
         return fixtures;
     }
 
-    public static TaskProjection BuildRepresentativeProjection()
+    public static RoomProjection BuildRepresentativeProjection()
     {
         var snapId = new WorkflowDefinitionSnapshotId("snap-953");
         var templateId = new WorkflowTemplateId("golden-wire-contract");
@@ -134,7 +134,7 @@ public static class WireFixtureGenerator
 
         var lineage = new ArtifactLineage(executions);
 
-        return new TaskProjection(snapshot, state, history, lineage);
+        return new RoomProjection(snapshot, state, history, lineage);
     }
 
     private static JsonSerializerOptions IndentedOptions(JsonSerializerOptions baseOptions) =>

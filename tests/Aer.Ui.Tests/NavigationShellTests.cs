@@ -43,15 +43,15 @@ public class NavigationShellTests
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-shell-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-shell-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
-    private static async Task<string> CreateTaskDirectoryAsync(
+    private static async Task<string> CreateRoomDirectoryAsync(
         WorkflowDefinitionSnapshot snapshot, IEnumerable<FlowEvent> events, CancellationToken cancellationToken)
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-{Guid.NewGuid():N}");
-        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), cancellationToken);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-{Guid.NewGuid():N}");
+        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), cancellationToken);
 
-        await using (var writer = new FlowEventLogWriter(Path.Combine(taskDirectory, "flow.jsonl")))
+        await using (var writer = new FlowEventLogWriter(Path.Combine(roomDirectory, "flow.jsonl")))
         {
             foreach (var flowEvent in events)
             {
@@ -59,7 +59,7 @@ public class NavigationShellTests
             }
         }
 
-        return taskDirectory;
+        return roomDirectory;
     }
 
     /// <summary>
@@ -72,7 +72,7 @@ public class NavigationShellTests
     {
         var configFilePath = NewConfigFilePath();
         var executionId = new ExecutionId("a-1");
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
@@ -82,28 +82,28 @@ public class NavigationShellTests
         try
         {
             await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+                .RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
             await window.InitializeAsync(TestContext.Current.CancellationToken);
 
-            var card = Assert.Single(window.ViewModel.Home.TaskCards);
+            var card = Assert.Single(window.ViewModel.Home.RoomCards);
 
-            Assert.Equal(TaskCardStatus.Cancelled, card.Status);
+            Assert.Equal(RoomCardStatus.Cancelled, card.Status);
             Assert.Equal("Cancelled", card.StatusText);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     /// <summary>A task paused at critic, with a durable output file for the inbox preview.</summary>
-    private static async Task<string> CreatePausedTaskDirectoryAsync(string reviewContent, CancellationToken cancellationToken)
+    private static async Task<string> CreatePausedRoomDirectoryAsync(string reviewContent, CancellationToken cancellationToken)
     {
         var architectExecutionId = new ExecutionId("a-1");
         var criticExecutionId = new ExecutionId("c-1");
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
@@ -114,14 +114,14 @@ public class NavigationShellTests
             ],
             cancellationToken);
 
-        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         Directory.CreateDirectory(outputDirectory);
         await File.WriteAllTextAsync(Path.Combine(outputDirectory, "review.md"), reviewContent, cancellationToken);
-        return taskDirectory;
+        return roomDirectory;
     }
 
     /// <summary>A task paused at a NeedsInput pause point (#334) — the shape an interactive session settles into: "your turn to reply", not an approval gate.</summary>
-    private static async Task<string> CreateNeedsInputTaskDirectoryAsync(string replyContent, CancellationToken cancellationToken)
+    private static async Task<string> CreateNeedsInputRoomDirectoryAsync(string replyContent, CancellationToken cancellationToken)
     {
         var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
             new WorkflowTemplateId("session-like"),
@@ -136,7 +136,7 @@ public class NavigationShellTests
 
         var architectExecutionId = new ExecutionId("a-1");
         var criticExecutionId = new ExecutionId("c-1");
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
@@ -147,10 +147,10 @@ public class NavigationShellTests
             ],
             cancellationToken);
 
-        var outputDirectory = Path.Combine(taskDirectory, "artifacts", "execution_c-1");
+        var outputDirectory = Path.Combine(roomDirectory, "artifacts", "execution_c-1");
         Directory.CreateDirectory(outputDirectory);
         await File.WriteAllTextAsync(Path.Combine(outputDirectory, "review.md"), replyContent, cancellationToken);
-        return taskDirectory;
+        return roomDirectory;
     }
 
     /// <summary>
@@ -165,7 +165,7 @@ public class NavigationShellTests
         var finishedId = new ExecutionId("f-1");
         var finishedCriticId = new ExecutionId("f-2");
         var cancelledId = new ExecutionId("c-1");
-        var finishedDirectory = await CreateTaskDirectoryAsync(
+        var finishedDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(finishedId, Architect)),
@@ -174,7 +174,7 @@ public class NavigationShellTests
                 new FlowEvent.ExecutionSucceeded(finishedCriticId),
             ],
             TestContext.Current.CancellationToken);
-        var cancelledDirectory = await CreateTaskDirectoryAsync(
+        var cancelledDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(cancelledId, Architect)),
@@ -209,7 +209,7 @@ public class NavigationShellTests
 
         Assert.Equal(ShellSection.Home, window.ViewModel.CurrentSection);
         Assert.True(window.ViewModel.IsHomeVisible);
-        Assert.False(window.ViewModel.IsTaskVisible);
+        Assert.False(window.ViewModel.IsRoomVisible);
         Assert.Equal("Nothing is waiting on you.", window.ViewModel.Home.InboxSummaryText);
     }
 
@@ -217,7 +217,7 @@ public class NavigationShellTests
     public async Task OpenAsync_navigates_to_the_task_section()
     {
         var executionId = new ExecutionId("a-1");
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
@@ -227,15 +227,15 @@ public class NavigationShellTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             Assert.Equal(ShellSection.Task, window.ViewModel.CurrentSection);
-            Assert.True(window.ViewModel.IsTaskVisible);
+            Assert.True(window.ViewModel.IsRoomVisible);
             Assert.False(window.ViewModel.IsHomeVisible);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -243,26 +243,26 @@ public class NavigationShellTests
     [AvaloniaFact]
     public async Task OpenAsync_routes_an_interactive_session_directory_to_the_chat_section()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-chat-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-chat-{Guid.NewGuid():N}");
         try
         {
             var metadata = await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
                 sessionId: "sess-nav-test",
-                taskDirectoryPath: taskDirectory,
+                roomDirectoryPath: roomDirectory,
                 adapter: "claude",
                 cancellationToken: TestContext.Current.CancellationToken);
 
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             Assert.Equal(ShellSection.Chat, window.ViewModel.CurrentSection);
             Assert.True(window.ViewModel.IsChatVisible);
-            Assert.False(window.ViewModel.IsTaskVisible);
+            Assert.False(window.ViewModel.IsRoomVisible);
             Assert.Equal(metadata.SessionId, window.ViewModel.Chat.SessionId);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -270,18 +270,18 @@ public class NavigationShellTests
     public async Task InitializeAsync_surfaces_a_paused_recent_as_an_inbox_item_with_its_artifact_preview()
     {
         var configFilePath = NewConfigFilePath();
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(
             "The plan looks solid overall.", TestContext.Current.CancellationToken);
         try
         {
             await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+                .RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
             await window.InitializeAsync(TestContext.Current.CancellationToken);
 
-            var card = Assert.Single(window.ViewModel.Home.TaskCards);
-            Assert.Equal(TaskCardStatus.NeedsYou, card.Status);
+            var card = Assert.Single(window.ViewModel.Home.RoomCards);
+            Assert.Equal(RoomCardStatus.NeedsYou, card.Status);
             Assert.Equal("Waiting for your review", card.StatusText);
 
             var item = Assert.Single(window.ViewModel.Home.InboxItems);
@@ -293,7 +293,7 @@ public class NavigationShellTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -303,17 +303,17 @@ public class NavigationShellTests
         // #334: the exact bug — a settled chat turn showed "Waiting for your review" and a [Review]
         // button. A NeedsInput pause must read as "your turn to reply" on every Home surface.
         var configFilePath = NewConfigFilePath();
-        var taskDirectory = await CreateNeedsInputTaskDirectoryAsync("ok", TestContext.Current.CancellationToken);
+        var roomDirectory = await CreateNeedsInputRoomDirectoryAsync("ok", TestContext.Current.CancellationToken);
         try
         {
             await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+                .RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
             await window.InitializeAsync(TestContext.Current.CancellationToken);
 
-            var card = Assert.Single(window.ViewModel.Home.TaskCards);
-            Assert.Equal(TaskCardStatus.NeedsYou, card.Status);
+            var card = Assert.Single(window.ViewModel.Home.RoomCards);
+            Assert.Equal(RoomCardStatus.NeedsYou, card.Status);
             Assert.Equal("Waiting for your reply", card.StatusText);
 
             var item = Assert.Single(window.ViewModel.Home.InboxItems);
@@ -324,7 +324,7 @@ public class NavigationShellTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -332,12 +332,12 @@ public class NavigationShellTests
     public async Task Inbox_review_opens_the_task_and_navigates_to_the_task_section()
     {
         var configFilePath = NewConfigFilePath();
-        var taskDirectory = await CreatePausedTaskDirectoryAsync(
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(
             "Needs another pass at the error handling.", TestContext.Current.CancellationToken);
         try
         {
             await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+                .RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
             await window.InitializeAsync(TestContext.Current.CancellationToken);
@@ -347,26 +347,26 @@ public class NavigationShellTests
 
             Assert.Equal(ShellSection.Task, window.ViewModel.CurrentSection);
             Assert.Equal(
-                Path.GetFullPath(taskDirectory), window.FindViewControl<TextBox>("TaskDirectoryPathBox")!.Text);
+                Path.GetFullPath(roomDirectory), window.FindViewControl<TextBox>("RoomDirectoryPathBox")!.Text);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     /// <summary>M24 Phase 5 (#278): the sixth nav destination — a fleet management view distinct from Home's capped recents cards.</summary>
     [AvaloniaFact]
-    public async Task NavigatingToTasks_showsTheTasksSectionAndHidesEverythingElse()
+    public async Task NavigatingToRooms_showsTheRoomsSectionAndHidesEverythingElse()
     {
         var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
         await window.InitializeAsync(TestContext.Current.CancellationToken);
 
-        window.ViewModel.CurrentSection = ShellSection.Tasks;
+        window.ViewModel.CurrentSection = ShellSection.Rooms;
 
-        Assert.True(window.ViewModel.IsTasksVisible);
+        Assert.True(window.ViewModel.IsRoomsVisible);
         Assert.False(window.ViewModel.IsHomeVisible);
-        Assert.False(window.ViewModel.IsTaskVisible);
+        Assert.False(window.ViewModel.IsRoomVisible);
         Assert.False(window.ViewModel.IsChatVisible);
         Assert.False(window.ViewModel.IsRemoteVisible);
     }
@@ -375,24 +375,24 @@ public class NavigationShellTests
     public async Task A_recent_that_no_longer_loads_renders_as_an_unavailable_card_not_an_error()
     {
         var configFilePath = NewConfigFilePath();
-        var notATaskDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-stale-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(notATaskDirectory);
+        var notARoomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-stale-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(notARoomDirectory);
         try
         {
             await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(notATaskDirectory, TestContext.Current.CancellationToken);
+                .RecordOpenedAsync(notARoomDirectory, TestContext.Current.CancellationToken);
 
             var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
             await window.InitializeAsync(TestContext.Current.CancellationToken);
 
-            var card = Assert.Single(window.ViewModel.Home.TaskCards);
-            Assert.Equal(TaskCardStatus.Unavailable, card.Status);
-            Assert.Equal("Not available — moved, deleted, or not a task", card.StatusText);
+            var card = Assert.Single(window.ViewModel.Home.RoomCards);
+            Assert.Equal(RoomCardStatus.Unavailable, card.Status);
+            Assert.Equal("Not available — moved, deleted, or not a room", card.StatusText);
             Assert.Empty(window.ViewModel.Home.InboxItems);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(notATaskDirectory);
+            DirectoryCleanup.DeleteRecursively(notARoomDirectory);
         }
     }
 }

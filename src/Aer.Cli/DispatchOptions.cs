@@ -11,7 +11,7 @@ namespace Aer.Cli;
 /// role, and rejected for a template (a template's phases already carry their instructions). Null when
 /// not supplied.
 /// </param>
-/// <param name="TaskDirectoryPath">
+/// <param name="RoomDirectoryPath">
 /// Where this dispatch's durable state lives. Defaults to a fresh, uniquely-named directory per
 /// invocation (see <see cref="DispatchOptionsParser"/>) so a repeated self-dispatch runs anew rather
 /// than resuming — and so replaying a prior terminal snapshot — the way an orchestrator (#778) issues
@@ -25,6 +25,6 @@ namespace Aer.Cli;
 public sealed record DispatchOptions(
     string Name,
     string? SpecFilePath,
-    string TaskDirectoryPath,
+    string RoomDirectoryPath,
     string? Adapter = null,
     string? WorkflowId = null);

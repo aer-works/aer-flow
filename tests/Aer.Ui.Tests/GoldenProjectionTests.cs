@@ -9,11 +9,11 @@ using Aer.Ui.Tests.TestSupport;
 namespace Aer.Ui.Tests;
 
 /// <summary>
-/// M14's completion gate (issue #122): three recorded task-directory fixtures — a completed run, a
+/// M14's completion gate (issue #122): three recorded room-directory fixtures — a completed run, a
 /// paused run mid-decision, and a failed-and-retried run — each pumped through the real
 /// <c>MutationInterface</c>/<c>CoreDispatcher</c> path every other <c>Aer.Ui.Tests</c> fixture uses
 /// (no live vendor involved, shell-stub workers only, the <c>RunCommandEndToEndTests</c> convention),
-/// then read back exclusively through <see cref="TaskProjectionLoader"/> and <see cref="DagLayoutEngine"/>
+/// then read back exclusively through <see cref="RoomProjectionLoader"/> and <see cref="DagLayoutEngine"/>
 /// — never a <see cref="FlowState"/> built by hand — and asserted against a checked-in golden file via
 /// <see cref="GoldenProjectionCanonicalizer"/>. This is UI spec §11 made executable: identical durable
 /// state must always project to identical rendered state, on all three CI OSes. Wired into default CI
@@ -26,13 +26,13 @@ public class GoldenProjectionTests
     [Fact]
     public async Task A_completed_three_step_run_matches_its_golden_projection()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-golden-completed-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-golden-completed-{Guid.NewGuid():N}");
         try
         {
             var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "three-step-linear-workflow.json");
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
-            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
@@ -50,7 +50,7 @@ public class GoldenProjectionTests
                     TimeSpan.FromSeconds(30)),
             };
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             await using (var writer = new FlowEventLogWriter(logPath))
             {
                 var reader = new FlowEventLogReader(logPath);
@@ -58,34 +58,34 @@ public class GoldenProjectionTests
 
                 await MutationInterface.StartWorkflowAsync(
                     new WorkflowId("wf-golden-completed"),
-                    taskDirectory,
+                    roomDirectory,
                     snapshot,
                     bindings,
-                    Path.Combine(taskDirectory, "artifacts"),
+                    Path.Combine(roomDirectory, "artifacts"),
                     reader,
                     writer,
                     dispatcher,
                     cancellationToken: TestContext.Current.CancellationToken);
             }
 
-            await AssertMatchesGoldenProjectionAsync(taskDirectory, "completed-run.golden.json");
+            await AssertMatchesGoldenProjectionAsync(roomDirectory, "completed-run.golden.json");
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task A_run_paused_mid_decision_matches_its_golden_projection()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-golden-paused-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-golden-paused-{Guid.NewGuid():N}");
         try
         {
             var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "paused-run-workflow.json");
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
-            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
             var bindings = new Dictionary<string, WorkerBinding>
             {
@@ -103,7 +103,7 @@ public class GoldenProjectionTests
                     TimeSpan.FromSeconds(30)),
             };
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             await using (var writer = new FlowEventLogWriter(logPath))
             {
                 var reader = new FlowEventLogReader(logPath);
@@ -111,10 +111,10 @@ public class GoldenProjectionTests
 
                 var pausedState = await MutationInterface.StartWorkflowAsync(
                     new WorkflowId("wf-golden-paused"),
-                    taskDirectory,
+                    roomDirectory,
                     snapshot,
                     bindings,
-                    Path.Combine(taskDirectory, "artifacts"),
+                    Path.Combine(roomDirectory, "artifacts"),
                     reader,
                     writer,
                     dispatcher,
@@ -123,26 +123,26 @@ public class GoldenProjectionTests
                 Assert.Equal(WorkflowStatus.Paused, pausedState.Status);
             }
 
-            await AssertMatchesGoldenProjectionAsync(taskDirectory, "paused-run.golden.json");
+            await AssertMatchesGoldenProjectionAsync(roomDirectory, "paused-run.golden.json");
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task A_failed_and_retried_run_matches_its_golden_projection()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-golden-retried-{Guid.NewGuid():N}");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-golden-retried-{Guid.NewGuid():N}");
         try
         {
             var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "flaky-retry-workflow.json");
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(fixturePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
-            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+            await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
-            var markerFilePath = Path.Combine(taskDirectory, "flaky.marker");
+            var markerFilePath = Path.Combine(roomDirectory, "flaky.marker");
             var bindings = new Dictionary<string, WorkerBinding>
             {
                 ["flaky"] = new WorkerBinding.Process(
@@ -155,7 +155,7 @@ public class GoldenProjectionTests
                     TimeSpan.FromSeconds(30)),
             };
 
-            var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+            var logPath = Path.Combine(roomDirectory, "flow.jsonl");
             await using (var writer = new FlowEventLogWriter(logPath))
             {
                 var reader = new FlowEventLogReader(logPath);
@@ -163,10 +163,10 @@ public class GoldenProjectionTests
 
                 var finalState = await MutationInterface.StartWorkflowAsync(
                     new WorkflowId("wf-golden-retried"),
-                    taskDirectory,
+                    roomDirectory,
                     snapshot,
                     bindings,
-                    Path.Combine(taskDirectory, "artifacts"),
+                    Path.Combine(roomDirectory, "artifacts"),
                     reader,
                     writer,
                     dispatcher,
@@ -175,16 +175,16 @@ public class GoldenProjectionTests
                 Assert.Equal(WorkflowStatus.Terminal, finalState.Status);
             }
 
-            await AssertMatchesGoldenProjectionAsync(taskDirectory, "failed-and-retried-run.golden.json");
+            await AssertMatchesGoldenProjectionAsync(roomDirectory, "failed-and-retried-run.golden.json");
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     /// <summary>
-    /// Projects the real task directory through <see cref="TaskProjectionLoader"/> and
+    /// Projects the real room directory through <see cref="RoomProjectionLoader"/> and
     /// <see cref="DagLayoutEngine"/>, canonicalizes it, and compares against the checked-in golden
     /// file — or, with <c>AER_UPDATE_GOLDEN_FILES=1</c> set, (re)writes it. The golden file is
     /// resolved via <see cref="CallerFilePathAttribute"/> against this file's own source location
@@ -192,9 +192,9 @@ public class GoldenProjectionTests
     /// so update mode edits the source tree a developer would actually commit.
     /// </summary>
     private static async Task AssertMatchesGoldenProjectionAsync(
-        string taskDirectory, string goldenFileName, [CallerFilePath] string testFilePath = "")
+        string roomDirectory, string goldenFileName, [CallerFilePath] string testFilePath = "")
     {
-        var projection = await TaskProjectionLoader.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+        var projection = await RoomProjectionLoader.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
         var dagLayout = DagLayoutEngine.Layout(projection.Snapshot.Steps);
         var actual = GoldenProjectionCanonicalizer.Canonicalize(projection, dagLayout);
 

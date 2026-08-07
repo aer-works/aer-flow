@@ -3,7 +3,7 @@ using Aer.Flow.Domain;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// A pure structural comparison between a task's bound <see cref="WorkflowDefinitionSnapshot"/> and
+/// A pure structural comparison between a room's bound <see cref="WorkflowDefinitionSnapshot"/> and
 /// a live <see cref="WorkflowDefinition"/> template (UI spec §5; M14 Phase 4, issue #121) — never a
 /// mutation, never consulted by anything with execution authority. Field-by-field with
 /// <c>SequenceEqual</c> on every list-typed member, deliberately not the records' own generated

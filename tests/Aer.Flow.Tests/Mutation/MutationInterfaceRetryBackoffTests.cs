@@ -77,10 +77,10 @@ public class MutationInterfaceRetryBackoffTests
     [Fact]
     public async Task Test1_Fails_on_zero_delay_retry_steady_backoff_defers_execution()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-        var markerPath = Path.Combine(taskDirectory, "attempt-marker");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
+        var markerPath = Path.Combine(roomDirectory, "attempt-marker");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
 
         try
@@ -115,7 +115,7 @@ public class MutationInterfaceRetryBackoffTests
             // Run pump in background
             var pumpTask = MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-1"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -156,7 +156,7 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -164,10 +164,10 @@ public class MutationInterfaceRetryBackoffTests
     [Fact]
     public async Task Test2_Backoff_none_dispatches_retry_immediately_at_t0()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-        var markerPath = Path.Combine(taskDirectory, "attempt-marker");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
+        var markerPath = Path.Combine(roomDirectory, "attempt-marker");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
 
         try
@@ -201,7 +201,7 @@ public class MutationInterfaceRetryBackoffTests
 
             var finalState = await MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-2"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -223,7 +223,7 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -266,9 +266,9 @@ public class MutationInterfaceRetryBackoffTests
     [Fact]
     public async Task Test7_Abandoned_crash_recovery_execution_failed_gets_retry_scheduled()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
 
         try
@@ -308,7 +308,7 @@ public class MutationInterfaceRetryBackoffTests
 
             var pumpTask = MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-7"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -331,7 +331,7 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -340,9 +340,9 @@ public class MutationInterfaceRetryBackoffTests
     [Fact]
     public async Task Test8_No_StepRetryScheduled_when_retry_budget_is_exhausted_on_first_failure()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
 
         try
@@ -370,7 +370,7 @@ public class MutationInterfaceRetryBackoffTests
 
             var finalState = await MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-8"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -391,16 +391,16 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task Test8_StepRetryScheduled_appended_exactly_once_per_failed_attempt()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
 
         try
@@ -428,7 +428,7 @@ public class MutationInterfaceRetryBackoffTests
 
             await MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-8b"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -447,7 +447,7 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -455,10 +455,10 @@ public class MutationInterfaceRetryBackoffTests
     [Fact]
     public async Task Test9_Operator_RetryWithRevision_dispatches_immediately_clearing_deadline()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-        var markerPath = Path.Combine(taskDirectory, "attempt-marker");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
+        var markerPath = Path.Combine(roomDirectory, "attempt-marker");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
 
         try
@@ -494,7 +494,7 @@ public class MutationInterfaceRetryBackoffTests
             // Attempt 1 runs and fails, pause point triggers WorkflowPaused
             var pausedState = await MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-9"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -512,7 +512,7 @@ public class MutationInterfaceRetryBackoffTests
             // Operator issues RetryWithRevision
             var finalState = await MutationInterface.RecordDecisionAsync(
                 new WorkflowId("wf-9"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -541,7 +541,7 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -549,9 +549,9 @@ public class MutationInterfaceRetryBackoffTests
     [Fact]
     public async Task Test10_WorkflowStatus_remains_Running_while_step_is_deferred()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
 
         try
@@ -579,7 +579,7 @@ public class MutationInterfaceRetryBackoffTests
 
             var pumpTask = MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-10"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -605,7 +605,7 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -613,9 +613,9 @@ public class MutationInterfaceRetryBackoffTests
     [Fact]
     public async Task Test11_Paused_sibling_keeps_aer_decide_reachable_pump_returns_paused()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
 
         try
@@ -650,7 +650,7 @@ public class MutationInterfaceRetryBackoffTests
             // Pump should return WorkflowStatus.Paused immediately without blocking on StepA's deferral wait.
             var state = await MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-11"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -665,7 +665,7 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -676,9 +676,9 @@ public class MutationInterfaceRetryBackoffTests
     [Fact]
     public async Task Test13_Expired_deferral_blocked_on_failed_dependency_is_a_fixed_point_not_a_spin()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
 
         try
@@ -734,7 +734,7 @@ public class MutationInterfaceRetryBackoffTests
             // Nothing ever advances fakeTime: the pump must return on its own, promptly.
             var finalState = await MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-13"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -751,7 +751,7 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -759,9 +759,9 @@ public class MutationInterfaceRetryBackoffTests
     [Fact]
     public async Task Test12_Host_stop_during_deferral_wait_returns_promptly()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var fakeTime = new FakeTimeProvider(new DateTimeOffset(2026, 7, 29, 12, 0, 0, TimeSpan.Zero));
         using var cts = new CancellationTokenSource();
 
@@ -790,7 +790,7 @@ public class MutationInterfaceRetryBackoffTests
 
             var pumpTask = MutationInterface.StartWorkflowAsync(
                 new WorkflowId("wf-12"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -813,15 +813,15 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task ExhaustedUntil_failure_RetryNotBefore_equals_reset_moment_while_ordinary_retryable_follows_backoff()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var now = new DateTimeOffset(2026, 7, 30, 15, 0, 0, TimeSpan.Zero);
         var fakeTime = new FakeTimeProvider(now);
         var resetMoment = now.AddMinutes(45);
@@ -880,7 +880,7 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -893,9 +893,9 @@ public class MutationInterfaceRetryBackoffTests
     [Fact]
     public async Task Test815_Operator_RetryWithRevision_against_a_quota_parked_never_paused_step_dispatches_immediately()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         var now = new DateTimeOffset(2026, 7, 31, 12, 0, 0, TimeSpan.Zero);
         var fakeTime = new FakeTimeProvider(now);
         var farFutureResetMoment = now.AddHours(2);
@@ -952,7 +952,7 @@ public class MutationInterfaceRetryBackoffTests
             // WaitAsync timeout.
             var finalState = await MutationInterface.RecordDecisionAsync(
                 new WorkflowId("wf-815"),
-                taskDirectory,
+                roomDirectory,
                 snapshot,
                 bindings,
                 artifactsRoot,
@@ -981,7 +981,7 @@ public class MutationInterfaceRetryBackoffTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 }

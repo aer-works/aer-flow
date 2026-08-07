@@ -12,7 +12,7 @@ namespace Aer.Cli;
 /// <summary>
 /// <c>aer cancel</c> (M12 Phase 2): exposes <see cref="MutationInterface.RequestCancellationAsync"/>
 /// on the CLI. Unlike <see cref="RunCommand"/>, this never binds a fresh snapshot — §11.2's rule that
-/// mutation commands only ever act against a task <c>aer run</c> has already started — and, like
+/// mutation commands only ever act against a room <c>aer run</c> has already started — and, like
 /// every mutation entry point, is itself a pump: recording the cancellation intent resumes driving
 /// the rest of the workflow to its next fixed point (§21).
 /// </summary>
@@ -23,7 +23,8 @@ public static class CancelCommand
     private const string ArtifactsDirectoryName = ArtifactManager.ArtifactsDirectoryName;
 
     /// <exception cref="SnapshotLoadException">
-    /// The task directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
+    /// record-once-ok: #443 src/Aer.Cli/DecideCommand.cs
+    /// The room directory has no persisted snapshot yet (never started via <c>aer run</c>), or its
     /// persisted snapshot is malformed.
     /// </exception>
     /// <exception cref="WorkerBindingConfigException">The worker-binding config is malformed.</exception>
@@ -35,7 +36,8 @@ public static class CancelCommand
     /// <paramref name="options"/>'s <c>ExecutionId</c> was never admitted for execution.
     /// </exception>
     /// <exception cref="Aer.Flow.Concurrency.WorkflowLockedException">
-    /// Another Flow instance already holds this task directory's lock; see that exception's message
+    /// record-once-ok: #443 src/Aer.Cli/RunCommand.cs
+    /// Another Flow instance already holds this room directory's lock; see that exception's message
     /// for which holders are possible and how to reach an in-flight execution instead. (#857: this
     /// used to paraphrase the message as "most likely a live <c>aer run</c> pump" — a single cause
     /// the message itself no longer asserts, and the paraphrase is what would have gone stale.)
@@ -52,15 +54,15 @@ public static class CancelCommand
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(adapters);
 
-        var snapshotPath = Path.Combine(options.TaskDirectoryPath, SnapshotFileName);
-        var logPath = Path.Combine(options.TaskDirectoryPath, LogFileName);
-        var artifactsRootPath = Path.Combine(options.TaskDirectoryPath, ArtifactsDirectoryName);
+        var snapshotPath = Path.Combine(options.RoomDirectoryPath, SnapshotFileName);
+        var logPath = Path.Combine(options.RoomDirectoryPath, LogFileName);
+        var artifactsRootPath = Path.Combine(options.RoomDirectoryPath, ArtifactsDirectoryName);
 
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.TaskDirectoryPath}' has no bound snapshot — 'aer cancel' " +
-                "targets a task 'aer run' has already started, and never binds one fresh.");
+                $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer cancel' " +
+                "targets a room 'aer run' has already started, and never binds one fresh.");
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
@@ -68,9 +70,9 @@ public static class CancelCommand
         var bindingConfig = await WorkerBindingConfigParser.LoadFromFileAsync(options.BindingsFilePath, cancellationToken)
             .ConfigureAwait(false);
         var (provisionedConfig, provisionedWorktrees, _) =
-            WorktreeWorkspaces.ProvisionLazily(bindingConfig, options.TaskDirectoryPath);
+            WorktreeWorkspaces.ProvisionLazily(bindingConfig, options.RoomDirectoryPath);
         var profiles = await AerProfileStore.LoadAsync(AerProfileStore.DefaultPath, cancellationToken).ConfigureAwait(false);
-        // Lazy (#662): cancel targets a task 'aer run' already started — it does not need to know how
+        // Lazy (#662): cancel targets a room 'aer run' already started — it does not need to know how
         // to dispatch a worker it will never dispatch, so a bindings file naming an unresolvable one
         // must not block cancelling a different, already-dispatched execution.
         var workerBindings = WorkerBindingResolver.ResolveLazily(
@@ -85,7 +87,7 @@ public static class CancelCommand
 
         var state = await MutationInterface.RequestCancellationAsync(
                 workflowId,
-                options.TaskDirectoryPath,
+                options.RoomDirectoryPath,
                 snapshot,
                 workerBindings,
                 artifactsRootPath,
@@ -98,6 +100,6 @@ public static class CancelCommand
 
         var worktreeTeardowns = WorktreeProvisioner.TeardownIfTerminal(state.Status, provisionedWorktrees);
 
-        return new CommandResult(state, snapshot, TaskDirectoryPath: options.TaskDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
+        return new CommandResult(state, snapshot, RoomDirectoryPath: options.RoomDirectoryPath, WorktreeTeardowns: worktreeTeardowns);
     }
 }

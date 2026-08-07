@@ -30,7 +30,7 @@ public delegate Task DecideDelegate(
 /// <c>Reject</c> records <see cref="DecisionType.Reject"/>, <c>Retry</c> records
 /// <see cref="DecisionType.RetryWithRevision"/>, and each <see cref="SendBackTargets"/> entry records
 /// <see cref="DecisionType.Supersede"/> against its own declared <c>TargetStepId</c> — never a
-/// UI-invented decision type (UI spec §6). Rebuilt from <see cref="TaskProjection"/> on every load —
+/// UI-invented decision type (UI spec §6). Rebuilt from <see cref="RoomProjection"/> on every load —
 /// a projected fact, not retained handler state, the same "re-derived, not remembered" discipline the
 /// rest of <see cref="MainWindow"/>'s rendering already follows.
 /// </summary>
@@ -53,7 +53,7 @@ public sealed partial class PausedStepViewModel : ObservableObject
     public IReadOnlyList<SendBackTargetViewModel> SendBackTargets { get; }
 
     /// <summary>
-    /// Whether this step's actions may be invoked — false while the UI's own pump holds the task's
+    /// Whether this step's actions may be invoked — false while the UI's own pump holds the room's
     /// lock for any mutation (this decision or another one), driven by <see cref="MainWindowViewModel.IsMutationInFlight"/>.
     /// A <see cref="RelayCommandAttribute"/> <c>CanExecute</c> predicate, not a plain field, so the
     /// bound buttons' enabled state updates the moment it changes rather than only on the next render.

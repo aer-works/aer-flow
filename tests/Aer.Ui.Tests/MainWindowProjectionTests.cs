@@ -10,7 +10,7 @@ namespace Aer.Ui.Tests;
 /// <summary>
 /// M14 Phase 2 (issue #119): the full read-model surface plus change observation, driven through
 /// the real <see cref="MainWindow"/> exactly like <see cref="MainWindowTests"/> already does for
-/// Phase 1's rendering, but building task directories directly from hand-written
+/// Phase 1's rendering, but building room directories directly from hand-written
 /// <see cref="FlowEvent"/>s (matching <c>Aer.Flow.Tests.Projection.StateProjectorTests</c>'
 /// convention) rather than driving a full <c>MutationInterface</c> pump — the point here is what the
 /// UI renders from a given event history, not re-proving dispatch behavior Aer.Flow's own tests
@@ -61,15 +61,15 @@ public class MainWindowProjectionTests
             UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-window-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-window-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
-    private static async Task<string> CreateTaskDirectoryAsync(
+    private static async Task<string> CreateRoomDirectoryAsync(
         WorkflowDefinitionSnapshot snapshot, IEnumerable<FlowEvent> events, CancellationToken cancellationToken)
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-history-{Guid.NewGuid():N}");
-        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(taskDirectory, "snapshot.json"), cancellationToken);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-history-{Guid.NewGuid():N}");
+        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), cancellationToken);
 
-        await using (var writer = new FlowEventLogWriter(Path.Combine(taskDirectory, "flow.jsonl")))
+        await using (var writer = new FlowEventLogWriter(Path.Combine(roomDirectory, "flow.jsonl")))
         {
             foreach (var flowEvent in events)
             {
@@ -77,7 +77,7 @@ public class MainWindowProjectionTests
             }
         }
 
-        return taskDirectory;
+        return roomDirectory;
     }
 
     private static List<string> TextsOf(StackPanel panel) => panel.Children.OfType<TextBlock>().Select(block => block.Text!).ToList();
@@ -89,7 +89,7 @@ public class MainWindowProjectionTests
         var firstArchitectAttempt = new ExecutionId("a-1");
         var secondArchitectAttempt = new ExecutionId("a-2");
         var criticExecutionId = new ExecutionId("c-1");
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(firstArchitectAttempt, Architect)),
@@ -103,7 +103,7 @@ public class MainWindowProjectionTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var historyPanel = window.FindViewControl<StackPanel>("HistoryPanel")!;
             Assert.Equal(
@@ -118,7 +118,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -129,7 +129,7 @@ public class MainWindowProjectionTests
         var architectExecutionId = new ExecutionId("a-1");
         var criticExecutionId = new ExecutionId("c-1");
         var decisionId = new DecisionId("decision-1");
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
@@ -143,7 +143,7 @@ public class MainWindowProjectionTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var historyPanel = window.FindViewControl<StackPanel>("HistoryPanel")!;
             var historyTexts = TextsOf(historyPanel);
@@ -158,7 +158,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -167,7 +167,7 @@ public class MainWindowProjectionTests
     {
         var snapshot = TwoStepSnapshot();
         var humanExecutionId = new ExecutionId("supplement-1");
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeNonProcessRequest(humanExecutionId, null)),
@@ -177,14 +177,14 @@ public class MainWindowProjectionTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.LoadAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var supplementaryPanel = window.FindViewControl<StackPanel>("SupplementaryPanel")!;
             Assert.Equal(["supplement-1 (human): Succeeded [non-process]"], TextsOf(supplementaryPanel));
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -193,7 +193,7 @@ public class MainWindowProjectionTests
     {
         var snapshot = TwoStepSnapshot();
         var executionId = new ExecutionId("a-1");
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
@@ -203,35 +203,35 @@ public class MainWindowProjectionTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             // M19 Phase 2 (#187): the recents list is projected as Home's task cards now.
-            var card = Assert.Single(window.ViewModel.Home.TaskCards);
-            Assert.Equal(Path.GetFullPath(taskDirectory), card.TaskDirectoryPath);
-            Assert.Equal(taskDirectory, window.FindViewControl<TextBox>("TaskDirectoryPathBox")!.Text);
+            var card = Assert.Single(window.ViewModel.Home.RoomCards);
+            Assert.Equal(Path.GetFullPath(roomDirectory), card.RoomDirectoryPath);
+            Assert.Equal(roomDirectory, window.FindViewControl<TextBox>("RoomDirectoryPathBox")!.Text);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
     public async Task OpenAsync_does_not_record_a_directory_that_failed_to_load()
     {
-        var notATaskDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-invalid-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(notATaskDirectory);
+        var notARoomDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-invalid-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(notARoomDirectory);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.OpenAsync(notATaskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(notARoomDirectory, TestContext.Current.CancellationToken);
 
             // M19 Phase 2 (#187): the recents list is projected as Home's task cards now.
-            Assert.Empty(window.ViewModel.Home.TaskCards);
+            Assert.Empty(window.ViewModel.Home.RoomCards);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(notATaskDirectory);
+            DirectoryCleanup.DeleteRecursively(notARoomDirectory);
         }
     }
 
@@ -239,23 +239,23 @@ public class MainWindowProjectionTests
     public async Task InitializeAsync_populates_the_recents_panel_from_local_configuration_at_startup()
     {
         var configFilePath = NewConfigFilePath();
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-recent-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(taskDirectory);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-window-recent-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(roomDirectory);
         try
         {
             var configurationStore = new LocalUiConfigurationStore(configFilePath);
-            await configurationStore.RecordOpenedAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await configurationStore.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
             await window.InitializeAsync(TestContext.Current.CancellationToken);
 
             // M19 Phase 2 (#187): the recents list is projected as Home's task cards now.
-            var card = Assert.Single(window.ViewModel.Home.TaskCards);
-            Assert.Equal(Path.GetFullPath(taskDirectory), card.TaskDirectoryPath);
+            var card = Assert.Single(window.ViewModel.Home.RoomCards);
+            Assert.Equal(Path.GetFullPath(roomDirectory), card.RoomDirectoryPath);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -265,7 +265,7 @@ public class MainWindowProjectionTests
         var snapshot = TwoStepSnapshot();
         var architectExecutionId = new ExecutionId("a-1");
         var criticExecutionId = new ExecutionId("c-1");
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
@@ -275,13 +275,13 @@ public class MainWindowProjectionTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             var stepsPanel = window.FindViewControl<StackPanel>("StepsPanel")!;
             Assert.Equal(["architect: Running", "critic: Running"], TextsOf(stepsPanel));
             Assert.True(window.IsLiveRefreshTimerEnabled);
 
-            await using (var writer = new FlowEventLogWriter(Path.Combine(taskDirectory, "flow.jsonl")))
+            await using (var writer = new FlowEventLogWriter(Path.Combine(roomDirectory, "flow.jsonl")))
             {
                 await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(architectExecutionId), TestContext.Current.CancellationToken);
             }
@@ -294,7 +294,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -304,7 +304,7 @@ public class MainWindowProjectionTests
         var snapshot = TwoStepSnapshot();
         var architectExecutionId = new ExecutionId("a-1");
         var criticExecutionId = new ExecutionId("c-1");
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [
                 new FlowEvent.ExecutionRequestAccepted(MakeRequest(architectExecutionId, Architect)),
@@ -315,10 +315,10 @@ public class MainWindowProjectionTests
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
             Assert.True(window.IsLiveRefreshTimerEnabled);
 
-            await using (var writer = new FlowEventLogWriter(Path.Combine(taskDirectory, "flow.jsonl")))
+            await using (var writer = new FlowEventLogWriter(Path.Combine(roomDirectory, "flow.jsonl")))
             {
                 await writer.AppendAsync(new FlowEvent.ExecutionSucceeded(criticExecutionId), TestContext.Current.CancellationToken);
             }
@@ -330,7 +330,7 @@ public class MainWindowProjectionTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -341,52 +341,52 @@ public class MainWindowProjectionTests
 
         await window.RefreshAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("No task directory loaded.", window.FindViewControl<TextBlock>("StatusText")!.Text);
+        Assert.Equal("No room directory loaded.", window.FindViewControl<TextBlock>("StatusText")!.Text);
     }
 
     [AvaloniaFact]
-    public async Task OpenAsync_when_task_directory_lacks_workflow_path_does_not_populate_box_with_bare_template_id()
+    public async Task OpenAsync_when_room_directory_lacks_workflow_path_does_not_populate_box_with_bare_template_id()
     {
         var snapshot = TwoStepSnapshot();
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [],
             TestContext.Current.CancellationToken);
         try
         {
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             Assert.NotEqual(snapshot.WorkflowTemplateId.Value, window.WorkflowTemplatePathBox.Text);
             Assert.Equal(string.Empty, window.WorkflowTemplatePathBox.Text);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [AvaloniaFact]
-    public async Task OpenAsync_when_workflow_path_is_missing_falls_back_to_the_task_directorys_own_workflow_json()
+    public async Task OpenAsync_when_workflow_path_is_missing_falls_back_to_the_room_directorys_own_workflow_json()
     {
         var snapshot = TwoStepSnapshot();
-        var taskDirectory = await CreateTaskDirectoryAsync(
+        var roomDirectory = await CreateRoomDirectoryAsync(
             snapshot,
             [],
             TestContext.Current.CancellationToken);
-        var workflowJsonPath = Path.Combine(taskDirectory, "workflow.json");
+        var workflowJsonPath = Path.Combine(roomDirectory, "workflow.json");
         try
         {
             await File.WriteAllTextAsync(workflowJsonPath, "{}", TestContext.Current.CancellationToken);
 
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
-            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             Assert.Equal(workflowJsonPath, window.WorkflowTemplatePathBox.Text);
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 }

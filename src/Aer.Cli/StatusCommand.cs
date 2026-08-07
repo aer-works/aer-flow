@@ -6,17 +6,17 @@ using Aer.Flow.Templates;
 namespace Aer.Cli;
 
 /// <summary>
-/// <c>aer status</c> (#730): a read-only projection of a task directory's recorded events —
+/// <c>aer status</c> (#730): a read-only projection of a room directory's recorded events —
 /// "this session's workaround was hand-rolled monitors polling PIDs and tailing <c>flow.jsonl</c>
 /// by path", which this replaces with the product's own register. Every field printed comes from
 /// <see cref="StateProjector.Project"/> — the same projection <see cref="RunCommand"/>,
-/// <see cref="CancelCommand"/> and <see cref="Aer.Ui.Core.TaskProjectionLoader"/> already call — so
+/// <see cref="CancelCommand"/> and <see cref="Aer.Ui.Core.RoomProjectionLoader"/> already call — so
 /// there is exactly one place "what does this event log mean" is computed, never a second reader of
 /// the format here.
 /// <para>
 /// Deliberately never takes <see cref="Aer.Flow.Concurrency.ConcurrencyGuard"/>'s lock and never
 /// constructs a <see cref="FlowEventLogWriter"/>: this is the one command in <c>Aer.Cli</c> that can
-/// run concurrently with a live <c>aer run</c> pump on the same task directory, which is the whole
+/// run concurrently with a live <c>aer run</c> pump on the same room directory, which is the whole
 /// point of a status/watch command. It also never resolves a worker binding (no <c>--bindings</c>
 /// option exists on <see cref="StatusOptions"/> at all) — nothing here dispatches, so there is
 /// nothing to bind.
@@ -37,7 +37,7 @@ public static class StatusCommand
     private const int PollIntervalMs = 500;
 
     /// <exception cref="SnapshotLoadException">
-    /// The task directory has no persisted snapshot — a nonexistent directory and an existing one
+    /// The room directory has no persisted snapshot — a nonexistent directory and an existing one
     /// that was never started via <c>aer run</c> fail identically here (both are just "no
     /// <c>snapshot.json</c> at this path"), or the persisted snapshot is malformed.
     /// </exception>
@@ -52,17 +52,17 @@ public static class StatusCommand
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(output);
 
-        var snapshotPath = Path.Combine(options.TaskDirectoryPath, SnapshotFileName);
-        var logPath = Path.Combine(options.TaskDirectoryPath, LogFileName);
+        var snapshotPath = Path.Combine(options.RoomDirectoryPath, SnapshotFileName);
+        var logPath = Path.Combine(options.RoomDirectoryPath, LogFileName);
 
-        // Never Directory.CreateDirectory here (unlike RunCommand): a status probe against a task
+        // Never Directory.CreateDirectory here (unlike RunCommand): a status probe against a room
         // that was never started must report the same typed failure, not conjure the directory
         // into existence as a side effect of looking at it.
         if (!File.Exists(snapshotPath))
         {
             throw new SnapshotLoadException(
-                $"Task directory '{options.TaskDirectoryPath}' has no bound snapshot — 'aer status' " +
-                "projects a task 'aer run' has already started, and never binds one fresh.");
+                $"Room directory '{options.RoomDirectoryPath}' has no bound snapshot — 'aer status' " +
+                "projects a room 'aer run' has already started, and never binds one fresh.");
         }
 
         try
@@ -80,14 +80,14 @@ public static class StatusCommand
                 }
             }
 
-            var checkpoint = ProjectionCheckpointStore.Load(options.TaskDirectoryPath);
+            var checkpoint = ProjectionCheckpointStore.Load(options.RoomDirectoryPath);
             var state = StateProjector.Project(events, snapshot, checkpoint);
 
             PrintState(output, state, logPath, events, entries);
 
             if (options.Follow)
             {
-                var artifactsDir = Path.Combine(options.TaskDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
+                var artifactsDir = Path.Combine(options.RoomDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
                 TailStreams(output, artifactsDir, new Dictionary<string, long>(StringComparer.Ordinal));
             }
 
@@ -96,7 +96,7 @@ public static class StatusCommand
                 return;
             }
 
-            await FollowAsync(output, reader, snapshot, events.Count, logPath, options.TaskDirectoryPath, cancellationToken).ConfigureAwait(false);
+            await FollowAsync(output, reader, snapshot, events.Count, logPath, options.RoomDirectoryPath, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (options.Follow && cancellationToken.IsCancellationRequested)
         {
@@ -120,11 +120,11 @@ public static class StatusCommand
         WorkflowDefinitionSnapshot snapshot,
         int printedEventCount,
         string logPath,
-        string taskDirectoryPath,
+        string roomDirectoryPath,
         CancellationToken cancellationToken)
     {
         var lastObservedLength = -1L;
-        var artifactsDir = Path.Combine(taskDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
+        var artifactsDir = Path.Combine(roomDirectoryPath, Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName);
         var streamOffsets = new Dictionary<string, long>(StringComparer.Ordinal);
 
         while (true)
@@ -153,7 +153,7 @@ public static class StatusCommand
 
                 printedEventCount = events.Count;
 
-                var checkpoint = ProjectionCheckpointStore.Load(taskDirectoryPath);
+                var checkpoint = ProjectionCheckpointStore.Load(roomDirectoryPath);
                 var state = StateProjector.Project(events, snapshot, checkpoint);
                 TailStreams(output, artifactsDir, streamOffsets);
 
@@ -171,7 +171,7 @@ public static class StatusCommand
     }
 
     // Public as a test seam, matching FormatStepStatus and EscapeNonPrintable: the reader-side
-    // rollover behavior is asserted directly (the lane review's medium finding).
+    // rollover behavior is asserted directly (the workflow review's medium finding).
     public static void TailStreams(TextWriter output, string artifactsDir, Dictionary<string, long> streamOffsets)
     {
         if (!Directory.Exists(artifactsDir))
@@ -207,7 +207,7 @@ public static class StatusCommand
         // Rollover detection keys on the rollover FILE'S identity (its mtime advances every time
         // the writer rolls), never on a length comparison: a fresh file whose length equals the
         // stored offset made `length < offset` miss the rollover entirely and silently drop the
-        // new content -- found by the reader-side test the lane review demanded. The rollover
+        // new content -- found by the reader-side test the workflow review demanded. The rollover
         // path doubles as its own dict key; log and rollover paths are distinct strings.
         if (File.Exists(rolloverPath))
         {
@@ -314,7 +314,7 @@ public static class StatusCommand
                 // charsUsed == 0 with the byte consumed means the decoder BUFFERED a valid-so-far
                 // lead/continuation byte of a multi-byte sequence -- not an invalid byte. Emitting
                 // an escape here duplicated every non-ASCII character as \xNN + the decoded char
-                // (the lane review's high finding). Advance silently; the decoder produces the
+                // (the workflow review's high finding). Advance silently; the decoder produces the
                 // character when the sequence completes, and the flush below drains a sequence
                 // truncated at end-of-input as U+FFFD (genuinely invalid bytes already surface as
                 // U+FFFD through the decoder's replacement fallback).
@@ -427,7 +427,7 @@ public static class StatusCommand
 
         // Probe ONLY steps claiming a live engine. Paused is a mask over an already-terminal
         // outcome (StateProjector) -- its engine has legitimately exited, and probing it stamped
-        // every healthy paused step "crash recovery will classify" (the lane review's high
+        // every healthy paused step "crash recovery will classify" (the workflow review's high
         // finding). Pending has no execution yet, so no liveness claim applies there either.
         if (step.Status is not StepStatus.Running)
         {

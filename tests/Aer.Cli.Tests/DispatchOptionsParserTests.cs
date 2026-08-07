@@ -8,16 +8,16 @@ namespace Aer.Cli.Tests;
 public class DispatchOptionsParserTests
 {
     [Fact]
-    public void Parses_the_name_spec_adapter_task_dir_and_workflow_id()
+    public void Parses_the_name_spec_adapter_room_dir_and_workflow_id()
     {
         var options = DispatchOptionsParser.Parse(
-            ["review", "--spec", "task.md", "--adapter", "agy", "--task-dir", "out", "--workflow-id", "wf"]);
+            ["review", "--spec", "task.md", "--adapter", "agy", "--room-dir", "out", "--workflow-id", "wf"]);
 
         Assert.Equal("review", options.Name);
         Assert.Equal("task.md", options.SpecFilePath);
         Assert.Equal("agy", options.Adapter);
         Assert.Equal("wf", options.WorkflowId);
-        Assert.EndsWith("out", options.TaskDirectoryPath);
+        Assert.EndsWith("out", options.RoomDirectoryPath);
     }
 
     [Fact]
@@ -51,12 +51,12 @@ public class DispatchOptionsParserTests
     }
 
     [Fact]
-    public void The_default_task_directory_is_unique_per_invocation_so_a_redispatch_does_not_resume()
+    public void The_default_room_directory_is_unique_per_invocation_so_a_redispatch_does_not_resume()
     {
         // A one-shot dispatch must run anew each time; two default directories that collided would
         // make the second invocation resume — and replay — the first's terminal snapshot.
-        var first = DispatchOptionsParser.Parse(["review", "--spec", "t.md"]).TaskDirectoryPath;
-        var second = DispatchOptionsParser.Parse(["review", "--spec", "t.md"]).TaskDirectoryPath;
+        var first = DispatchOptionsParser.Parse(["review", "--spec", "t.md"]).RoomDirectoryPath;
+        var second = DispatchOptionsParser.Parse(["review", "--spec", "t.md"]).RoomDirectoryPath;
         Assert.NotEqual(first, second);
     }
 }

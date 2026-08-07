@@ -53,8 +53,8 @@ public sealed class DispatchCommandEndToEndTests : IDisposable
         try
         {
             var specPath = await WriteSpecAsync(testRoot, "Weigh the options for X.");
-            var taskDirectory = Path.Combine(testRoot, "task");
-            var options = new DispatchOptions("advise", specPath, taskDirectory, Adapter: "fake");
+            var roomDirectory = Path.Combine(testRoot, "task");
+            var options = new DispatchOptions("advise", specPath, roomDirectory, Adapter: "fake");
 
             var state = (await DispatchCommand.ExecuteAsync(options, Adapters, TestContext.Current.CancellationToken)).State;
 
@@ -65,12 +65,12 @@ public sealed class DispatchCommandEndToEndTests : IDisposable
 
             // advise declares advice.md; the contract the engine enforced is the role's own.
             var advicePath = Path.Combine(
-                taskDirectory, "artifacts", $"execution_{step.LatestExecutionId}", "advice.md");
+                roomDirectory, "artifacts", $"execution_{step.LatestExecutionId}", "advice.md");
             Assert.True(File.Exists(advicePath));
 
             // The dispatch persisted the same files a template run would, so the task is resumable.
-            Assert.True(File.Exists(Path.Combine(taskDirectory, "workflow.json")));
-            Assert.True(File.Exists(Path.Combine(taskDirectory, "bindings.json")));
+            Assert.True(File.Exists(Path.Combine(roomDirectory, "workflow.json")));
+            Assert.True(File.Exists(Path.Combine(roomDirectory, "bindings.json")));
         }
         finally
         {
@@ -85,9 +85,9 @@ public sealed class DispatchCommandEndToEndTests : IDisposable
         try
         {
             var specPath = await WriteSpecAsync(testRoot, "Weigh the options for X.");
-            var taskDirectory = Path.Combine(testRoot, "task");
+            var roomDirectory = Path.Combine(testRoot, "task");
             // Exits 0 but produces no advice.md — the floor a per-role output exists to catch.
-            var options = new DispatchOptions("advise", specPath, taskDirectory, Adapter: "fake-noop");
+            var options = new DispatchOptions("advise", specPath, roomDirectory, Adapter: "fake-noop");
 
             var state = (await DispatchCommand.ExecuteAsync(options, Adapters, TestContext.Current.CancellationToken)).State;
 

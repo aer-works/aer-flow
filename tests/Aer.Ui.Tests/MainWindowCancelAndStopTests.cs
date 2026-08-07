@@ -32,21 +32,21 @@ public class MainWindowCancelAndStopTests
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(30);
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-cancel-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-cancel-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     [AvaloniaFact]
     public async Task Targeted_cancel_of_a_locally_hosted_execution_is_delivered_via_the_retained_registry()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-cancel-local-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(testRoot, "task");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var workflowFilePath = await WriteSleepingWorkflowAsync(testRoot, "worker", maxAttempts: 5);
             var bindingsFilePath = await WriteSleepingBindingsAsync(testRoot, "worker");
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
-            var runTask = window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            var runTask = window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             await WaitForCoreExecutionStartedAsync(logPath);
             await window.RefreshAsync(TestContext.Current.CancellationToken);
@@ -88,8 +88,8 @@ public class MainWindowCancelAndStopTests
     public async Task Targeted_cancel_of_an_execution_not_hosted_by_this_window_goes_through_a_fresh_mutation_call()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-cancel-external-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(testRoot, "task");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var workflowFilePath = await WriteSleepingWorkflowAsync(testRoot, "orphan", maxAttempts: 1);
@@ -98,11 +98,11 @@ public class MainWindowCancelAndStopTests
             // Bound directly (standing in for a task `aer run` started on some other, now-gone
             // process) — never pumped through this window at all, so this window has no
             // InFlightExecutionRegistry entry for anything in it.
-            Directory.CreateDirectory(taskDirectory);
+            Directory.CreateDirectory(roomDirectory);
             var definition = await WorkflowDefinitionParser.LoadFromFileAsync(workflowFilePath, TestContext.Current.CancellationToken);
             var snapshot = SnapshotBinder.Bind(definition);
             await SnapshotBinder.PersistAsync(
-                snapshot, Path.Combine(taskDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+                snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
 
             // A fabricated in-flight dispatch with no CoreEvent history at all — standing in for "some
             // other process admitted this execution and never got to record anything about it," the
@@ -119,7 +119,7 @@ public class MainWindowCancelAndStopTests
             }
 
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
-            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             // Never asked for by RunAsync in this test (only OpenAsync was called, standing in for
             // re-opening a task this window never itself ran) — the same "ask, don't infer" bindings
@@ -156,15 +156,15 @@ public class MainWindowCancelAndStopTests
     public async Task StopAsync_cancels_every_execution_this_window_currently_has_in_flight()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-hoststop-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(testRoot, "task");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var workflowFilePath = await WriteTwoIndependentSleepingStepsWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteTwoIndependentSleepingStepsBindingsAsync(testRoot);
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
-            var runTask = window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            var runTask = window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             await WaitForConditionAsync(logPath, s => s.CoreEvents.OfType<CoreEvent.ExecutionStarted>().Count() >= 2);
 
@@ -191,15 +191,15 @@ public class MainWindowCancelAndStopTests
     public async Task Closing_the_window_with_a_pump_in_flight_triggers_a_host_stop_and_the_window_closes_once_the_pump_settles()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-close-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(testRoot, "task");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var workflowFilePath = await WriteSleepingWorkflowAsync(testRoot, "worker", maxAttempts: 1);
             var bindingsFilePath = await WriteSleepingBindingsAsync(testRoot, "worker");
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
-            var runTask = window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            var runTask = window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
             await WaitForCoreExecutionStartedAsync(logPath);
 
             var closed = false;

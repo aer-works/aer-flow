@@ -5,7 +5,7 @@ namespace Aer.Ui.Core;
 /// <summary>
 /// Reconstructs <see cref="ExecutionHistory"/> from event history — a pure function over the exact
 /// same <c>IReadOnlyList&lt;FlowEvent&gt;</c> <c>StateProjector.Project</c> consumes (spec §12), so
-/// it inherits the same determinism guarantee (§13) <see cref="TaskProjectionLoader"/> already
+/// it inherits the same determinism guarantee (§13) <see cref="RoomProjectionLoader"/> already
 /// relies on for <see cref="Aer.Flow.Domain.FlowState"/>. Deliberately does not call into
 /// <c>StateProjector</c> or duplicate its dispatch-affecting logic (retry admission, staleness,
 /// dependency readiness) — it only re-derives the same "what happened to this ExecutionId" mapping

@@ -3,7 +3,7 @@
 Refreshes a snapshot every few seconds: active dispatch runs (last recorded event and its age),
 lane worktrees (branch, tip, dirty state), and open PRs with check status. Read-only everywhere:
 never takes a lock, never writes into a run, and the gh section refreshes on a slower cadence so
-watching does not spend API budget. `aer status <task-dir> --follow` (#730) is the per-run
+watching does not spend API budget. `aer status <room-dir> --follow` (#730) is the per-run
 deep-dive; this is the fleet view above it.
 
 Usage:
@@ -59,7 +59,7 @@ def runs_section(limit: int) -> list[str]:
         reverse=True)[:limit]
     lines = []
     for run in candidates:
-        info = last_event(run / "task-dir" / "flow.jsonl")
+        info = last_event(run / "room-dir" / "flow.jsonl")
         if info is None:
             lines.append(f"  {run.name}  (no flow.jsonl yet)")
             continue

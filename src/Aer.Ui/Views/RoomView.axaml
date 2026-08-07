@@ -6,14 +6,14 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
-             x:Class="Aer.Ui.Views.TaskView"
+             x:Class="Aer.Ui.Views.RoomView"
              x:DataType="vm:MainWindowViewModel">
   <ScrollViewer>
     <StackPanel Margin="24" Spacing="12">
-      <TextBlock Classes="display" Text="{Binding TaskHeadlineText}" />
+      <TextBlock Classes="display" Text="{Binding RoomHeadlineText}" />
       <!-- The empty state says what to do next (Phase 5): nothing open, two ways forward. -->
       <TextBlock Classes="secondary" IsVisible="{Binding !HasSelectedStep}" TextWrapping="Wrap"
-                 Text="Open a task from Home, or create and run a workflow in Author — this view fills in as soon as a task is open." />
+                 Text="Open a room from Home, or create and run a workflow in Author — this view fills in as soon as a room is open." />
 
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="Workflow:" VerticalAlignment="Center" />
@@ -179,7 +179,7 @@
         </Panel>
       </Border>
 
-      <ItemsControl x:Name="StepChipsList" ItemsSource="{Binding TaskSteps}">
+      <ItemsControl x:Name="StepChipsList" ItemsSource="{Binding RoomSteps}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
             <WrapPanel />
@@ -365,7 +365,7 @@
         <!-- Space.3 (12px) — Thickness can't consume DynamicResource (see the card Padding
              comments elsewhere), so this stays inlined, but on the grid, not an arbitrary value. -->
         <StackPanel Spacing="{DynamicResource Space.3}" Margin="0,8,0,0">
-          <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No task directory loaded." />
+          <TextBlock x:Name="StatusText" FontWeight="Bold" Text="No room directory loaded." />
           <StackPanel x:Name="StepsPanel" Spacing="{DynamicResource Space.1}" />
 
           <TextBlock Classes="heading" Text="Execution history:" />

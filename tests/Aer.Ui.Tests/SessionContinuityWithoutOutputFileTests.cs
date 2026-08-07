@@ -139,7 +139,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
     {
         var start = new StartSessionRequest(
             Adapter: "agy",
-            TaskName: "handoff-nofile-" + Guid.NewGuid().ToString("N"),
+            RoomName: "handoff-nofile-" + Guid.NewGuid().ToString("N"),
             InitialMessage: "turn one",
             SafetyCeiling: 200);
 
@@ -222,7 +222,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
     {
         var start = new StartSessionRequest(
             Adapter: "agy",
-            TaskName: "agy-silent-second-turn-" + Guid.NewGuid().ToString("N"),
+            RoomName: "agy-silent-second-turn-" + Guid.NewGuid().ToString("N"),
             InitialMessage: "turn one " + SessionTurnStubAdapter.AgyNoOutputFileSentinel,
             SafetyCeiling: 200);
 
@@ -263,7 +263,7 @@ public class SessionContinuityWithoutOutputFileTests : IAsyncLifetime
 
         var start = new StartSessionRequest(
             Adapter: adapter,
-            TaskName: $"continuity-{adapter}-" + Guid.NewGuid().ToString("N"),
+            RoomName: $"continuity-{adapter}-" + Guid.NewGuid().ToString("N"),
             InitialMessage: "turn one" + suffix,
             SafetyCeiling: 200);
 

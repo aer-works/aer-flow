@@ -25,7 +25,7 @@ rooms**. Two forces made that line show strain, and the owner named the second o
 What recurses under an orchestrator is **work** — the Claude Code Task / sub-agent pattern. Nesting work
 is intuitive; nesting *places* is not, and calling a headless sub-dispatch "a room" over-claims. The
 running code already leans this way: the M26 room model (`RoomProjector` → `RoomState`) is a **container
-of references to separate lane runs**, each its own task directory — not one running workflow. 0046
+of references to separate lane runs**, each its own room directory — not one running workflow. 0046
 formalizes the direction the code already took.
 
 ## Decision

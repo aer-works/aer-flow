@@ -16,7 +16,7 @@ namespace Aer.Ui.Tests.TestSupport;
 /// </para>
 /// <para>
 /// The key comes from a sentinel the test embeds in the session's message, not from
-/// <see cref="WorkerInvocation"/>: that record carries no task directory, and its
+/// <see cref="WorkerInvocation"/>: that record carries no room directory, and its
 /// <c>WorkingDirectory</c> is the session's codebase, which two sessions can legitimately share.
 /// A test-supplied sentinel is unambiguous and keeps the adapter from inventing a second notion of
 /// session identity alongside the one under test.

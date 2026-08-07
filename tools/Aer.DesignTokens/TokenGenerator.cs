@@ -53,7 +53,7 @@ public static class TokenGenerator
 
     /// <summary>
     /// The interaction-state register (#616) — a second population from the same design directory,
-    /// deliberately a separate file from <see cref="TokensPath"/>: /status is the task-lifecycle
+    /// deliberately a separate file from <see cref="TokensPath"/>: /status is the room-lifecycle
     /// vocabulary, this is the screen-situation inventory, and merging them would let checks
     /// quantify over meaningless combinations.
     /// </summary>
@@ -72,7 +72,7 @@ public static class TokenGenerator
     /// <summary>
     /// The five states as a C# type (#458). Flutter has had a generated <c>AerStatus</c> enum since
     /// #345 while the desktop side had nothing — its converters still keyed on the pre-#334
-    /// <c>StepStatus</c>/<c>TaskCardStatus</c> vocabularies, which is how <c>readyForReview</c> ended
+    /// <c>StepStatus</c>/<c>RoomCardStatus</c> vocabularies, which is how <c>readyForReview</c> ended
     /// up with no mark at all and <c>needsInput</c> ended up drawing the same dot as idle. Generating
     /// it means the two toolkits cannot disagree about what the states even are.
     /// </summary>
@@ -643,7 +643,8 @@ public static class TokenGenerator
         /// <summary>
         /// The interaction states — the situations every surface must handle (#616; ratified
         /// thirteen on #495). A different population from <see cref="AerStatus"/>: that is the
-        /// task-lifecycle vocabulary, this is the screen-situation inventory; they overlap at
+        /// room-lifecycle vocabulary, this is the screen-situation inventory; they overlap at
+        /// record-once-ok: #443 design/interaction-states.json
         /// Cancelled/Failed only. 0020's rules govern consumption: rendering is a projection,
         /// absence is not a state — which is why the presentation methods below throw on an
         /// unmapped member instead of answering with a default.

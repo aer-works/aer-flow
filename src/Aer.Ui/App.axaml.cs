@@ -33,7 +33,7 @@ public partial class App : Application
             // whether a launch argument was given, so the window is useful on a bare launch too.
             _ = window.InitializeAsync();
 
-            // A launch argument (aer-ui <task-directory>) still opens that directory directly, going
+            // A launch argument (aer-ui <room-directory>) still opens that directory directly, going
             // through OpenAsync now rather than the bare LoadAsync the Phase 1 walking skeleton used
             // (#118) — this is what makes a directory opened this way get remembered in the recents
             // list exactly like one opened by hand (Phase 2, #119). A missing/extra argument leaves

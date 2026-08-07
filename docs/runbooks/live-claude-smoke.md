@@ -39,7 +39,7 @@ makes — against the fixtures in `tests/Aer.Cli.SmokeTests/Fixtures/`:
   (`claude-haiku-4-5-20251001`, chosen for speed/cost — edit this file to point at a different
   model without touching any code).
 
-Each run uses a fresh temporary task directory, so repeated runs never resume a prior one.
+Each run uses a fresh temporary room directory, so repeated runs never resume a prior one.
 
 ## What "green" means
 

@@ -14,13 +14,13 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
-    public Task RecordOpenedAsync(string taskDirectoryPath, CancellationToken cancellationToken = default)
-        => _configurationStore.RecordOpenedAsync(taskDirectoryPath, cancellationToken);
+    public Task RecordOpenedAsync(string roomDirectoryPath, CancellationToken cancellationToken = default)
+        => _configurationStore.RecordOpenedAsync(roomDirectoryPath, cancellationToken);
 
-    public Task<IReadOnlyList<string>> LoadRecentTaskDirectoriesAsync(CancellationToken cancellationToken = default)
-        => _configurationStore.LoadRecentTaskDirectoriesAsync(cancellationToken);
+    public Task<IReadOnlyList<string>> LoadRecentRoomDirectoriesAsync(CancellationToken cancellationToken = default)
+        => _configurationStore.LoadRecentRoomDirectoriesAsync(cancellationToken);
 
     public Task<string?> LoadLastBindingsFilePathAsync(CancellationToken cancellationToken = default)
         => _configurationStore.LoadLastBindingsFilePathAsync(cancellationToken);

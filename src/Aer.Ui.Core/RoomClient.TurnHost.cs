@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace Aer.Ui.Core;
 
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     private sealed record ClearDormancyRequest(string RoomDirectoryPath);
 

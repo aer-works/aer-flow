@@ -17,7 +17,7 @@ public delegate Task CancelDelegate(ExecutionId executionId);
 /// One currently-running (or cancellation-pending) execution's §7 Cancel action surface (M15 Phase 4,
 /// issue #140) — process-bound steps still dispatched to Core, and step-less supplementary/human
 /// executions still awaiting completion (spec §17.3), rendered uniformly since both are valid
-/// <c>MutationInterface.RequestCancellationAsync</c> targets. Rebuilt from <see cref="TaskProjection"/>
+/// <c>MutationInterface.RequestCancellationAsync</c> targets. Rebuilt from <see cref="RoomProjection"/>
 /// on every load, the same "projected fact, not retained handler state" discipline
 /// <see cref="PausedStepViewModel"/> already follows — an execution that settles simply stops
 /// appearing next load.
@@ -35,7 +35,7 @@ public sealed partial class RunningExecutionViewModel : ObservableObject
 
     /// <summary>
     /// Whether this window's own currently in-flight pump is the one that dispatched this execution
-    /// — determined once, at render time, from whether this task directory is the one this window is
+    /// — determined once, at render time, from whether this room directory is the one this window is
     /// actively pumping (<see cref="MainWindow"/>'s own retained registry). A non-process execution is
     /// never locally hosted: it never registers with <c>InFlightExecutionRegistry</c> in the first
     /// place (Phase 1's <c>NonProcessCancellationDetector</c> owns that tier directly). Drives both

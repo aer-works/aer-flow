@@ -194,7 +194,7 @@ public class MemoryProposalEscalationForRoomTests : IDisposable
     /// must be invisible to it, and vice versa. This is impossible to state, let alone pass, against
     /// #801's static shared directory (every room's captures lived in the exact same directory, with
     /// no room-scoped subtree to sweep) -- there was no way to even express "room A's captures" as
-    /// distinct from "room B's". Per-execution capture under each room's own task directory is what
+    /// distinct from "room B's". Per-execution capture under each room's own room directory is what
     /// makes the two directory trees physically disjoint, which is what this test actually exercises.
     /// </summary>
     [Fact]

@@ -22,7 +22,7 @@ public abstract record RoomEvent
     {
     }
 
-    /// <summary>Records that a held work reference was dispatched into a lane directory.</summary>
+    /// <summary>Records that a held work reference was dispatched into a workflow directory.</summary>
     public sealed record HeldWorkDispatched(
         HeldWorkRef Ref,
         string Shape,

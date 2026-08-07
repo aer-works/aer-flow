@@ -11,7 +11,7 @@ public class ChatViewModelTests
 {
     private static SessionMetadata MetadataWithTurns(params SessionTurn[] turns) => new(
         SessionId: "sess-1",
-        TaskDirectoryPath: "/tmp/sess-1",
+        RoomDirectoryPath: "/tmp/sess-1",
         CurrentAdapter: "claude",
         CurrentVendorSessionId: "vendor-1",
         Model: null,
@@ -108,7 +108,7 @@ public class ChatViewModelTests
         viewModel.Clear();
 
         Assert.Null(viewModel.SessionId);
-        Assert.Null(viewModel.TaskDirectoryPath);
+        Assert.Null(viewModel.RoomDirectoryPath);
         Assert.Empty(viewModel.Messages);
         Assert.Equal("No room open.", viewModel.HeadlineText);
         Assert.False(viewModel.IsSending);
@@ -145,7 +145,7 @@ public class ChatViewModelTests
         Assert.False(viewModel.IsSessionOpen);
     }
 
-    /// <summary>#290: IsSessionOpen derives from TaskDirectoryPath, which is a plain-setter property, not an [ObservableProperty] -- this guards against a regression where LoadFromMetadata/Clear forget to raise the change notification a XAML IsVisible binding depends on.</summary>
+    /// <summary>#290: IsSessionOpen derives from RoomDirectoryPath, which is a plain-setter property, not an [ObservableProperty] -- this guards against a regression where LoadFromMetadata/Clear forget to raise the change notification a XAML IsVisible binding depends on.</summary>
     [Fact]
     public void IsSessionOpen_RaisesPropertyChangedOnLoadAndClear()
     {
@@ -199,7 +199,7 @@ public class ChatViewModelTests
         // the informational one, and neither anywhere else.
         var viewModel = new ChatViewModel();
 
-        viewModel.LoadCommands(new TaskSession.SessionCommandsResult(
+        viewModel.LoadCommands(new RoomClient.SessionCommandsResult(
             Vendor: "claude",
             Items:
             [

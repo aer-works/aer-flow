@@ -11,7 +11,7 @@ public class DecideOptionsParserTests
         var options = DecideOptionsParser.Parse(
             ["task", "--execution", "exec-1", "--type", "resume", "--bindings", "bindings.json"]);
 
-        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.RoomDirectoryPath);
         Assert.Equal("exec-1", options.ExecutionId);
         Assert.Equal(DecisionType.Resume, options.DecisionType);
         Assert.Null(options.TargetStepId);
@@ -47,12 +47,12 @@ public class DecideOptionsParserTests
     }
 
     [Fact]
-    public void Options_may_precede_the_positional_task_directory()
+    public void Options_may_precede_the_positional_room_directory()
     {
         var options = DecideOptionsParser.Parse(
             ["--execution", "exec-1", "--type", "resume", "--bindings", "bindings.json", "task"]);
 
-        Assert.Equal(Path.GetFullPath("task"), options.TaskDirectoryPath);
+        Assert.Equal(Path.GetFullPath("task"), options.RoomDirectoryPath);
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public class DecideOptionsParserTests
     }
 
     [Fact]
-    public void A_missing_task_directory_throws()
+    public void A_missing_room_directory_throws()
     {
         Assert.Throws<CliArgumentException>(() => DecideOptionsParser.Parse(
             ["--execution", "exec-1", "--type", "resume", "--bindings", "bindings.json"]));

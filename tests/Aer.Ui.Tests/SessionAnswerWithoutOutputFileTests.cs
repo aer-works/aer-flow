@@ -158,9 +158,9 @@ public class SessionAnswerWithoutOutputFileTests : IAsyncLifetime
         var turn = await SendOneTurnAsync("does the ask survive the turn rewrite");
         Assert.NotNull(turn);
 
-        var sessionsRoot = Path.Combine(AerPaths.Root, "sessions");
-        var bindingsFiles = Directory.Exists(sessionsRoot)
-            ? Directory.GetFiles(sessionsRoot, "bindings.json", SearchOption.AllDirectories)
+        var roomsRoot = Path.Combine(AerPaths.Root, "rooms");
+        var bindingsFiles = Directory.Exists(roomsRoot)
+            ? Directory.GetFiles(roomsRoot, "bindings.json", SearchOption.AllDirectories)
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .ToList()
             : [];
@@ -183,7 +183,7 @@ public class SessionAnswerWithoutOutputFileTests : IAsyncLifetime
     {
         var start = new StartSessionRequest(
             Adapter: "claude",
-            TaskName: "no-output-file-" + Guid.NewGuid().ToString("N"),
+            RoomName: "no-output-file-" + Guid.NewGuid().ToString("N"),
             InitialMessage: message,
             SafetyCeiling: 200);
 

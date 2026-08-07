@@ -22,9 +22,9 @@ public class MutationInterfaceTests
     [Fact]
     public async Task StartWorkflowAsync_runs_a_three_step_linear_workflow_to_completion()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var snapshot = new WorkflowDefinitionSnapshot(
@@ -59,7 +59,7 @@ public class MutationInterfaceTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-1"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-1"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
 
@@ -70,17 +70,17 @@ public class MutationInterfaceTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task StartWorkflowAsync_retries_a_step_that_fails_once_then_succeeds()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
-        var markerFilePath = Path.Combine(taskDirectory, "attempt-marker");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
+        var markerFilePath = Path.Combine(roomDirectory, "attempt-marker");
         try
         {
             var snapshot = new WorkflowDefinitionSnapshot(
@@ -110,7 +110,7 @@ public class MutationInterfaceTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-3"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-3"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.All(finalState.Steps, step => Assert.Equal(StepStatus.Succeeded, step.Status));
             Assert.Equal(0, finalState.Steps.Single(s => s.StepId == Architect).ConsecutiveFailureCount);
@@ -130,16 +130,16 @@ public class MutationInterfaceTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task StartWorkflowAsync_classifies_a_clean_exit_with_no_output_as_ExecutionFailed()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var stepId = new StepId("silent-step");
@@ -162,7 +162,7 @@ public class MutationInterfaceTests
             var dispatcher = new CoreDispatcher(writer);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-2"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-2"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var stepState = Assert.Single(finalState.Steps);
             Assert.Equal(StepStatus.Failed, stepState.Status);
@@ -175,7 +175,7 @@ public class MutationInterfaceTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
@@ -186,9 +186,9 @@ public class MutationInterfaceTests
         // Retryable — not Permanent — because an OS refusal is not proven deterministic; a stuck
         // cause terminates through RetryPolicy exhaustion instead. Polarity partner to the
         // Permanent assert in the CommandLineTooLongException test below.
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var stepId = new StepId("os-refused-step");
@@ -210,7 +210,7 @@ public class MutationInterfaceTests
             var reader = new FlowEventLogReader(logPath);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-os-refusal"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer,
+                new WorkflowId("wf-os-refusal"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer,
                 new OsRefusingCoreDispatcher(), cancellationToken: TestContext.Current.CancellationToken);
 
             var stepState = Assert.Single(finalState.Steps);
@@ -223,16 +223,16 @@ public class MutationInterfaceTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 
     [Fact]
     public async Task StartWorkflowAsync_records_ExecutionFailed_when_dispatch_throws_CommandLineTooLongException()
     {
-        var taskDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
-        var artifactsRoot = Path.Combine(taskDirectory, "artifacts");
-        var logPath = Path.Combine(taskDirectory, "flow.jsonl");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"task-{Guid.NewGuid():N}");
+        var artifactsRoot = Path.Combine(roomDirectory, "artifacts");
+        var logPath = Path.Combine(roomDirectory, "flow.jsonl");
         try
         {
             var stepId = new StepId("long-cmd-step");
@@ -256,7 +256,7 @@ public class MutationInterfaceTests
             var dispatcher = new RefusingCoreDispatcher(refusalMessage);
 
             var finalState = await MutationInterface.StartWorkflowAsync(
-                new WorkflowId("wf-refusal"), taskDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
+                new WorkflowId("wf-refusal"), roomDirectory, snapshot, bindings, artifactsRoot, reader, writer, dispatcher, cancellationToken: TestContext.Current.CancellationToken);
 
             var stepState = Assert.Single(finalState.Steps);
             Assert.Equal(StepStatus.Failed, stepState.Status);
@@ -269,7 +269,7 @@ public class MutationInterfaceTests
         }
         finally
         {
-            DirectoryCleanup.DeleteRecursively(taskDirectory);
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
         }
     }
 

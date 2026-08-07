@@ -16,7 +16,7 @@ namespace Aer.Ui.Tests;
 public class ChatAdapterComboTests
 {
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-combo-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-combo-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     private static readonly VendorCliStatus[] BothVendors =
     [

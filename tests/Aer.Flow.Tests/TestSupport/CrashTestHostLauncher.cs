@@ -28,7 +28,7 @@ internal static class CrashTestHostLauncher
     public static string HostDllPath { get; } = typeof(Scenarios).Assembly.Location;
 
     public static Process Launch(
-        string pausePoint, string taskDirectory, string artifactsRoot, string logPath, string pauseSignalPath, string cancelSignalPath)
+        string pausePoint, string roomDirectory, string artifactsRoot, string logPath, string pauseSignalPath, string cancelSignalPath)
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
@@ -37,7 +37,7 @@ internal static class CrashTestHostLauncher
         startInfo.ArgumentList.Add("exec");
         startInfo.ArgumentList.Add(HostDllPath);
         startInfo.ArgumentList.Add(pausePoint);
-        startInfo.ArgumentList.Add(taskDirectory);
+        startInfo.ArgumentList.Add(roomDirectory);
         startInfo.ArgumentList.Add(artifactsRoot);
         startInfo.ArgumentList.Add(logPath);
         startInfo.ArgumentList.Add(pauseSignalPath);

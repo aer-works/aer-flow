@@ -23,20 +23,20 @@ public class MainWindowDecisionTests
         new Dictionary<string, IWorkerAdapter> { ["shell"] = new ShellCommandWorkerAdapter() };
 
     private static string NewConfigFilePath() =>
-        Path.Combine(Path.GetTempPath(), $"aer-ui-decide-config-{Guid.NewGuid():N}", "recent-task-directories.json");
+        Path.Combine(Path.GetTempPath(), $"aer-ui-decide-config-{Guid.NewGuid():N}", "recent-room-directories.json");
 
     [AvaloniaFact]
     public async Task Approve_resolves_the_pause_to_its_underlying_outcome_and_the_workflow_runs_to_terminal()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-decide-approve-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
-            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             var statusText = window.FindViewControl<TextBlock>("StatusText")!;
             Assert.Equal("Workflow status: Paused", statusText.Text);
@@ -66,14 +66,14 @@ public class MainWindowDecisionTests
     public async Task Reject_projects_the_paused_step_terminally_failed_and_the_downstream_step_never_dispatches()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-decide-reject-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
-            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             var pausedStep = Assert.Single(window.ViewModel.PausedSteps);
 
@@ -98,14 +98,14 @@ public class MainWindowDecisionTests
     public async Task An_invalid_decision_renders_as_an_in_window_message_not_a_crash_and_leaves_the_pause_intact()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-decide-invalid-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()), Adapters);
 
-            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             // A bindings file naming an adapter this window's registry doesn't have makes
             // DecideCommand throw UnknownWorkerAdapterException before it ever reaches the mutation
@@ -135,17 +135,17 @@ public class MainWindowDecisionTests
     public async Task Answering_gate_retires_inbox_item_without_home_refresh()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-decide-retire-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
             var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
             var configStore = new LocalUiConfigurationStore(NewConfigFilePath());
-            await configStore.RecordOpenedAsync(taskDirectory);
+            await configStore.RecordOpenedAsync(roomDirectory);
 
             var window = new MainWindow(configStore, Adapters);
 
-            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             // Seed the inbox item in Home
             await window.ViewModel.Home.RefreshAsync(
@@ -173,19 +173,19 @@ public class MainWindowDecisionTests
     public void Decision_polarity_does_not_retire_unmatched_inbox_items()
     {
         var home = new Aer.Ui.Core.HomeViewModel();
-        var taskPath1 = Path.Combine(Path.GetTempPath(), "task1");
-        var taskPath2 = Path.Combine(Path.GetTempPath(), "task2");
+        var roomPath1 = Path.Combine(Path.GetTempPath(), "task1");
+        var roomPath2 = Path.Combine(Path.GetTempPath(), "task2");
 
         var item1 = new Aer.Ui.Core.InboxItemViewModel(
-            taskPath1, "Task 1", "step-a", "Status", "Preview",
+            roomPath1, "Task 1", "step-a", "Status", "Preview",
             Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
 
         var item2 = new Aer.Ui.Core.InboxItemViewModel(
-            taskPath1, "Task 1", "step-b", "Status", "Preview",
+            roomPath1, "Task 1", "step-b", "Status", "Preview",
             Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
 
         var item3 = new Aer.Ui.Core.InboxItemViewModel(
-            taskPath2, "Task 2", "step-a", "Status", "Preview",
+            roomPath2, "Task 2", "step-a", "Status", "Preview",
             Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
 
         home.InboxItems.Add(item1);
@@ -193,7 +193,7 @@ public class MainWindowDecisionTests
         home.InboxItems.Add(item3);
 
         // Retire step-a of task 1
-        home.RetireInboxItem(taskPath1, new StepId("step-a"), new ExecutionId("exec-1"));
+        home.RetireInboxItem(roomPath1, new StepId("step-a"), new ExecutionId("exec-1"));
 
         Assert.Equal(2, home.InboxItems.Count);
         Assert.DoesNotContain(item1, home.InboxItems);
@@ -205,7 +205,7 @@ public class MainWindowDecisionTests
     public async Task Loading_a_locked_task_renders_waiting_on_lock_banner_with_holder_text()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-lock-banner-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
@@ -213,10 +213,10 @@ public class MainWindowDecisionTests
             var configStore = new LocalUiConfigurationStore(NewConfigFilePath());
 
             // Acquire lock in fixture before opening/loading
-            using var lockGuard = Aer.Flow.Concurrency.ConcurrencyGuard.Acquire(taskDirectory, "Other Room (pid 777)");
+            using var lockGuard = Aer.Flow.Concurrency.ConcurrencyGuard.Acquire(roomDirectory, "Other Room (pid 777)");
 
             var window = new MainWindow(configStore, Adapters);
-            await window.OpenAsync(taskDirectory, TestContext.Current.CancellationToken);
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
             Assert.True(window.ViewModel.HasWaitingOnLockBanner);
             Assert.NotNull(window.ViewModel.WaitingOnLockBanner);
@@ -233,7 +233,7 @@ public class MainWindowDecisionTests
     public async Task Loading_an_unlocked_task_does_not_render_waiting_on_lock_banner()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"ui-lock-banner-polarity-{Guid.NewGuid():N}");
-        var taskDirectory = Path.Combine(testRoot, "task");
+        var roomDirectory = Path.Combine(testRoot, "task");
         try
         {
             var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
@@ -241,7 +241,7 @@ public class MainWindowDecisionTests
             var configStore = new LocalUiConfigurationStore(NewConfigFilePath());
 
             var window = new MainWindow(configStore, Adapters);
-            await window.RunAsync(taskDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
+            await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
 
             Assert.False(window.ViewModel.HasWaitingOnLockBanner);
             Assert.Null(window.ViewModel.WaitingOnLockBanner);

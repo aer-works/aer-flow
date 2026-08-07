@@ -14,7 +14,7 @@ using Aer.Flow.Mutation;
 
 namespace Aer.Ui.Core;
 
-public sealed partial class TaskSession
+public sealed partial class RoomClient
 {
     private (string Url, string Token)? GetDaemonConnectionInfo()
     {
@@ -67,7 +67,7 @@ public sealed partial class TaskSession
             if (response.IsSuccessStatusCode)
             {
                 var meta = await response.Content.ReadFromJsonAsync<DaemonVersionInfo>(cancellationToken: cancellationToken).ConfigureAwait(true);
-                var clientVersion = typeof(TaskSession).Assembly.GetName().Version?.ToString() ?? "1.0.0";
+                var clientVersion = typeof(RoomClient).Assembly.GetName().Version?.ToString() ?? "1.0.0";
 
                 if (meta != null && meta.Version == clientVersion)
                 {
@@ -75,16 +75,16 @@ public sealed partial class TaskSession
                     await StartWebSocketListenerAsync(_activeDaemonUrl, token, cancellationToken).ConfigureAwait(true);
                     return true;
                 }
-                else if (meta != null && !meta.HasRunningTasks)
+                else if (meta != null && !meta.HasRunningRooms)
                 {
-                    // Version skew! Force shutdown running daemon to respawn updated one (safe since no tasks are running)
+                    // Version skew! Force shutdown running daemon to respawn updated one (safe since no rooms are running)
                     await _httpClient.PostAsync($"{_activeDaemonUrl}/api/daemon/shutdown", null, cancellationToken).ConfigureAwait(true);
                     await Task.Delay(500, cancellationToken).ConfigureAwait(true);
                 }
                 else
                 {
-                    // Version skew, but daemon has running tasks in flight. We must not terminate it;
-                    // continue using the running daemon to preserve task integrity.
+                    // Version skew, but daemon has running rooms in flight. We must not terminate it;
+                    // continue using the running daemon to preserve room integrity.
                     _isClientMode = true;
                     await StartWebSocketListenerAsync(_activeDaemonUrl, token, cancellationToken).ConfigureAwait(true);
                     return true;
@@ -96,7 +96,7 @@ public sealed partial class TaskSession
             // Connect failed
         }
 
-        // #998: gated because a TaskSession constructed in a test reaches this fallback the
+        // #998: gated because a RoomClient constructed in a test reaches this fallback the
         // moment its probe fails — and the spawned daemon re-registers itself in the REAL
         // ~/.aer, clobbering the operator's registration and leaking a process that holds DLL
         // locks against every later build. The desktop app keeps the default (true).
@@ -271,7 +271,7 @@ public sealed partial class TaskSession
             if (_isClientMode)
             {
                 _isClientMode = false;
-                if (CurrentTaskDirectoryPath != null)
+                if (CurrentRoomDirectoryPath != null)
                 {
                     _ = EnsureDaemonConnectedAsync(CancellationToken.None);
                 }
@@ -309,9 +309,9 @@ public sealed partial class TaskSession
     private sealed record ProgressFrame(string DirectoryPath, string StepId, string Kind, string Text, bool IsPartial);
 
     /// <summary>
-    /// Mirrors <see cref="TaskProjection"/>'s shape plus the <c>DirectoryPath</c> sibling property
+    /// Mirrors <see cref="RoomProjection"/>'s shape plus the <c>DirectoryPath</c> sibling property
     /// Aer.Daemon bolts onto every <c>/api/ws</c> frame (M21 Phase 2, #232). Deserializing straight
-    /// into <see cref="TaskProjection"/>, as <see cref="ReceiveWebSocketDataAsync"/> did before,
+    /// into <see cref="RoomProjection"/>, as <see cref="ReceiveWebSocketDataAsync"/> did before,
     /// silently drops that sibling — leaving no way to tell whether an incoming push is even for the
     /// directory this client has open, so every push got applied unconditionally regardless of which
     /// client's action produced it. This wrapper exists solely so the receive loop can filter.
@@ -323,7 +323,7 @@ public sealed partial class TaskSession
         ExecutionHistory History,
         ArtifactLineage Lineage);
 
-    /// <summary>The M24 Phase 1 live in-turn streaming socket's client-side counterpart -- see <see cref="SessionProgressReceived"/>. A dedicated connection, not folded into <see cref="StartWebSocketListenerAsync"/>'s own socket, for the exact same reason the daemon keeps the two endpoints separate (<c>Aer.Daemon.Program</c>'s <c>progressWebSockets</c> remarks): this frame shape has no type discriminator, so sharing a socket risks a <see cref="TaskProjection"/> deserialization corrupting on it.</summary>
+    /// <summary>The M24 Phase 1 live in-turn streaming socket's client-side counterpart -- see <see cref="SessionProgressReceived"/>. A dedicated connection, not folded into <see cref="StartWebSocketListenerAsync"/>'s own socket, for the exact same reason the daemon keeps the two endpoints separate (<c>Aer.Daemon.Program</c>'s <c>progressWebSockets</c> remarks): this frame shape has no type discriminator, so sharing a socket risks a <see cref="RoomProjection"/> deserialization corrupting on it.</summary>
     private async Task StartProgressWebSocketListenerAsync(string resolvedUrl, string? token, CancellationToken cancellationToken)
     {
         _progressWsCts?.Cancel();
@@ -394,15 +394,15 @@ public sealed partial class TaskSession
     }
 
     // This WS receive loop is transport, but it mutates *client* state — it calls
-    // ShouldApplyProjectionPush / UpdateProjection (in TaskSession.cs) which seed
-    // CurrentTaskDirectoryPath and the live projection.
+    // ShouldApplyProjectionPush / UpdateProjection (in RoomClient.cs) which seed
+    // CurrentRoomDirectoryPath and the live projection.
     //
     // #336 retired the assumption this comment used to record ("a client watches one session at a
     // time, so filtering on arrival is correct"). The switcher shows every session at once, so a
     // frame now has *two* consumers: the list, which wants all of them, and the detail pane, which
     // still wants only the one being viewed. That is deliberately expressed as two consumers of one
     // frame rather than as a loosened filter — ShouldApplyProjectionPush's directory equality is
-    // what fixed #262 (one client opening a different task corrupting every other client's view,
+    // what fixed #262 (one client opening a different room corrupting every other client's view,
     // mislabeled under whatever directory the victim had open), and widening it would resurrect
     // exactly that. Routing pushes at the server so a client is not sent what it will discard is
     // #446; this filter stays afterwards as defence in depth — a subscription bug should cost
@@ -433,7 +433,7 @@ public sealed partial class TaskSession
 
                     if (frame != null)
                     {
-                        var projection = new TaskProjection(frame.Snapshot, frame.State, frame.History, frame.Lineage);
+                        var projection = new RoomProjection(frame.Snapshot, frame.State, frame.History, frame.Lineage);
 
                         // Consumer 1 (#336): every frame, whichever directory it is for. The switcher's
                         // list shows every session at once, so a push for a session this client is not
@@ -455,18 +455,18 @@ public sealed partial class TaskSession
                                 _syncContext.Post(_ =>
                                 {
                                     UpdateProjection(projection);
-                                    if (_onProjectionUpdated != null && CurrentTaskDirectoryPath != null)
+                                    if (_onProjectionUpdated != null && CurrentRoomDirectoryPath != null)
                                     {
-                                        _onProjectionUpdated(projection, CurrentTaskDirectoryPath);
+                                        _onProjectionUpdated(projection, CurrentRoomDirectoryPath);
                                     }
                                 }, null);
                             }
                             else
                             {
                                 UpdateProjection(projection);
-                                if (_onProjectionUpdated != null && CurrentTaskDirectoryPath != null)
+                                if (_onProjectionUpdated != null && CurrentRoomDirectoryPath != null)
                                 {
-                                    _onProjectionUpdated(projection, CurrentTaskDirectoryPath);
+                                    _onProjectionUpdated(projection, CurrentRoomDirectoryPath);
                                 }
                             }
                         }

@@ -22,7 +22,7 @@ public static class MemoryProposalEscalation
 {
     /// <summary>
     /// The room's own placeholder budget for a memory-proposal item (#801): unlike a dispatched
-    /// workflow lane, a proposal has no natural timeout of its own -- it waits on an operator
+    /// workflow, a proposal has no natural timeout of its own -- it waits on an operator
     /// decision, not a process. <see cref="TimeSpan.Zero"/> carries no live meaning today (nothing
     /// in <see cref="RoomProjector"/>/<see cref="HeldWorkReconciler"/> currently branches on
     /// <c>Budget</c>); recorded here rather than a made-up nonzero figure so a future consumer that
@@ -45,7 +45,7 @@ public static class MemoryProposalEscalation
     /// the identical value; <c>Aer.Flow</c> cannot reference <c>Aer.Mcp.Host</c> (the dependency runs
     /// the other way -- adapters and the tool host sit above the engine), so the literal is
     /// duplicated across the boundary rather than shared, the same way
-    /// <c>HeldWorkReconciler.DefaultLaneJournalExistsProbe</c> already hardcodes <c>flow.jsonl</c>'s
+    /// <c>HeldWorkReconciler.DefaultWorkflowJournalExistsProbe</c> already hardcodes <c>flow.jsonl</c>'s
     /// name rather than importing it. <c>MemoryProposalCaptureDirectoryNameTests</c> (both projects)
     /// pins the two literals to the same value.
     /// </summary>
@@ -55,7 +55,7 @@ public static class MemoryProposalEscalation
     /// Sweeps every execution directory under <paramref name="roomDirectoryPath"/>'s own
     /// <c>artifacts/</c> for a <see cref="CaptureDirectoryName"/> subdirectory and escalates each
     /// one's new captures into this same room (#833). Attribution is structural, never a claim: the
-    /// room's storage form IS the task directory (spec §2), so every <c>execution_*</c> directory
+    /// room's storage form IS the room directory (spec §2), so every <c>execution_*</c> directory
     /// found under <c>{roomDirectoryPath}/artifacts</c> was, by construction, dispatched by this room
     /// and no other -- there is nothing here for a worker to lie about. Retires the #801 static,
     /// shared capture directory this replaces: that directory served every room at once with no way
@@ -96,8 +96,8 @@ public static class MemoryProposalEscalation
     /// <summary>
     /// Dispatches every capture file under <paramref name="captureDirectoryPath"/> that is not
     /// already held work in this room, in filename order. A capture file's own path becomes its
-    /// <see cref="HeldWorkRef"/> -- there is no lane directory for a memory proposal, so this reuses
-    /// the ref's role as "the thing to point an operator at" rather than "a lane with a flow.jsonl".
+    /// <see cref="HeldWorkRef"/> -- there is no workflow directory for a memory proposal, so this reuses
+    /// the ref's role as "the thing to point an operator at" rather than "a workflow with a flow.jsonl".
     /// Idempotent: re-running against the same directory re-dispatches nothing already recorded.
     /// The idempotency key is the capture file's full path, so <paramref name="captureDirectoryPath"/>
     /// must be rooted -- a relative path would resolve against the caller's current directory and
