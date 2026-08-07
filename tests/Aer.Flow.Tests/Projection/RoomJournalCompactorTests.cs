@@ -1,4 +1,5 @@
 using Aer.Flow.Domain;
+using Aer.Flow.Mutation;
 using Aer.Flow.Projection;
 using Aer.Flow.Store;
 using Aer.Tests.Shared;
@@ -172,5 +173,61 @@ public class RoomJournalCompactorTests
         Assert.True(await RoomJournalCompactor.CompactAsync(roomDir, TestContext.Current.CancellationToken));
         var after = await File.ReadAllTextAsync(Path.Combine(roomDir, "room.jsonl"), TestContext.Current.CancellationToken);
         Assert.NotEqual(before, after);
+    }
+
+    [Fact]
+    public async Task Compacted_room_with_resolved_run_allows_new_execution_dispatch_and_maintains_dedup()
+    {
+        var workflowDir = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "aer_wf_test_" + Guid.NewGuid().ToString("n")));
+        var refResolved = new HeldWorkRef(workflowDir);
+        var dispatchResolved = new RoomEvent.HeldWorkDispatched(refResolved, "shape-1", TimeSpan.FromMinutes(5), "human");
+        var resolveResolved = new RoomEvent.HeldWorkResolved(refResolved, new HeldWorkCitation("Resolved", "ok"));
+
+        var roomDir = await CreateTestRoomAsync(dispatchResolved, resolveResolved);
+        try
+        {
+            var roomLogPath = Path.Combine(roomDir, "room.jsonl");
+
+            var compacted = await RoomJournalCompactor.CompactAsync(roomDir, TestContext.Current.CancellationToken);
+            Assert.True(compacted);
+
+            var reader = new RoomEventLogReader(roomLogPath);
+            await using var writer = new RoomEventLogWriter(roomLogPath);
+
+            var compactedEvents = await reader.ReadAllRoomEventsAsync(TestContext.Current.CancellationToken);
+            var roomStateCompacted = RoomProjector.Project(compactedEvents);
+            Assert.False(roomStateCompacted.HeldWork.ContainsKey(refResolved));
+
+            var newWorkflowDir = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "aer_wf_test_new_" + Guid.NewGuid().ToString("n")));
+            var refNew = new HeldWorkRef(newWorkflowDir);
+
+            var stateAfterNewDispatch = await RoomMutationInterface.DispatchHeldWorkAsync(
+                roomDir,
+                refNew,
+                "shape-2",
+                TimeSpan.FromMinutes(5),
+                "human",
+                reader,
+                writer,
+                TestContext.Current.CancellationToken);
+
+            Assert.True(stateAfterNewDispatch.HeldWork.ContainsKey(refNew));
+            Assert.False(stateAfterNewDispatch.HeldWork.ContainsKey(refResolved));
+
+            await Assert.ThrowsAsync<InvalidRoomMutationException>(() =>
+                RoomMutationInterface.DispatchHeldWorkAsync(
+                    roomDir,
+                    refNew,
+                    "shape-2",
+                    TimeSpan.FromMinutes(5),
+                    "human",
+                    reader,
+                    writer,
+                    TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDir);
+        }
     }
 }
