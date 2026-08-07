@@ -351,6 +351,28 @@ public class RoomsViewModelTests
     }
 
     [Fact]
+    public void A_working_room_sorts_above_a_more_recently_active_finished_room()
+    {
+        // Design "State first, then recency": working is its own tier, above "earlier" (finished etc.),
+        // so a working room outranks a finished one even when the finished one was touched more recently.
+        var workingButOlder = NewItem("/tasks/working") with
+        {
+            LastActivityAt = DateTimeOffset.UnixEpoch.AddHours(1),
+            Status = RoomCardStatus.Running,
+        };
+        var finishedButNewer = NewItem("/tasks/finished") with
+        {
+            LastActivityAt = DateTimeOffset.UnixEpoch.AddHours(9),
+            Status = RoomCardStatus.Finished,
+        };
+
+        var ordered = RoomsViewModel.InFleetOrderForTests([finishedButNewer, workingButOlder]).ToList();
+
+        Assert.Equal("/tasks/working", ordered[0].RoomDirectoryPath);
+        Assert.Equal("/tasks/finished", ordered[1].RoomDirectoryPath);
+    }
+
+    [Fact]
     public void A_row_seeds_its_mark_from_the_fleets_status_on_load_not_only_after_a_push()
     {
         // The switcher must draw the correct silhouette immediately; before #1051 the row's Status

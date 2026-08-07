@@ -125,9 +125,24 @@ public sealed partial class RoomsViewModel : ObservableObject
     /// transport keeps local (non-daemon) loads and push-updated rows in the same order as remote ones.
     /// </remarks>
     private static IEnumerable<RoomFleetItem> InFleetOrder(IEnumerable<RoomFleetItem> items) =>
-        items.OrderByDescending(i => i.Status == RoomCardStatus.NeedsYou)
+        items.OrderBy(i => StateRank(i.Status))
             .ThenByDescending(i => i.LastActivityAt ?? i.Updated)
             .ThenBy(i => i.FriendlyName, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The design's "State first, then recency" list order (docs/design/02-screens.md): rooms group
+    /// by state — <b>needs you</b>, then <b>working</b>, then everything <b>earlier</b> (finished /
+    /// failed / cancelled / unavailable / never-run) — and recency orders within each group. This is
+    /// the tier key; <see cref="InFleetOrder"/> breaks ties by recency then name so the list is stable.
+    /// The stress test's lesson (02-screens.md): at a hundred rooms, sorting by recency alone buries
+    /// the three that need you among ninety-one finished ones — grouping is what keeps it usable.
+    /// </summary>
+    private static int StateRank(RoomCardStatus? status) => status switch
+    {
+        RoomCardStatus.NeedsYou => 0,
+        RoomCardStatus.Running => 1,
+        _ => 2,
+    };
 
     /// <summary>
     /// Test seam for <see cref="InFleetOrder"/> — same reasoning as <see cref="AddTestItem"/>: the
