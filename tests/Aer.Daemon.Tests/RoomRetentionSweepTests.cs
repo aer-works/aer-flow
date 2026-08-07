@@ -122,4 +122,76 @@ public class RoomRetentionSweepTests
         Assert.Equal(RoomRetentionSweep.PlaceholderDefaultInterval, RoomRetentionSweep.GetInterval());
         Assert.Equal(RoomRetentionSweep.PlaceholderDefaultThresholdBytes, RoomRetentionSweep.GetThresholdBytes());
     }
+
+    [Fact]
+    public void GetInterval_ClampsPathologicalValue_InsteadOfOverflowing()
+    {
+        var prior = Environment.GetEnvironmentVariable(RoomRetentionSweep.IntervalSecondsEnvironmentVariable);
+        try
+        {
+            // Pins the clamp (RoomRetentionSweep.MaxInterval documents why it exists): a value whose
+            // seconds would overflow TimeSpan.FromSeconds must collapse to MaxInterval, never throw.
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.IntervalSecondsEnvironmentVariable, "1e300");
+            var interval = RoomRetentionSweep.GetInterval();
+            Assert.Equal(RoomRetentionSweep.MaxInterval, interval);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.IntervalSecondsEnvironmentVariable, prior);
+        }
+    }
+
+    [Fact]
+    public void GetInterval_LiftsSubSecondValue_ToMinInterval()
+    {
+        var prior = Environment.GetEnvironmentVariable(RoomRetentionSweep.IntervalSecondsEnvironmentVariable);
+        try
+        {
+            // Pins the lower clamp (RoomRetentionSweep.MinInterval documents the rationale): a value below
+            // one second must lift to MinInterval rather than pass through near-zero.
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.IntervalSecondsEnvironmentVariable, "1e-9");
+            Assert.Equal(RoomRetentionSweep.MinInterval, RoomRetentionSweep.GetInterval());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.IntervalSecondsEnvironmentVariable, prior);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteSingleSweepAsync_PropagatesCancellation_InsteadOfSwallowingItAsAPerRoomError()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "aer_sweep_test_cancel_" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var refCompleted = new HeldWorkRef("run-completed");
+            var dispatchCompleted = new RoomEvent.HeldWorkDispatched(refCompleted, "shape", TimeSpan.FromMinutes(5), "human");
+            var resolveCompleted = new RoomEvent.HeldWorkResolved(refCompleted, new HeldWorkCitation("Resolved", "ok"));
+            await CreateRoomWithEventsAsync(tempRoot, "room-cancel", dispatchCompleted, resolveCompleted);
+
+            using var cts = new CancellationTokenSource();
+            await cts.CancelAsync();
+
+            var sweep = new RoomRetentionSweep();
+
+            // A pre-cancelled token makes CompactAsync throw OperationCanceledException. The per-room catch
+            // must rethrow it so shutdown unwinds the whole sweep — not log it as a compaction error and
+            // march to the next room, which would swallow the cancellation. Without the rethrow clause this
+            // returns a count instead of throwing.
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                sweep.ExecuteSingleSweepAsync(
+                    roomsDirectoryOverride: tempRoot,
+                    thresholdBytesOverride: 0,
+                    cancellationToken: cts.Token));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+        }
+    }
 }

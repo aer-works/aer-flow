@@ -16,6 +16,17 @@ public sealed class RoomRetentionSweep : BackgroundService
     public static readonly TimeSpan PlaceholderDefaultInterval = TimeSpan.FromMinutes(5);
     public const long PlaceholderDefaultThresholdBytes = 1_048_576; // 1 MB placeholder
 
+    // Bounds on the parsed interval, both ends load-bearing:
+    //  - Upper: without it a pathological value (e.g. "1e300", "Infinity") reaches TimeSpan.FromSeconds,
+    //    which throws OverflowException — and GetInterval() is called from ExecuteAsync's delay, whose only
+    //    catch is OperationCanceledException, so the overflow would fault the BackgroundService and stop the
+    //    whole daemon on a typo. A retention sweep never legitimately waits >1 day.
+    //  - Lower: a sub-second typo (e.g. "1e-9") floors TimeSpan.FromSeconds to ~Zero, and Task.Delay(Zero)
+    //    returns immediately, hot-looping ExecuteAsync so it re-enumerates every room continuously. One
+    //    second is far below the placeholder cadence yet keeps the loop a loop, not a spin.
+    public static readonly TimeSpan MinInterval = TimeSpan.FromSeconds(1);
+    public static readonly TimeSpan MaxInterval = TimeSpan.FromDays(1);
+
     public static bool IsEnabled()
     {
         var val = Environment.GetEnvironmentVariable(EnabledEnvironmentVariable);
@@ -29,7 +40,10 @@ public sealed class RoomRetentionSweep : BackgroundService
             double.TryParse(val, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var seconds) &&
             seconds > 0)
         {
-            return TimeSpan.FromSeconds(seconds);
+            // Clamp before FromSeconds: honors intent within [Min, Max], collapses Infinity/huge finite to
+            // Max (no overflow) and sub-second values to Min (no hot-loop). NaN fails seconds > 0 above, so
+            // Math.Clamp never sees it.
+            return TimeSpan.FromSeconds(Math.Clamp(seconds, MinInterval.TotalSeconds, MaxInterval.TotalSeconds));
         }
 
         return PlaceholderDefaultInterval;
@@ -81,6 +95,12 @@ public sealed class RoomRetentionSweep : BackgroundService
                 {
                     compactedCount++;
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Shutdown (or a caller-cancelled token) must unwind the whole sweep, not be logged as a
+                // per-room compaction error and swallowed so the loop marches to the next room.
+                throw;
             }
             catch (Exception ex)
             {
