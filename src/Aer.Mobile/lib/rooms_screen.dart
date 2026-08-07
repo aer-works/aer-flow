@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'chat_screen.dart';
 import 'daemon/daemon_client.dart';
 import 'daemon/models.dart';
 
@@ -197,6 +198,80 @@ class _RoomsScreenState extends State<RoomsScreen> {
     }
   }
 
+  /// The empty-state's "start work" action — J8's "a real first action, not a dead-end" (#337): an
+  /// empty rooms surface must offer a way to begin, not just report that it is empty. A minimal chat
+  /// start — pick a vendor, open a room, land in its chat — deliberately mirroring InboxScreen's own
+  /// `_startNewChat`; both collapse into one start affordance when the phone's front door is unified
+  /// (#337/J3), so this is early rather than duplicated for its own sake.
+  Future<void> _startNewRoom() async {
+    var availableVendorNames = <String>[];
+    try {
+      final data = await widget.client.listTemplates();
+      final vendors = (data['availableVendors'] as List<dynamic>?) ?? [];
+      availableVendorNames = vendors
+          .where((v) => (v as Map<String, dynamic>)['isAvailable'] == true)
+          .map((v) => v['adapterName'].toString())
+          .toList();
+    } catch (_) {
+      // Best-effort probe -- the fallback list below still lets the dialog work.
+    }
+    if (availableVendorNames.isEmpty) {
+      availableVendorNames = ['claude', 'agy']; // vocabulary-ok: vendor key
+    }
+    if (!mounted) return;
+
+    var selectedAdapter = availableVendorNames.first;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('New room'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Vendor'),
+              DropdownButton<String>(
+                value: selectedAdapter,
+                isExpanded: true,
+                items: availableVendorNames
+                    .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) setDialogState(() => selectedAdapter = val);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Start')),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      final meta = await widget.client.startSession(adapter: selectedAdapter);
+      final metaCi = caseInsensitive(meta);
+      final directoryPath = metaCi['roomdirectorypath']?.toString();
+      final sessionId = metaCi['sessionid']?.toString();
+      if (directoryPath != null && sessionId != null) {
+        await navigator.push(MaterialPageRoute(
+          builder: (_) => ChatScreen(client: widget.client, sessionId: sessionId, directoryPath: directoryPath),
+        ));
+      } else {
+        messenger.showSnackBar(const SnackBar(content: Text('Room started.')));
+      }
+      if (mounted) await _refresh();
+    } on DaemonException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -233,7 +308,20 @@ class _RoomsScreenState extends State<RoomsScreen> {
           if (_isLoading) const LinearProgressIndicator(),
           Expanded(
             child: _items.isEmpty && !_isLoading
-                ? const Center(child: Text('No rooms yet.'))
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('No rooms yet.'),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _startNewRoom,
+                          icon: const Icon(Icons.add),
+                          label: const Text('New room'),
+                        ),
+                      ],
+                    ),
+                  )
                 : ListView.builder(
                     itemCount: _items.length,
                     itemBuilder: (context, index) {

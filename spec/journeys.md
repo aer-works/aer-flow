@@ -221,7 +221,7 @@ about what happened and offers a recovery that actually works.
 
 ## J8 — Open it for the first time and know what to do
 
-**Status:** Fails — automated
+**Status:** Passes — automated
 
 The first time you launch the product — no work, no pairings, nothing — each surface tells you what it
 is and gives you a real first action, not a blank wall.
@@ -234,8 +234,10 @@ is and gives you a real first action, not a blank wall.
 - **Path** *(illustrative)* — fresh install · open desktop — it invites you to open a folder / start
   your first work · open phone — it invites you to pair · you reach a real first action without a
   manual.
-- **Today** — the empty first run has no designed onboarding; the phone's empty state is the same
-  "Nothing is waiting on you" dead-end (#337); no first-run guidance exists.
+- **Today** — passing (automated). The desktop empty state offers Start-from-template / Create-workflow
+  and the phone's empty rooms surface offers "New room" — both driven green (`J8_DesktopFirstRunTests`,
+  `j8_first_run_phone_test`). The phone's pre-pairing first run routes to pairing (`main.dart`), attested
+  by inspection rather than a test; the driven phone leg covers the empty-rooms dead-end (#337).
 - **Serves** — #337, #338, #339
 
 ## J9 — See what you're spending across every vendor

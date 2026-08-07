@@ -12,13 +12,12 @@ namespace Aer.Journeys.Tests;
 /// <b>Journey J8 — "Open it for the first time and know what to do."</b> Desktop leg: on a truly
 /// empty first launch, Home must present a real first action, not a blank wall.
 /// <para>
-/// This leg is <b>green</b> — it drives the shipped <see cref="HomeView"/> over a genuinely empty
-/// state (a fresh config with no recents; the test harness already points <c>AER_HOME</c> at an
-/// empty temp root) and asserts the "No tasks yet." card renders with working Start-from-template
-/// and Create-workflow actions (M19 Phase 5, #190). Because it drives the real view, a regression
-/// that hides the empty state behind a still-passing view-model would fail here. J8 overall still
-/// reads <b>Fails</b> in <c>spec/journeys.md</c> — its phone leg is the red one
-/// (<c>j8_first_run_phone_test.dart</c>); a journey passes only when every leg does.
+/// It drives the shipped <see cref="HomeView"/> over a genuinely empty state (a fresh config with
+/// no recents; the test harness already points <c>AER_HOME</c> at an empty temp root) and asserts
+/// the "No rooms yet." card renders with working Start-from-template and Create-workflow actions
+/// (M19 Phase 5, #190). Because it drives the real view, a regression that hides the empty state
+/// behind a still-passing view-model would fail here. A journey passes only when every leg does —
+/// this leg and the phone leg (<c>j8_first_run_phone_test.dart</c>).
 /// </para>
 /// </summary>
 [Trait(Journeys.TraitKey, "J8")]
@@ -47,9 +46,9 @@ public class J8_DesktopFirstRunTests
             emptyState.IsVisible,
             "J8 (desktop): the first-run empty state must be shown, not a blank Home.");
 
-        // "No tasks yet." names what the surface is.
+        // "No rooms yet." names what the surface is.
         var heading = home.GetVisualDescendants().OfType<TextBlock>()
-            .FirstOrDefault(t => t.Text == "No tasks yet.");
+            .FirstOrDefault(t => t.Text == "No rooms yet.");
         Assert.NotNull(heading);
 
         // ...and it gives two real, live first actions, not a dead-end. Looking each up by its
