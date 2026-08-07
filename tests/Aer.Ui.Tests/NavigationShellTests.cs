@@ -214,6 +214,55 @@ public class NavigationShellTests
     }
 
     [AvaloniaFact]
+    public async Task LandOnTopRoom_opens_the_top_room_instead_of_staying_on_home()
+    {
+        // Rooms-as-root (#1055, 02-screens.md "Both surfaces open on rooms"): with a room in the
+        // switcher, startup lands in the work, not the Home dashboard. The fleet is seeded directly
+        // because GetFleetAsync is daemon-only (RoomClient.Fleet.cs) and no daemon runs headless — the
+        // real daemon population is covered by DaemonIntegrationTests. The directory is real so
+        // OpenAsync can load it, exactly as OpenAsync_navigates_to_the_task_section does.
+        var executionId = new ExecutionId("a-1");
+        var roomDirectory = await CreateRoomDirectoryAsync(
+            TwoStepSnapshot(),
+            [
+                new FlowEvent.ExecutionRequestAccepted(MakeRequest(executionId, Architect)),
+                new FlowEvent.ExecutionSucceeded(executionId),
+            ],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            window.ViewModel.Rooms.AddTestItem(new RoomFleetItem(
+                roomDirectory, FriendlyName: roomDirectory, TypeLabel: "solo-run-template",
+                StatusText: "Idle", PausedStepCount: 0, IsArchived: false,
+                Created: DateTimeOffset.UnixEpoch, Updated: DateTimeOffset.UnixEpoch));
+
+            await window.LandOnTopRoomAsync(TestContext.Current.CancellationToken);
+
+            Assert.Equal(ShellSection.Task, window.ViewModel.CurrentSection);
+            Assert.True(window.ViewModel.IsRoomVisible);
+            Assert.False(window.ViewModel.IsHomeVisible);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task LandOnTopRoom_stays_on_home_when_the_fleet_is_empty()
+    {
+        // An empty fleet must leave the landing exactly as it was — the no-rooms first-run ("Point
+        // Baton at a folder") is a later slice and is J8's outcome, not this one's.
+        var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+
+        await window.LandOnTopRoomAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(ShellSection.Home, window.ViewModel.CurrentSection);
+        Assert.True(window.ViewModel.IsHomeVisible);
+    }
+
+    [AvaloniaFact]
     public async Task OpenAsync_navigates_to_the_task_section()
     {
         var executionId = new ExecutionId("a-1");
