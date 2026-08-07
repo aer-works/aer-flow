@@ -119,6 +119,13 @@ public sealed class RoomRetentionSweep : BackgroundService
 
         var thresholdBytes = thresholdBytesOverride ?? GetThresholdBytes();
         var grace = graceOverride ?? GetPruneGrace();
+
+        // Enable resolution, per operation: an explicit *EnabledOverride wins; else passing a value override
+        // (threshold/grace) implies "on" so a test can exercise one operation without setting env flags; else
+        // the env flag. NOTE the coupling this creates: a future non-test caller that passes ONLY a value
+        // override would force that operation on regardless of AER_RETENTION_*_ENABLED. The sole production
+        // caller (ExecuteAsync) passes no overrides, so in production the env flags stay authoritative — but a
+        // caller wanting to tune a value while honouring the flag must pass the matching *EnabledOverride too.
         var compactionEnabled = compactionEnabledOverride ?? (thresholdBytesOverride.HasValue || IsEnabled());
         var pruneEnabled = pruneEnabledOverride ?? (graceOverride.HasValue || IsPruneEnabled());
 

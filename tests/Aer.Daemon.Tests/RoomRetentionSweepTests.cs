@@ -1,5 +1,6 @@
 using Aer.Daemon;
 using Aer.Flow.Artifacts;
+using Aer.Flow.Concurrency;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
 using Aer.Flow.Templates;
@@ -342,29 +343,40 @@ public class RoomRetentionSweepTests
 
         try
         {
-            // Room 1: Invalid room directory setup that throws or fails on prune
-            var room1Dir = Path.Combine(tempRoot, "room-1-invalid");
-            Directory.CreateDirectory(room1Dir);
-            var flowLog1Path = Path.Combine(room1Dir, "flow.jsonl");
-            await File.WriteAllTextAsync(flowLog1Path, "CORRUPTED_FLOW_LOG\n", TestContext.Current.CancellationToken);
-            File.SetLastWriteTimeUtc(flowLog1Path, DateTime.UtcNow.AddHours(-2));
+            // Room 1: a genuinely terminal, prunable room whose ConcurrencyGuard is held by someone else, so
+            // ArtifactPruner.PruneAsync (which self-acquires that guard fail-fast) throws WorkflowLockedException.
+            // A corrupt flow.jsonl would NOT exercise the catch: FlowEventLogReader swallows a malformed line,
+            // leaving the room merely non-terminal so PruneAsync returns false without throwing. Lock contention
+            // is both the realistic per-room prune failure and one that actually reaches the catch.
+            var exec1 = new ExecutionId("exec-1");
+            var room1Dir = await CreateTerminalRoomWithArtifactsAsync(tempRoot, "room-1-locked", exec1);
+            File.SetLastWriteTimeUtc(Path.Combine(room1Dir, "flow.jsonl"), DateTime.UtcNow.AddHours(-2));
 
-            // Room 2: Valid terminal room ready to be pruned
+            // Room 2: an equally terminal, prunable room the sweep must still reach after room 1 throws.
             var exec2 = new ExecutionId("exec-2");
             var room2Dir = await CreateTerminalRoomWithArtifactsAsync(tempRoot, "room-2-valid", exec2);
-            var flowLog2Path = Path.Combine(room2Dir, "flow.jsonl");
-            File.SetLastWriteTimeUtc(flowLog2Path, DateTime.UtcNow.AddHours(-2));
+            File.SetLastWriteTimeUtc(Path.Combine(room2Dir, "flow.jsonl"), DateTime.UtcNow.AddHours(-2));
 
             var sweep = new RoomRetentionSweep();
-            var (_, prunedCount) = await sweep.ExecuteSingleSweepAsync(
-                roomsDirectoryOverride: tempRoot,
-                graceOverride: TimeSpan.FromHours(1),
-                cancellationToken: TestContext.Current.CancellationToken);
 
+            int prunedCount;
+            using (ConcurrencyGuard.Acquire(room1Dir, "test holds room-1 lock"))
+            {
+                (_, prunedCount) = await sweep.ExecuteSingleSweepAsync(
+                    roomsDirectoryOverride: tempRoot,
+                    graceOverride: TimeSpan.FromHours(1),
+                    cancellationToken: TestContext.Current.CancellationToken);
+            }
+
+            // Room 1 threw WorkflowLockedException (logged, skipped); room 2 was still pruned.
             Assert.Equal(1, prunedCount);
 
-            var room2Artifacts = Path.Combine(room2Dir, ArtifactManager.ArtifactsDirectoryName);
-            var room2PrunedDir = ArtifactManager.ResolvePrunedOutputDirectory(room2Artifacts, exec2);
+            var room1PrunedDir = ArtifactManager.ResolvePrunedOutputDirectory(
+                Path.Combine(room1Dir, ArtifactManager.ArtifactsDirectoryName), exec1);
+            Assert.False(Directory.Exists(room1PrunedDir));
+
+            var room2PrunedDir = ArtifactManager.ResolvePrunedOutputDirectory(
+                Path.Combine(room2Dir, ArtifactManager.ArtifactsDirectoryName), exec2);
             Assert.True(Directory.Exists(room2PrunedDir));
         }
         finally
