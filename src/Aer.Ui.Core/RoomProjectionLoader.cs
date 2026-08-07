@@ -59,6 +59,16 @@ public static class RoomProjectionLoader
     private const string LogFileName = "flow.jsonl";
     private const string ArtifactsDirectoryName = Aer.Flow.Artifacts.ArtifactManager.ArtifactsDirectoryName;
 
+    /// <summary>
+    /// A room's display name: the leaf of its directory path. The one canonical derivation — every
+    /// surface that names a room calls this: the switcher (through <see cref="LoadFleetStatusAsync"/>),
+    /// the Home cards (through <c>RoomCardViewModel.TitleFor</c>), and the desktop chat header — so a
+    /// room can never show two different names. Re-deriving it independently on a second surface is the
+    /// exact "same fact, its own vocabulary" trap that put Cancelled back to "Finished" (#461/#976).
+    /// </summary>
+    public static string FriendlyNameFor(string roomDirectoryPath) =>
+        Path.GetFileName(Path.TrimEndingDirectorySeparator(roomDirectoryPath));
+
     /// <exception cref="InvalidRoomDirectoryException">
     /// <paramref name="roomDirectoryPath"/> has no persisted snapshot — UI spec §3.1's
     /// self-describing-directory contract confirmed by contents, not assumed from a path.
@@ -106,7 +116,7 @@ public static class RoomProjectionLoader
     {
         ArgumentNullException.ThrowIfNull(roomDirectoryPath);
 
-        var friendlyName = Path.GetFileName(Path.TrimEndingDirectorySeparator(roomDirectoryPath));
+        var friendlyName = FriendlyNameFor(roomDirectoryPath);
         var isArchived = RoomLifecycle.IsArchived(roomDirectoryPath);
         var isSession = await InteractiveSessionMaterializer.ReadRoomKindAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(false) == RoomKind.Interactive;
         // The session id a phone row taps into (row-as-place, #1044), read from the same .aer/room.json

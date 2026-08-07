@@ -59,6 +59,17 @@ public sealed partial class ChatViewModel : ObservableObject
     [ObservableProperty]
     private string headlineText = "No room open.";
 
+    /// <summary>
+    /// The room's single worker, shown as a chip beside the room name in the header — the daily-driver
+    /// mockup's "aer-flow  claude" (02-screens.md). The vendor (<see cref="CurrentAdapter"/>); null
+    /// until a room is open. "+ Add worker" and multi-worker chips are M27.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWorker))]
+    private string? workerChipText;
+
+    public bool HasWorker => !string.IsNullOrEmpty(WorkerChipText);
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasStatusText))]
     private string statusText = string.Empty;
@@ -105,7 +116,10 @@ public sealed partial class ChatViewModel : ObservableObject
         SessionId = metadata.SessionId;
         RoomDirectoryPath = roomDirectoryPath;
         CurrentAdapter = metadata.CurrentAdapter;
-        HeadlineText = $"{metadata.CurrentAdapter} — turn {metadata.Turns.Count}";
+        // Daily-driver header (02-screens.md): the room name + a worker chip, not "vendor — turn N".
+        // The name is the SAME canonical derivation the switcher renders — never a second one (#461/#976).
+        HeadlineText = RoomProjectionLoader.FriendlyNameFor(roomDirectoryPath);
+        WorkerChipText = metadata.CurrentAdapter;
         OnPropertyChanged(nameof(IsSessionOpen));
 
         Messages.Clear();
@@ -187,6 +201,7 @@ public sealed partial class ChatViewModel : ObservableObject
         RoomDirectoryPath = null;
         CurrentAdapter = null;
         HeadlineText = "No room open.";
+        WorkerChipText = null;
         StatusText = string.Empty;
         LiveProgressText = string.Empty;
         IsSending = false;

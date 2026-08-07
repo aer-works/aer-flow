@@ -8,7 +8,18 @@
              x:Class="Aer.Ui.Views.ChatView"
              x:DataType="vm:MainWindowViewModel">
   <DockPanel Margin="24">
-    <TextBlock DockPanel.Dock="Top" Classes="display" Text="{Binding Chat.HeadlineText}" />
+    <!-- Daily-driver header (docs/design/02-screens.md): the room name, with the worker as a chip
+         beside it ("aer-flow  claude") — not "vendor — turn N". "+ Add worker" and multi-worker
+         chips are M27. -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="{DynamicResource Space.3}">
+      <TextBlock Classes="display" Text="{Binding Chat.HeadlineText}" VerticalAlignment="Center" />
+      <Border IsVisible="{Binding Chat.HasWorker}" VerticalAlignment="Center"
+              Background="{DynamicResource Color.SurfaceSubtle}"
+              BorderBrush="{DynamicResource Color.BorderSubtle}" BorderThickness="1"
+              CornerRadius="20" Padding="10,2">
+        <TextBlock Classes="caption" Text="{Binding Chat.WorkerChipText}" VerticalAlignment="Center" />
+      </Border>
+    </StackPanel>
 
     <!-- Persistent mode indicator (#286): mode buttons live in the collapsed Commands panel below,
          but the currently active mode was previously invisible until you reopened that panel and
