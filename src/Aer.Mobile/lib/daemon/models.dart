@@ -269,6 +269,11 @@ class RoomFleetItem {
   final bool isArchived;
   final DateTime? lastActivityAt;
 
+  /// The interactive session's id, present only for a session room (null for a workflow). Carries
+  /// the identity a fleet row taps into to open its ChatScreen (front-door row-as-place, #1044);
+  /// its presence is also how a row tells a session from a workflow without parsing typeLabel.
+  final String? sessionId;
+
   RoomFleetItem({
     required this.roomDirectoryPath,
     required this.friendlyName,
@@ -277,6 +282,7 @@ class RoomFleetItem {
     required this.pausedStepCount,
     required this.isArchived,
     this.lastActivityAt,
+    this.sessionId,
   });
 
   factory RoomFleetItem.fromJson(Map<String, dynamic> json) {
@@ -289,6 +295,7 @@ class RoomFleetItem {
       pausedStepCount: (j['pausedstepcount'] as num?)?.toInt() ?? 0,
       isArchived: j['isarchived'] == true,
       lastActivityAt: j['lastactivityat'] != null ? DateTime.tryParse(j['lastactivityat'].toString()) : null,
+      sessionId: (j['sessionid']?.toString().isEmpty ?? true) ? null : j['sessionid'].toString(),
     );
   }
 }

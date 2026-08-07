@@ -64,6 +64,24 @@ void main() {
       expect(item.statusText, 'Running');
       expect(item.pausedStepCount, 2);
       expect(item.isArchived, isFalse);
+      // The wire fixture is a workflow room, which carries no session id (#1044). Populated-id
+      // parse is covered by the dedicated test below, since the fixture can't be both.
+      expect(item.sessionId, isNull);
     });
   }
+
+  test('RoomFleetItem.fromJson reads a session row\'s sessionId (#1044 row-as-place)', () {
+    // A session room's fleet entry carries the id its row taps into. The daemon serializes PascalCase
+    // (RoomFleetItem.SessionId); the parser lowercases keys, so a phone reads j['sessionid'].
+    final item = RoomFleetItem.fromJson({
+      'RoomDirectoryPath': 'C:/Users/pbree/.aer/rooms/chat-abc',
+      'FriendlyName': 'chat-abc',
+      'TypeLabel': 'interactive session',
+      'StatusText': 'Idle',
+      'PausedStepCount': 0,
+      'IsArchived': false,
+      'SessionId': 'sess-123',
+    });
+    expect(item.sessionId, 'sess-123');
+  });
 }

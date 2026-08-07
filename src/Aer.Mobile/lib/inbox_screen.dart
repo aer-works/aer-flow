@@ -7,14 +7,19 @@ import 'daemon/credentials_store.dart';
 import 'daemon/daemon_client.dart';
 import 'daemon/models.dart';
 import 'pairing_screen.dart';
-import 'rooms_screen.dart';
 
 /// The phone's decision inbox — mirrors whatever room Aer.Daemon currently has open (typically
 /// opened by the desktop first) and lets the user Approve/Reject a paused step or Cancel the run.
 /// RetryWithRevision/Supersede aren't offered here: both need a way to move file content onto the
 /// daemon host that this app doesn't have yet (deferred past Phase 2 — see daemon_client.dart).
 class InboxScreen extends StatefulWidget {
-  const InboxScreen({super.key});
+  /// When opened from the switcher for a specific room (#1044), the already-built daemon client and
+  /// that room's directory are injected: the inbox binds to *that* room instead of adopting
+  /// "whatever the daemon currently has open." Both null on the legacy standalone path, which loads
+  /// credentials and builds its own client — kept as a fallback now that the switcher is the landing.
+  final DaemonClient? client;
+  final String? initialDirectoryPath;
+  const InboxScreen({super.key, this.client, this.initialDirectoryPath});
 
   @override
   State<InboxScreen> createState() => _InboxScreenState();
@@ -45,6 +50,26 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _init() async {
+    if (widget.client != null) {
+      _client = widget.client;
+      final dir = widget.initialDirectoryPath;
+      if (dir != null) {
+        // Opened from the switcher for a specific room: pin _openDirectoryPath before connecting so
+        // the listener keeps this screen on that room, then ask the daemon to open it so its
+        // projection is pushed over the WS this screen is now watching.
+        _openDirectoryPath = dir;
+        _connect();
+        try {
+          await _client!.openRoom(dir);
+        } on DaemonException catch (e) {
+          if (mounted) setState(() => _connectionError = e.message);
+        }
+      } else {
+        _connect();
+      }
+      return;
+    }
+
     final credentials = await CredentialsStore().load();
     if (credentials == null) {
       if (mounted) {
@@ -150,15 +175,6 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
     } on DaemonException catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
-  }
-
-  /// Opens the fleet management screen (M24 Phase 5, #278) — distinct from [_pickRecentRoom]'s bare
-  /// recents sheet, which stays the quick-reopen path; this is the real archive/unarchive/delete
-  /// surface.
-  Future<void> _manageRooms() async {
-    final client = _client;
-    if (client == null) return;
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RoomsScreen(client: client)));
   }
 
   Future<void> _decide(WorkflowStepState step, String decisionType) async {
@@ -583,14 +599,12 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
               if (value == 'cancel') _cancelRun();
               if (value == 'chat') _startNewChat();
               if (value == 'template') _showTemplatePicker();
-              if (value == 'rooms') _manageRooms();
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'chat', child: Text('Start new chat')),
               const PopupMenuItem(value: 'template', child: Text('Start from template')),
               if (projection != null && projection.status == 'Running')
                 const PopupMenuItem(value: 'cancel', child: Text('Cancel run')),
-              const PopupMenuItem(value: 'rooms', child: Text('Manage rooms')),
               const PopupMenuItem(value: 'forget', child: Text('Sign out of this desktop')),
             ],
           ),

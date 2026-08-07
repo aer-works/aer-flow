@@ -6,8 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'daemon/credentials_store.dart';
 import 'daemon/daemon_client.dart';
 import 'daemon/tailnet_gateway.dart';
-import 'inbox_screen.dart';
 import 'qr_scan_screen.dart';
+import 'rooms_screen.dart';
 
 /// Manual host+code entry, plus (M21 Phase 3, issue #234) a QR-scan shortcut against the desktop's
 /// "Enable Remote Access" view — the payload is an `aer://pair?host=...&code=...` URI (decision of
@@ -117,9 +117,13 @@ class _PairingScreenState extends State<PairingScreen> {
         DaemonCredentials(host: host, token: token, tsnetRouted: tailnetRouted),
       );
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const InboxScreen()));
+      // Land a freshly-paired device on the switcher — the same front door a returning device gets
+      // (#1044) — built from the credentials just stored, so pairing and relaunch agree.
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => RoomsScreen(
+          client: DaemonClient(host: host, token: token, tsnetRouted: tailnetRouted),
+        ),
+      ));
     } on DaemonException catch (e) {
       setState(() => _errorText = e.message);
     } catch (e) {
