@@ -5,6 +5,7 @@ using Aer.Flow.Store;
 using Aer.Flow.Templates;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 
 namespace Aer.Ui.Tests;
 
@@ -308,6 +309,49 @@ public class NavigationShellTests
             Assert.True(window.ViewModel.IsChatVisible);
             Assert.False(window.ViewModel.IsRoomVisible);
             Assert.Equal(metadata.SessionId, window.ViewModel.Chat.SessionId);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Enter_in_the_composer_sends_but_shift_enter_does_not()
+    {
+        // The composer's send rule wired end-to-end, not just IsSendKeystroke in isolation: the KeyDown
+        // handler is actually attached to the composer. A bare Enter runs SendChatMessageAsync, whose
+        // synchronous BeginSend clears the input; Shift+Enter must not send, so the text survives.
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-composer-{Guid.NewGuid():N}");
+        try
+        {
+            await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                sessionId: "sess-composer-test", roomDirectoryPath: roomDirectory, adapter: "claude",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
+            Assert.Equal(ShellSection.Chat, window.ViewModel.CurrentSection);
+
+            // Shift+Enter is a newline, not a send — the composer text survives.
+            window.ViewModel.Chat.InputText = "keep me";
+            window.ChatInputBox.RaiseEvent(new KeyEventArgs
+            {
+                RoutedEvent = InputElement.KeyDownEvent,
+                Key = Key.Enter,
+                KeyModifiers = KeyModifiers.Shift,
+            });
+            Assert.Equal("keep me", window.ViewModel.Chat.InputText);
+
+            // A bare Enter sends — SendChatMessageAsync's synchronous BeginSend clears the input.
+            window.ViewModel.Chat.InputText = "send me";
+            window.ChatInputBox.RaiseEvent(new KeyEventArgs
+            {
+                RoutedEvent = InputElement.KeyDownEvent,
+                Key = Key.Enter,
+                KeyModifiers = KeyModifiers.None,
+            });
+            Assert.Equal(string.Empty, window.ViewModel.Chat.InputText);
         }
         finally
         {

@@ -284,6 +284,8 @@ public partial class MainWindow : Window
         RoomsViewControl.RoomsBulkArchiveButton.Click += (_, _) => _ = ViewModel.Rooms.BulkArchiveAsync(_session);
         RoomsViewControl.RoomsBulkDeleteConfirmButton.Click += (_, _) => _ = ViewModel.Rooms.ConfirmBulkDeleteAsync(_session);
         ChatSendButton.Click += (_, _) => _ = SendChatMessageAsync();
+        // Enter-to-send / Shift+Enter-newline — see OnChatInputBoxKeyDown and IsSendKeystroke.
+        ChatInputBox.KeyDown += OnChatInputBoxKeyDown;
         ChatStartNewButton.Click += (_, _) => _ = StartNewChatAsync();
         ChatCommandsButton.Click += (_, _) => _ = ToggleChatCommandsAsync();
         ChatModeAutoButton.Click += (_, _) => _ = SetChatModeAsync("auto");
@@ -740,6 +742,28 @@ public partial class MainWindow : Window
         {
             chat.FailSend(error);
         }
+    }
+
+    /// <summary>
+    /// The composer's send-vs-newline rule (design 04-workers-commands-control.md: "Enter sends,
+    /// shift-enter breaks a line ... getting it backwards is a daily irritation"). A bare Enter sends;
+    /// Enter with any modifier (Shift for a newline, or anything else) is left to the <c>AcceptsReturn</c>
+    /// TextBox. Pure so the decision is unit-tested without standing up a window.
+    /// </summary>
+    internal static bool IsSendKeystroke(Key key, KeyModifiers modifiers)
+        => key == Key.Enter && modifiers == KeyModifiers.None;
+
+    private void OnChatInputBoxKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (!IsSendKeystroke(e.Key, e.KeyModifiers))
+        {
+            return;
+        }
+
+        // Handled before the TextBox inserts a newline. SendChatMessageAsync itself no-ops on an empty
+        // message or with no room open, so a stray Enter in an empty composer is harmless.
+        e.Handled = true;
+        _ = SendChatMessageAsync();
     }
 
     /// <summary>
