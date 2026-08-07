@@ -116,14 +116,24 @@ class DaemonClient {
     if (tsnetRouted) {
       return _watchOverTsnet();
     }
+    return _watchOverPlain();
+  }
+
+  // #1045: close the socket when the subscription is cancelled, matching _watchOverTsnet's finally.
+  // Returning channel.stream.map directly leaked the WebSocket on every cancel.
+  Stream<RoomProjection> _watchOverPlain() async* {
     final channel = WebSocketChannel.connect(
       Uri.parse('ws://$host/api/ws?token=$token'),
     );
-    return channel.stream.map(
-      (raw) => RoomProjection.fromJson(
-        jsonDecode(raw as String) as Map<String, dynamic>,
-      ),
-    );
+    try {
+      yield* channel.stream.map(
+        (raw) => RoomProjection.fromJson(
+          jsonDecode(raw as String) as Map<String, dynamic>,
+        ),
+      );
+    } finally {
+      await channel.sink.close();
+    }
   }
 
   Stream<RoomProjection> _watchOverTsnet() async* {
@@ -159,14 +169,23 @@ class DaemonClient {
     if (tsnetRouted) {
       return _watchProgressOverTsnet();
     }
+    return _watchProgressOverPlain();
+  }
+
+  // #1045: same socket-close-on-cancel as _watchProgressOverTsnet; the plain path leaked otherwise.
+  Stream<SessionProgressEvent> _watchProgressOverPlain() async* {
     final channel = WebSocketChannel.connect(
       Uri.parse('ws://$host/api/ws/progress?token=$token'),
     );
-    return channel.stream.map(
-      (raw) => SessionProgressEvent.fromJson(
-        jsonDecode(raw as String) as Map<String, dynamic>,
-      ),
-    );
+    try {
+      yield* channel.stream.map(
+        (raw) => SessionProgressEvent.fromJson(
+          jsonDecode(raw as String) as Map<String, dynamic>,
+        ),
+      );
+    } finally {
+      await channel.sink.close();
+    }
   }
 
   Stream<SessionProgressEvent> _watchProgressOverTsnet() async* {
