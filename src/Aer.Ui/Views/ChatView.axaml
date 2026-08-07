@@ -80,9 +80,11 @@
       </Border>
       <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}"
                   IsVisible="{Binding Chat.IsSessionOpen}">
+        <!-- AcceptsReturn stays true so Shift+Enter inserts a newline; a bare Enter is intercepted by
+             MainWindow's OnChatInputBoxKeyDown and sends instead. -->
         <TextBox x:Name="ChatInputBox" Width="600" AcceptsReturn="True" MaxHeight="80"
                  Text="{Binding Chat.InputText}" IsEnabled="{Binding !Chat.IsSending}"
-                 PlaceholderText="Message..." />
+                 PlaceholderText="Reply…" />
         <Button x:Name="ChatSendButton" Classes="accent" Content="Send"
                 IsEnabled="{Binding !Chat.IsSending}" />
         <Button x:Name="ChatCommandsButton" Content="Commands" />
