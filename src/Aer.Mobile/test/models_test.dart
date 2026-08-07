@@ -61,8 +61,11 @@ void main() {
       expect(item.roomDirectoryPath, 'C:/Users/pbree/.aer/tasks/foo');
       expect(item.friendlyName, 'foo');
       expect(item.typeLabel, 'solo-run-template');
-      expect(item.statusText, 'Running');
+      expect(item.statusText, 'Waiting for your review');
       expect(item.pausedStepCount, 2);
+      // Pins the RoomCardStatus enum's wire name across the C#->Dart boundary (#1049): the
+      // switcher's waiting-on-you-first sort compares to this literal, and nothing else guards it.
+      expect(item.status, 'NeedsYou');
       expect(item.isArchived, isFalse);
       // The wire fixture is a workflow room, which carries no session id (#1044). Populated-id
       // parse is covered by the dedicated test below, since the fixture can't be both.
@@ -81,7 +84,9 @@ void main() {
       'PausedStepCount': 0,
       'IsArchived': false,
       'SessionId': 'sess-123',
+      'Status': 'NeedsYou',
     });
     expect(item.sessionId, 'sess-123');
+    expect(item.status, 'NeedsYou');
   });
 }

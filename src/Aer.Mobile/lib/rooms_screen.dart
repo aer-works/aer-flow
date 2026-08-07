@@ -68,7 +68,11 @@ class _RoomsScreenState extends State<RoomsScreen> with WidgetsBindingObserver {
     try {
       final items = await widget.client.listRooms(includeArchived: _includeArchived);
       if (!mounted) return;
-      setState(() => _items = items);
+      // Waiting-on-you first (J3, #1049): rooms needing a decision/review rise to the top; the
+      // daemon's recency order is kept within each group (stable partition, not List.sort).
+      final needsYou = items.where((i) => i.status == 'NeedsYou').toList();
+      final rest = items.where((i) => i.status != 'NeedsYou').toList();
+      setState(() => _items = [...needsYou, ...rest]);
     } on DaemonException catch (e) {
       if (!mounted) return;
       setState(() => _loadError = e.message);
@@ -428,10 +432,10 @@ class _RoomsScreenState extends State<RoomsScreen> with WidgetsBindingObserver {
                                         ],
                                       ),
                                       const SizedBox(height: 4),
+                                      // The canonical status line (J3, #1049) — "Waiting for your reply"
+                                      // for a chat turn, "Waiting for your review" for a real gate. Replaces
+                                      // the old raw "N step(s) awaiting a decision", which mislabelled a chat.
                                       Text(item.statusText),
-                                      if (item.pausedStepCount > 0)
-                                        Text('${item.pausedStepCount} step(s) awaiting a decision',
-                                            style: Theme.of(context).textTheme.bodySmall),
                                       Text(item.roomDirectoryPath, style: Theme.of(context).textTheme.bodySmall),
                                       const SizedBox(height: 8),
                                       if (!_selectionMode)

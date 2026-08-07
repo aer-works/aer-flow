@@ -417,10 +417,10 @@ public sealed partial class RoomFleetItemViewModel : ObservableObject
     /// <summary>
     /// This row's status as a mark-bearing state rather than a string (#461's vocabulary), so the
     /// switcher draws the same silhouette for the same state as Home's cards do — decision 0006's
-    /// rule 2 is only worth anything if every surface honours it. Null until a projection has been
-    /// seen for this row: the fleet list's own <see cref="RoomFleetItem.StatusText"/> is a bare
-    /// <c>WorkflowStatus</c> name, which is deliberately *not* mapped to a mark here — guessing a
-    /// state from a string is how the vocabulary drifts, and an unknown state must read as unknown.
+    /// rule 2 is only worth anything if every surface honours it. Null until a projection push
+    /// (<see cref="ApplyProjection"/>) sets it: the fleet now carries a canonical
+    /// <see cref="RoomFleetItem.Status"/> too (#1049), but wiring this row's mark from it on load is
+    /// slice 2b (the desktop switcher half of J3), so on-load it deliberately stays unknown for now.
     /// </summary>
     [ObservableProperty]
     private RoomCardStatus? status;
