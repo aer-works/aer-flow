@@ -38,8 +38,8 @@ public class RoomRetentionSweepTests
             await File.WriteAllTextAsync(Path.Combine(room1Dir, "room.jsonl"), "INVALID_JSON_CORRUPT_CONTENT\n", TestContext.Current.CancellationToken);
 
             // Room 2: Valid room with a resolved run that needs compaction
-            var refCompleted = new HeldWorkRef("lane-completed");
-            var refLive = new HeldWorkRef("lane-live");
+            var refCompleted = new HeldWorkRef("run-completed");
+            var refLive = new HeldWorkRef("run-live");
             var dispatchCompleted = new RoomEvent.HeldWorkDispatched(refCompleted, "shape", TimeSpan.FromMinutes(5), "human");
             var resolveCompleted = new RoomEvent.HeldWorkResolved(refCompleted, new HeldWorkCitation("Resolved", "ok"));
             var dispatchLive = new RoomEvent.HeldWorkDispatched(refLive, "shape", TimeSpan.FromMinutes(5), "human");
@@ -79,7 +79,7 @@ public class RoomRetentionSweepTests
 
         try
         {
-            var refCompleted = new HeldWorkRef("lane-completed");
+            var refCompleted = new HeldWorkRef("run-completed");
             var dispatchCompleted = new RoomEvent.HeldWorkDispatched(refCompleted, "shape", TimeSpan.FromMinutes(5), "human");
             var resolveCompleted = new RoomEvent.HeldWorkResolved(refCompleted, new HeldWorkCitation("Resolved", "ok"));
 
