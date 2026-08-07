@@ -1,12 +1,67 @@
 using Aer.Daemon;
+using Aer.Flow.Artifacts;
 using Aer.Flow.Domain;
 using Aer.Flow.Store;
+using Aer.Flow.Templates;
 using Xunit;
 
 namespace Aer.Daemon.Tests;
 
 public class RoomRetentionSweepTests
 {
+    private static readonly StepId StepA = new("stepA");
+
+    private static WorkflowDefinitionSnapshot SingleStepSnapshot() => new(
+        new WorkflowDefinitionSnapshotId("snapshot-1"),
+        new WorkflowTemplateId("single-step"),
+        WorkflowTemplateVersion: 1,
+        Steps:
+        [
+            new WorkflowStepDefinition(StepA, "worker", [], ["output.txt"], DependsOn: [], RetryPolicy: new RetryPolicy(1)),
+        ]);
+
+    private static ExecutionRequest TestRequest(ExecutionId execId) => new(
+        execId,
+        new WorkflowId("wf-1"),
+        StepA,
+        "worker",
+        Inputs: [],
+        Outputs: ["output.txt"],
+        Timeout: TimeSpan.FromMinutes(1),
+        Environment: [],
+        UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>()
+    );
+
+    private static async Task WriteLogEventsAsync(string logPath, params FlowEvent[] events)
+    {
+        await using var writer = new FlowEventLogWriter(logPath);
+        foreach (var @event in events)
+        {
+            await writer.AppendAsync(@event, TestContext.Current.CancellationToken);
+        }
+    }
+
+    private static async Task<string> CreateTerminalRoomWithArtifactsAsync(string parentDir, string roomName, ExecutionId execId)
+    {
+        var roomDir = Path.Combine(parentDir, roomName);
+        Directory.CreateDirectory(roomDir);
+
+        var snapshotPath = Path.Combine(roomDir, "snapshot.json");
+        var logPath = Path.Combine(roomDir, "flow.jsonl");
+
+        await SnapshotBinder.PersistAsync(SingleStepSnapshot(), snapshotPath, TestContext.Current.CancellationToken);
+        await WriteLogEventsAsync(
+            logPath,
+            new FlowEvent.ExecutionRequestAccepted(TestRequest(execId)),
+            new FlowEvent.ExecutionSucceeded(execId));
+
+        var artifactsRoot = Path.Combine(roomDir, ArtifactManager.ArtifactsDirectoryName);
+        var execDir = ArtifactManager.AllocateOutputDirectory(artifactsRoot, execId);
+        await File.WriteAllTextAsync(Path.Combine(execDir, "output.txt"), "artifact-data", TestContext.Current.CancellationToken);
+
+        return roomDir;
+    }
+
     private static async Task<string> CreateRoomWithEventsAsync(string parentDir, string roomName, params RoomEvent[] events)
     {
         var roomDir = Path.Combine(parentDir, roomName);
@@ -49,13 +104,13 @@ public class RoomRetentionSweepTests
             var sweep = new RoomRetentionSweep();
 
             // Run sweep with 0 byte threshold so size doesn't skip room 2
-            var count = await sweep.ExecuteSingleSweepAsync(
+            var (compactedCount, _) = await sweep.ExecuteSingleSweepAsync(
                 roomsDirectoryOverride: tempRoot,
                 thresholdBytesOverride: 0,
                 cancellationToken: TestContext.Current.CancellationToken);
 
             // Room 1 threw, Room 2 was compacted successfully
-            Assert.Equal(1, count);
+            Assert.Equal(1, compactedCount);
 
             var reader2 = new RoomEventLogReader(Path.Combine(room2Dir, "room.jsonl"));
             var room2Events = await reader2.ReadAllRoomEventsAsync(TestContext.Current.CancellationToken);
@@ -91,7 +146,7 @@ public class RoomRetentionSweepTests
             var sweep = new RoomRetentionSweep();
 
             // Threshold set higher than file size -> should skip
-            var countSkipped = await sweep.ExecuteSingleSweepAsync(
+            var (countSkipped, _) = await sweep.ExecuteSingleSweepAsync(
                 roomsDirectoryOverride: tempRoot,
                 thresholdBytesOverride: fileSize + 1000,
                 cancellationToken: TestContext.Current.CancellationToken);
@@ -99,7 +154,7 @@ public class RoomRetentionSweepTests
             Assert.Equal(0, countSkipped);
 
             // Threshold set lower than file size -> should compact
-            var countCompacted = await sweep.ExecuteSingleSweepAsync(
+            var (countCompacted, _) = await sweep.ExecuteSingleSweepAsync(
                 roomsDirectoryOverride: tempRoot,
                 thresholdBytesOverride: 0,
                 cancellationToken: TestContext.Current.CancellationToken);
@@ -192,6 +247,194 @@ public class RoomRetentionSweepTests
             {
                 Directory.Delete(tempRoot, true);
             }
+        }
+    }
+
+    [Fact]
+    public async Task PruneRoomAsync_GraceWindow_PrunesOnlyWhenGraceElapsed()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "aer_sweep_prune_grace_" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var exec1 = new ExecutionId("exec-1");
+            var room1Dir = await CreateTerminalRoomWithArtifactsAsync(tempRoot, "room-1-old", exec1);
+            var flowLog1Path = Path.Combine(room1Dir, "flow.jsonl");
+            File.SetLastWriteTimeUtc(flowLog1Path, DateTime.UtcNow.AddHours(-2));
+
+            var exec2 = new ExecutionId("exec-2");
+            var room2Dir = await CreateTerminalRoomWithArtifactsAsync(tempRoot, "room-2-new", exec2);
+            var flowLog2Path = Path.Combine(room2Dir, "flow.jsonl");
+            File.SetLastWriteTimeUtc(flowLog2Path, DateTime.UtcNow);
+
+            var graceThreshold = TimeSpan.FromHours(1);
+            var sweep = new RoomRetentionSweep();
+
+            var (_, prunedCount) = await sweep.ExecuteSingleSweepAsync(
+                roomsDirectoryOverride: tempRoot,
+                graceOverride: graceThreshold,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, prunedCount);
+
+            var room1Artifacts = Path.Combine(room1Dir, ArtifactManager.ArtifactsDirectoryName);
+            var room1PrunedDir = ArtifactManager.ResolvePrunedOutputDirectory(room1Artifacts, exec1);
+            Assert.True(Directory.Exists(room1PrunedDir));
+
+            var room2Artifacts = Path.Combine(room2Dir, ArtifactManager.ArtifactsDirectoryName);
+            var room2PrunedDir = ArtifactManager.ResolvePrunedOutputDirectory(room2Artifacts, exec2);
+            Assert.False(Directory.Exists(room2PrunedDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PruneRoomAsync_KeepMarkedRoom_IsNotPruned()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "aer_sweep_prune_keep_" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var execId = new ExecutionId("exec-keep");
+            var roomDir = await CreateTerminalRoomWithArtifactsAsync(tempRoot, "room-keep", execId);
+            var flowLogPath = Path.Combine(roomDir, "flow.jsonl");
+            File.SetLastWriteTimeUtc(flowLogPath, DateTime.UtcNow.AddHours(-2));
+
+            await KeepMarker.MarkKeepAsync(roomDir, TestContext.Current.CancellationToken);
+
+            var sweep = new RoomRetentionSweep();
+            var (_, prunedCount) = await sweep.ExecuteSingleSweepAsync(
+                roomsDirectoryOverride: tempRoot,
+                graceOverride: TimeSpan.Zero,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(0, prunedCount);
+
+            var artifactsRoot = Path.Combine(roomDir, ArtifactManager.ArtifactsDirectoryName);
+            var activeExecDir = ArtifactManager.ResolveOutputDirectory(artifactsRoot, execId);
+            Assert.True(Directory.Exists(activeExecDir));
+
+            var prunedDir = ArtifactManager.ResolvePrunedOutputDirectory(artifactsRoot, execId);
+            Assert.False(Directory.Exists(prunedDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PerRoomResilience_RoomPruneFailure_DoesNotStopSweepFromPruningNextRoom()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "aer_sweep_prune_resilience_" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            // Room 1: Invalid room directory setup that throws or fails on prune
+            var room1Dir = Path.Combine(tempRoot, "room-1-invalid");
+            Directory.CreateDirectory(room1Dir);
+            var flowLog1Path = Path.Combine(room1Dir, "flow.jsonl");
+            await File.WriteAllTextAsync(flowLog1Path, "CORRUPTED_FLOW_LOG\n", TestContext.Current.CancellationToken);
+            File.SetLastWriteTimeUtc(flowLog1Path, DateTime.UtcNow.AddHours(-2));
+
+            // Room 2: Valid terminal room ready to be pruned
+            var exec2 = new ExecutionId("exec-2");
+            var room2Dir = await CreateTerminalRoomWithArtifactsAsync(tempRoot, "room-2-valid", exec2);
+            var flowLog2Path = Path.Combine(room2Dir, "flow.jsonl");
+            File.SetLastWriteTimeUtc(flowLog2Path, DateTime.UtcNow.AddHours(-2));
+
+            var sweep = new RoomRetentionSweep();
+            var (_, prunedCount) = await sweep.ExecuteSingleSweepAsync(
+                roomsDirectoryOverride: tempRoot,
+                graceOverride: TimeSpan.FromHours(1),
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, prunedCount);
+
+            var room2Artifacts = Path.Combine(room2Dir, ArtifactManager.ArtifactsDirectoryName);
+            var room2PrunedDir = ArtifactManager.ResolvePrunedOutputDirectory(room2Artifacts, exec2);
+            Assert.True(Directory.Exists(room2PrunedDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void EnvironmentVariables_PruneDefaultsAndOverrides()
+    {
+        var priorEnabled = Environment.GetEnvironmentVariable(RoomRetentionSweep.PruneEnabledEnvironmentVariable);
+        var priorGrace = Environment.GetEnvironmentVariable(RoomRetentionSweep.PruneGraceSecondsEnvironmentVariable);
+
+        try
+        {
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneEnabledEnvironmentVariable, null);
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneGraceSecondsEnvironmentVariable, null);
+
+            Assert.False(RoomRetentionSweep.IsPruneEnabled());
+            Assert.Equal(RoomRetentionSweep.PlaceholderDefaultPruneGrace, RoomRetentionSweep.GetPruneGrace());
+
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneEnabledEnvironmentVariable, "true");
+            Assert.True(RoomRetentionSweep.IsPruneEnabled());
+
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneEnabledEnvironmentVariable, "1");
+            Assert.True(RoomRetentionSweep.IsPruneEnabled());
+
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneGraceSecondsEnvironmentVariable, "1800");
+            Assert.Equal(TimeSpan.FromSeconds(1800), RoomRetentionSweep.GetPruneGrace());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneEnabledEnvironmentVariable, priorEnabled);
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneGraceSecondsEnvironmentVariable, priorGrace);
+        }
+    }
+
+    [Fact]
+    public void GetPruneGrace_ClampsPathologicalValue_ToMaxPruneGrace()
+    {
+        var prior = Environment.GetEnvironmentVariable(RoomRetentionSweep.PruneGraceSecondsEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneGraceSecondsEnvironmentVariable, "1e300");
+            var grace = RoomRetentionSweep.GetPruneGrace();
+            Assert.Equal(RoomRetentionSweep.MaxPruneGrace, grace);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneGraceSecondsEnvironmentVariable, prior);
+        }
+    }
+
+    [Fact]
+    public void GetPruneGrace_LiftsSubSecondValue_ToMinPruneGrace()
+    {
+        var prior = Environment.GetEnvironmentVariable(RoomRetentionSweep.PruneGraceSecondsEnvironmentVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneGraceSecondsEnvironmentVariable, "1e-9");
+            var grace = RoomRetentionSweep.GetPruneGrace();
+            Assert.Equal(RoomRetentionSweep.MinPruneGrace, grace);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(RoomRetentionSweep.PruneGraceSecondsEnvironmentVariable, prior);
         }
     }
 }
