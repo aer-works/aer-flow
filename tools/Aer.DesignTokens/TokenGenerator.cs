@@ -53,7 +53,7 @@ public static class TokenGenerator
 
     /// <summary>
     /// The interaction-state register (#616) — a second population from the same design directory,
-    /// deliberately a separate file from <see cref="TokensPath"/>: /status is the task-lifecycle
+    /// deliberately a separate file from <see cref="TokensPath"/>: /status is the room-lifecycle
     /// vocabulary, this is the screen-situation inventory, and merging them would let checks
     /// quantify over meaningless combinations.
     /// </summary>

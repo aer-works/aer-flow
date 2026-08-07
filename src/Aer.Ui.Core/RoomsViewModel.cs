@@ -216,7 +216,7 @@ public sealed partial class RoomsViewModel : ObservableObject
     /// <see cref="ArchiveAsync"/>. Fans out sequentially against the same per-directory
     /// <c>/api/rooms/archive</c> endpoint (delete mutates the shared recents list and archive mutates
     /// the shared fleet index, so concurrent calls could race) rather than a new bulk daemon endpoint,
-    /// per the issue's stated default. Calls <see cref="RoomClient.ArchiveTaskAsync"/> directly in the
+    /// per the issue's stated default. Calls <see cref="RoomClient.ArchiveRoomAsync"/> directly in the
     /// loop and refreshes exactly once at the end -- routing through the existing single-item
     /// <see cref="ArchiveAsync"/> would call <see cref="RefreshAsync"/> after every item, rebuilding
     /// <see cref="Items"/> (and clearing selection) mid-loop.
@@ -336,7 +336,7 @@ public sealed partial class RoomsViewModel : ObservableObject
 }
 
 /// <summary>
-/// One row in the Tasks view (M24 Phase 5, #278) — same closure-over-parent-actions shape as
+/// One row in the Rooms view (M24 Phase 5, #278) — same closure-over-parent-actions shape as
 /// <see cref="PairedClientItemViewModel"/>: the parent <see cref="RoomsViewModel"/> already has the
 /// <see cref="RoomClient"/> this row's actions need, so each action closes over it at construction
 /// rather than the row needing its own reference. Delete uses an inline two-step confirm

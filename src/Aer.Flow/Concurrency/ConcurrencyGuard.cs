@@ -36,7 +36,7 @@ public sealed class ConcurrencyGuard : IDisposable
     /// if it does not yet exist.
     /// </summary>
     /// <exception cref="WorkflowLockedException">
-    /// Another Flow instance already holds the lock for this task.
+    /// Another Flow instance already holds the lock for this room.
     /// </exception>
     public static ConcurrencyGuard Acquire(string roomDirectoryPath, string? holderDescription = null)
     {

@@ -28,11 +28,12 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
   final _pendingStepIds = <String>{};
 
   /// Which room directory *this phone* is currently viewing — set only by this phone's own
-  /// actions (recent-task pick, starting a task/session), never by another client's. Aer.Daemon's
-  /// own "current task" is a separate, process-wide notion the daemon uses only to decide what a
+  /// actions (recent-room pick, starting a room), never by another client's. Aer.Daemon's
+  /// own "current room" is a separate, process-wide notion the daemon uses only to decide what a
+  /// record-once-ok: #443 src/Aer.Ui.Core/RoomClient.cs
   /// brand-new WS connection sees before this phone has opened anything of its own; `_connect`'s
   /// listener adopts that once, then filters every later push against this field so a different
-  /// client opening a different task can't silently change what this phone shows (pre-M24 defect,
+  /// client opening a different room can't silently change what this phone shows (pre-M24 defect,
   /// fixed alongside issue #262's chat work — see RoomProjection's doc comment in models.dart).
   String? _openDirectoryPath;
 
@@ -416,7 +417,7 @@ class _InboxScreenState extends State<InboxScreen> with WidgetsBindingObserver {
                         // /api/templates/run already broadcasts once, server-side, before its HTTP
                         // response returns — i.e. before this filter is set, so that frame is
                         // reliably missed (issue #348). Unlike chat's startSession, a template has
-                        // no sessionId/ChatScreen to jump into instead; the task's own view is
+                        // no sessionId/ChatScreen to jump into instead; the room's own view is
                         // InboxScreen's body, driven by `_projection`. Set the filter first, then
                         // force a second, guaranteed-to-match broadcast via openRoom (same call
                         // _pickRecentRoom already relies on) so this screen actually shows the

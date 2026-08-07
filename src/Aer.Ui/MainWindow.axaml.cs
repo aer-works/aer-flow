@@ -574,7 +574,7 @@ public partial class MainWindow : Window
     /// Fire-and-forget, matching every other event-handler entry point in this file. An unloadable
     /// directory is not an exception — <see cref="LoadAsync"/> renders <c>outcome.ErrorMessage</c>
     /// into the detail pane's status line, and the selection stays where the user put it. Anything
-    /// that does throw here faults this room unobserved, which is the pre-existing shape of every
+    /// that does throw here faults this task unobserved, which is the pre-existing shape of every
     /// <c>_ = SomethingAsync()</c> in this file rather than something new; a general answer for
     /// surfacing background-work failures in the UI belongs with #462, not bolted on here.
     /// </remarks>
@@ -1495,7 +1495,7 @@ public partial class MainWindow : Window
     /// Window-close semantics with a pump in flight (issue #140): the first <c>Closing</c> is
     /// cancelled and treated as a Stop request instead of a silent abandonment — the CLI's Ctrl+C
     /// equivalent still fires even though there is no terminal to Ctrl+C in. Once the retained pump
-    /// room has actually reached its fixed point (<see cref="RunAsync"/>/<see cref="DecideAsync"/>'s
+    /// task has actually reached its fixed point (<see cref="RunAsync"/>/<see cref="DecideAsync"/>'s
     /// own <c>finally</c> already reflects that in the projection via their trailing
     /// <see cref="OpenAsync"/>), this closes the window for real — a plain, uncancelled close, since
     /// <see cref="_closeConfirmed"/> is now set.
@@ -1581,7 +1581,7 @@ public partial class MainWindow : Window
         catch
         {
             // RunAsync/DecideAsync's own try/catch already renders any AerFlowException as an
-            // in-window message on their own await of this same room; this second await exists only
+            // in-window message on their own await of this same task; this second await exists only
             // to learn that the pump has reached a fixed point, not to re-observe its outcome.
         }
 

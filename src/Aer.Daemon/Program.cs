@@ -953,7 +953,7 @@ namespace Aer.Daemon
                 // connected clients (a paired phone) any immediate sign that a run just started here.
                 // Best-effort and may no-op for a brand-new room (no snapshot.json until the pump
                 // below binds one): the guaranteed broadcast is still the one RunAsync's own
-                // reopenTaskAsync hook fires on completion. This closes the gap for the common case
+                // reopenRoomAsync hook fires on completion. This closes the gap for the common case
                 // this projection already exists -- a resumed/re-run room -- immediately instead of
                 // only once the whole pump finishes.
                 session.SetCurrentRoomDirectory(request.DirectoryPath);
