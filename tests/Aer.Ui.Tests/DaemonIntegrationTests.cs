@@ -25,6 +25,15 @@ public class DaemonIntegrationTests : IAsyncLifetime
     private readonly HttpClient _client = new();
     private string? _tempRoomDirectory;
 
+    /// <summary>Reads a fleet response the way a real client does — with the string-enum converter
+    /// (#1049): the daemon serializes RoomFleetItem.Status as its enum name ("NeedsYou", …), so a
+    /// default-options deserialize throws on it. Mirrors RoomClient.DefaultJsonOptions.</summary>
+    private static readonly JsonSerializerOptions FleetReadOptions = new()
+    {
+        Converters = { new JsonStringEnumConverter() },
+        PropertyNameCaseInsensitive = true,
+    };
+
     /// <summary>The daemon's dynamically-assigned base URL (issue #296), reused for the WebSocket
     /// endpoints below rather than the old hardcoded "ws://localhost:5050".</summary>
     private string WsBaseUrl => "ws" + _baseUrl["http".Length..];
@@ -1137,7 +1146,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         var response = await _client.GetAsync($"{_baseUrl}/api/rooms", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
 
-        var items = await response.Content.ReadFromJsonAsync<List<RoomFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+        var items = await response.Content.ReadFromJsonAsync<List<RoomFleetItem>>(FleetReadOptions, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(items);
         Assert.Contains(items, i => i.RoomDirectoryPath == roomDirectoryPath);
     }
@@ -1150,7 +1159,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         await StartASessionAsync();
 
         var items = await (await _client.GetAsync($"{_baseUrl}/api/rooms", TestContext.Current.CancellationToken))
-            .Content.ReadFromJsonAsync<List<RoomFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+            .Content.ReadFromJsonAsync<List<RoomFleetItem>>(FleetReadOptions, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(items);
         Assert.True(items!.Count >= 2, $"expected at least two fleet entries, got {items.Count}");
 
@@ -1185,11 +1194,11 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.True(archiveResponse.IsSuccessStatusCode);
 
         var defaultList = await (await _client.GetAsync($"{_baseUrl}/api/rooms", TestContext.Current.CancellationToken))
-            .Content.ReadFromJsonAsync<List<RoomFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+            .Content.ReadFromJsonAsync<List<RoomFleetItem>>(FleetReadOptions, cancellationToken: TestContext.Current.CancellationToken);
         Assert.DoesNotContain(defaultList!, i => i.RoomDirectoryPath == roomDirectoryPath);
 
         var withArchived = await (await _client.GetAsync($"{_baseUrl}/api/rooms?includeArchived=true", TestContext.Current.CancellationToken))
-            .Content.ReadFromJsonAsync<List<RoomFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+            .Content.ReadFromJsonAsync<List<RoomFleetItem>>(FleetReadOptions, cancellationToken: TestContext.Current.CancellationToken);
         var archivedItem = Assert.Single(withArchived!, i => i.RoomDirectoryPath == roomDirectoryPath);
         Assert.True(archivedItem.IsArchived);
 
@@ -1204,7 +1213,7 @@ public class DaemonIntegrationTests : IAsyncLifetime
         Assert.True(unarchiveResponse.IsSuccessStatusCode);
 
         var reinstatedList = await (await _client.GetAsync($"{_baseUrl}/api/rooms", TestContext.Current.CancellationToken))
-            .Content.ReadFromJsonAsync<List<RoomFleetItem>>(cancellationToken: TestContext.Current.CancellationToken);
+            .Content.ReadFromJsonAsync<List<RoomFleetItem>>(FleetReadOptions, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(reinstatedList!, i => i.RoomDirectoryPath == roomDirectoryPath && !i.IsArchived);
 
         // Only a real delete frees the directory and the name (M24 Phase 5 regression, #278).
