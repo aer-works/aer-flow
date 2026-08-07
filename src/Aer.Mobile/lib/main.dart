@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'daemon/credentials_store.dart';
+import 'daemon/daemon_client.dart';
 import 'daemon/tailnet_gateway.dart';
-import 'inbox_screen.dart';
 import 'pairing_screen.dart';
+import 'rooms_screen.dart';
 import 'theme/tokens.dart';
 
 void main() async {
@@ -31,8 +32,8 @@ class AerMobileApp extends StatelessWidget {
   }
 }
 
-/// Skips the pairing screen entirely if this device already has stored credentials — pairing is a
-/// one-time setup, not something to repeat every launch.
+/// Routes on stored credentials: unpaired → pairing; paired → the switcher (RoomsScreen), the phone's
+/// front door (#337/#1044). Builds the daemon client here and hands it down.
 class _StartupRouter extends StatefulWidget {
   const _StartupRouter();
 
@@ -41,21 +42,33 @@ class _StartupRouter extends StatefulWidget {
 }
 
 class _StartupRouterState extends State<_StartupRouter> {
-  bool? _isPaired;
+  bool _loaded = false;
+  DaemonClient? _client;
 
   @override
   void initState() {
     super.initState();
     CredentialsStore().load().then((credentials) {
-      if (mounted) setState(() => _isPaired = credentials != null);
+      if (!mounted) return;
+      setState(() {
+        _client = credentials == null
+            ? null
+            : DaemonClient(
+                host: credentials.host,
+                token: credentials.token,
+                tsnetRouted: credentials.tsnetRouted,
+              );
+        _loaded = true;
+      });
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isPaired == null) {
+    if (!_loaded) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    return _isPaired! ? const InboxScreen() : const PairingScreen();
+    final client = _client;
+    return client != null ? RoomsScreen(client: client) : const PairingScreen();
   }
 }

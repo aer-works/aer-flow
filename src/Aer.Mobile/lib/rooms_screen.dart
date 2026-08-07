@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
 import 'chat_screen.dart';
+import 'daemon/credentials_store.dart';
 import 'daemon/daemon_client.dart';
 import 'daemon/models.dart';
+import 'inbox_screen.dart';
+import 'pairing_screen.dart';
 
-/// The fleet management screen (M24 Phase 5, #278) — every known task/session directory at once,
-/// with archive/unarchive/delete. The Flutter counterpart of Aer.Ui's dedicated Rooms view. Reached
-/// from InboxScreen's kebab menu ("Manage rooms"), distinct from `_pickRecentRoom`'s bare recents
-/// sheet, which stays the quick-reopen path — this screen is the real management surface.
+/// The switcher — the phone's front door (#337/#1044): every known room at once, and the screen a
+/// paired device lands on. Tapping a room enters it directly (a session opens its chat; a workflow
+/// opens its decision view), so a room row is a place, not a dead card. It also carries the
+/// fleet-management affordances it began as (archive/unarchive/delete, bulk-select — M24 Phase 5,
+/// #278); the Flutter counterpart of Aer.Ui's Rooms view.
 ///
 /// Bulk select (issue #288): long-press a card to enter selection mode, then tap any card to
 /// toggle it — the same long-press-to-select convention most Flutter list UIs use (no existing
@@ -24,7 +28,7 @@ class RoomsScreen extends StatefulWidget {
   State<RoomsScreen> createState() => _RoomsScreenState();
 }
 
-class _RoomsScreenState extends State<RoomsScreen> {
+class _RoomsScreenState extends State<RoomsScreen> with WidgetsBindingObserver {
   List<RoomFleetItem> _items = [];
   bool _includeArchived = false;
   bool _isLoading = true;
@@ -36,7 +40,23 @@ class _RoomsScreenState extends State<RoomsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Refresh the fleet on foreground — the staleness #287 fixed for the inbox, now that the switcher
+  /// is the landing. (Live WS-driven fleet updates are J5/#330, out of this slice.)
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_isLoading) {
+      _refresh();
+    }
   }
 
   Future<void> _refresh() async {
@@ -272,6 +292,51 @@ class _RoomsScreenState extends State<RoomsScreen> {
     }
   }
 
+  /// Enters a room from its fleet row (row-as-place, #1044): a session opens its chat; a workflow
+  /// opens InboxScreen bound to that room via initialDirectoryPath. Wired only outside selection mode.
+  Future<void> _openRoom(RoomFleetItem item) async {
+    final navigator = Navigator.of(context);
+    final sessionId = item.sessionId;
+    if (sessionId != null) {
+      await navigator.push(MaterialPageRoute(
+        builder: (_) => ChatScreen(
+            client: widget.client, sessionId: sessionId, directoryPath: item.roomDirectoryPath),
+      ));
+    } else {
+      await navigator.push(MaterialPageRoute(
+        builder: (_) => InboxScreen(client: widget.client, initialDirectoryPath: item.roomDirectoryPath),
+      ));
+    }
+    // Re-fetch on return: the room's status (or its very existence, if cancelled/deleted in there)
+    // may have changed while it was open.
+    if (mounted) await _refresh();
+  }
+
+  /// Clears this phone's pairing and returns to the pairing screen. Moved here from the inbox now
+  /// that the switcher is the landing — a paired device must be able to unpair from its front door.
+  /// Mirrors InboxScreen._forgetPairing: this clears credentials on this phone only; the desktop
+  /// still lists the device until it is removed there.
+  Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign out of this desktop?'),
+        content: const Text(
+          "This clears the pairing on this phone only. The desktop will still list this device "
+          "until it's removed there.",
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Sign out')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final navigator = Navigator.of(context);
+    await CredentialsStore().clear();
+    navigator.pushReplacement(MaterialPageRoute(builder: (_) => const PairingScreen()));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -288,6 +353,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
               title: const Text('Rooms'),
               actions: [
                 IconButton(icon: const Icon(Icons.refresh), tooltip: 'Refresh', onPressed: _isLoading ? null : _refresh),
+                IconButton(icon: const Icon(Icons.logout), tooltip: 'Sign out', onPressed: _signOut),
               ],
             ),
       body: Column(
@@ -322,7 +388,9 @@ class _RoomsScreenState extends State<RoomsScreen> {
                       ],
                     ),
                   )
-                : ListView.builder(
+                : RefreshIndicator(
+                    onRefresh: _refresh,
+                    child: ListView.builder(
                     itemCount: _items.length,
                     itemBuilder: (context, index) {
                       final item = _items[index];
@@ -331,7 +399,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
                         child: InkWell(
-                          onTap: _selectionMode ? () => _toggleSelection(item) : null,
+                          onTap: _selectionMode ? () => _toggleSelection(item) : () => _openRoom(item),
                           onLongPress: _selectionMode ? null : () => _enterSelectionMode(item),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
@@ -387,6 +455,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                       );
                     },
                   ),
+                ),
           ),
         ],
       ),

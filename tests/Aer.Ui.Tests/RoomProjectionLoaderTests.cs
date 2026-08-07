@@ -181,6 +181,9 @@ public class RoomProjectionLoaderTests
             Assert.Equal("Not yet run", fleetItem.StatusText);
             Assert.Equal(0, fleetItem.PausedStepCount);
             Assert.False(fleetItem.IsArchived);
+            // #1044: a session row carries the id it taps into (row-as-place). Polarity partner is the
+            // workflow test below, which pins SessionId null.
+            Assert.Equal("sess-fleet", fleetItem.SessionId);
 
             // #322: a session (even one that never ran, so has no snapshot) takes its created/updated
             // straight from the durable in-data source, .aer/room.json -- not from filesystem times.
@@ -218,6 +221,8 @@ public class RoomProjectionLoaderTests
             var fleetItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
             Assert.NotEqual("interactive session", fleetItem.TypeLabel);
             Assert.Equal("workflow", fleetItem.TypeLabel);
+            // #1044 polarity: a workflow room has no session id to tap into.
+            Assert.Null(fleetItem.SessionId);
         }
         finally
         {

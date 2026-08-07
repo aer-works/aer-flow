@@ -37,7 +37,8 @@ public sealed record RoomFleetItem(
     DateTimeOffset Created,
     DateTimeOffset Updated,
     bool IsSession = false,
-    DateTimeOffset? LastActivityAt = null);
+    DateTimeOffset? LastActivityAt = null,
+    string? SessionId = null);
 
 /// <summary>
 /// The seam this phase exists to prove (issue #118): opens a real room directory using exactly
@@ -107,6 +108,13 @@ public static class RoomProjectionLoader
         var friendlyName = Path.GetFileName(Path.TrimEndingDirectorySeparator(roomDirectoryPath));
         var isArchived = RoomLifecycle.IsArchived(roomDirectoryPath);
         var isSession = await InteractiveSessionMaterializer.ReadRoomKindAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(false) == RoomKind.Interactive;
+        // The session id a phone row taps into (row-as-place, #1044), read from the same .aer/room.json
+        // marker via the canonical LoadMetadataAsync — the idiom DaemonBroadcast's SessionId sibling uses
+        // (#262). Null for a workflow room.
+        var sessionId = isSession
+            ? (await InteractiveSessionMaterializer.LoadMetadataAsync(
+                Path.Combine(roomDirectoryPath, ".aer", AerPaths.RoomMetadataFileName), cancellationToken).ConfigureAwait(false))?.SessionId
+            : null;
         var (created, updated) = await ResolveTimestampsAsync(roomDirectoryPath, isSession, cancellationToken).ConfigureAwait(false);
 
         var snapshotPath = Path.Combine(roomDirectoryPath, SnapshotFileName);
@@ -121,7 +129,7 @@ public static class RoomProjectionLoader
             return new RoomFleetItem(
                 roomDirectoryPath, friendlyName, isSession ? "interactive session" : "workflow", // vocabulary-ok: internal type label
                 isSession ? "Not yet run" : "Not yet run", PausedStepCount: 0, isArchived, created, updated,
-                isSession, LastActivityAt: created);
+                isSession, LastActivityAt: created, SessionId: sessionId);
         }
 
         var snapshot = await SnapshotBinder.LoadFromFileAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
@@ -167,7 +175,7 @@ public static class RoomProjectionLoader
         // (scoped strictly to the pre-first-event window).
         var lastActivityAt = newestEventTimestamp ?? created;
 
-        return new RoomFleetItem(roomDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived, created, updated, isSession, lastActivityAt);
+        return new RoomFleetItem(roomDirectoryPath, friendlyName, typeLabel, state.Status.ToString(), pausedStepCount, isArchived, created, updated, isSession, lastActivityAt, sessionId);
     }
 
     /// <summary>
