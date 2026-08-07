@@ -346,4 +346,90 @@ public class RoomProjectionLoaderTests
             DirectoryCleanup.DeleteRecursively(dirB);
         }
     }
+
+    // #1049 polarity pair: the fleet path (LoadFleetStatusAsync, empty history/lineage) must resolve a
+    // paused room's pause KIND, not just report "Paused". A NeedsInput pause is an ordinary chat turn
+    // ("reply"); a ReadyForReview pause is an approval gate ("review"). One condition apart, opposite
+    // words — if the loader stopped threading the snapshot's PausePoint the reply arm would default to
+    // "review", and if it reverted to raw WorkflowStatus both would read "Paused".
+
+    [Fact]
+    public async Task LoadFleetStatusAsync_ForANeedsInputPause_ReadsWaitingForYourReply()
+    {
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(PausePointKind.NeedsInput);
+        try
+        {
+            var fleetItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
+            Assert.Equal("Waiting for your reply", fleetItem.StatusText);
+            Assert.Equal(RoomCardStatus.NeedsYou, fleetItem.Status);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task LoadFleetStatusAsync_ForAReadyForReviewPause_ReadsWaitingForYourReview()
+    {
+        var roomDirectory = await CreatePausedRoomDirectoryAsync(PausePointKind.ReadyForReview);
+        try
+        {
+            var fleetItem = await RoomProjectionLoader.LoadFleetStatusAsync(roomDirectory, TestContext.Current.CancellationToken);
+            Assert.Equal("Waiting for your review", fleetItem.StatusText);
+            Assert.Equal(RoomCardStatus.NeedsYou, fleetItem.Status);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
+    /// <summary>Builds a room paused at Critic with the given pause kind, via hand-written FlowEvents
+    /// (MainWindowProjectionTests' convention) — the lightest path to a Paused projection.</summary>
+    private static async Task<string> CreatePausedRoomDirectoryAsync(PausePointKind pauseKind)
+    {
+        var snapshot = SnapshotBinder.Bind(new WorkflowDefinition(
+            new WorkflowTemplateId("architect-critic"),
+            WorkflowTemplateVersion: 1,
+            Steps:
+            [
+                new WorkflowStepDefinition(Architect, "architect", ["goal"], ["plan"], DependsOn: [], RetryPolicy: new RetryPolicy(3)),
+                new WorkflowStepDefinition(
+                    Critic, "critic", ["plan"], ["review"], DependsOn: [Architect], RetryPolicy: new RetryPolicy(1),
+                    PausePoint: new PausePoint(SupersedeTargets: [Architect], Kind: pauseKind)),
+            ]));
+
+        var architectExecutionId = new ExecutionId("a-1");
+        var criticExecutionId = new ExecutionId("c-1");
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-fleet-paused-{Guid.NewGuid():N}");
+        await SnapshotBinder.PersistAsync(snapshot, Path.Combine(roomDirectory, "snapshot.json"), TestContext.Current.CancellationToken);
+
+        await using var writer = new FlowEventLogWriter(Path.Combine(roomDirectory, "flow.jsonl"));
+        foreach (var flowEvent in new FlowEvent[]
+        {
+            new FlowEvent.ExecutionRequestAccepted(MakePausedStepRequest(architectExecutionId, Architect)),
+            new FlowEvent.ExecutionSucceeded(architectExecutionId),
+            new FlowEvent.ExecutionRequestAccepted(MakePausedStepRequest(criticExecutionId, Critic)),
+            new FlowEvent.ExecutionSucceeded(criticExecutionId),
+            new FlowEvent.WorkflowPaused(criticExecutionId, Critic),
+        })
+        {
+            await writer.AppendAsync(flowEvent, TestContext.Current.CancellationToken);
+        }
+
+        return roomDirectory;
+    }
+
+    private static ExecutionRequest MakePausedStepRequest(ExecutionId executionId, StepId stepId)
+        => new(
+            executionId,
+            new WorkflowId("wf-1"),
+            stepId,
+            "worker",
+            Inputs: [],
+            Outputs: [],
+            Timeout: TimeSpan.FromMinutes(10),
+            Environment: [],
+            UpstreamExecutionIds: new Dictionary<StepId, ExecutionId>());
 }

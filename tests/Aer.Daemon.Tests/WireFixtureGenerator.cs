@@ -32,18 +32,22 @@ public static class WireFixtureGenerator
         wsNode["WorkerAdapters"] = workerAdaptersWs;
         fixtures[Path.Combine(RelativeFixturesPath, "room_projection.ws.json")] = FormatJson(wsNode, DaemonSerializerOptions.WebSocket);
 
-        // 3. RoomFleetItem REST (camelCase)
+        // 3. RoomFleetItem REST (camelCase). A needs-you row: Status pins the RoomCardStatus enum's
+        // wire name ("NeedsYou"), which the mobile switcher's waiting-on-you-first sort keys on
+        // literally (#1049) — a rename of the enum member reddens this fixture and the Dart parse test
+        // rather than silently breaking the sort. StatusText and Status are independent wire fields.
         var fleetItem = new RoomFleetItem(
             "C:/Users/pbree/.aer/tasks/foo",
             "foo",
             "solo-run-template",
-            "Running",
+            "Waiting for your review",
             2,
             false,
             new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 8, 3, 15, 0, 0, TimeSpan.Zero),
             false,
-            new DateTimeOffset(2026, 8, 3, 15, 0, 0, TimeSpan.Zero));
+            new DateTimeOffset(2026, 8, 3, 15, 0, 0, TimeSpan.Zero),
+            Status: RoomCardStatus.NeedsYou);
         fixtures[Path.Combine(RelativeFixturesPath, "fleet_item.rest.json")] = JsonSerializer.Serialize(fleetItem, IndentedOptions(DaemonSerializerOptions.Rest));
 
         // 4. RoomFleetItem WS (PascalCase)
