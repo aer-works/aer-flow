@@ -222,34 +222,32 @@ public sealed partial class ChatViewModel : ObservableObject
         OnPropertyChanged(nameof(HasQueuedMessages));
     }
 
-    /// <summary>Reads the head of the queue without removing it (#1074) — the drain peeks, sends, and only <see cref="DequeueHead"/>s on a successful dispatch, so a failed drained send leaves the message queued rather than dropping it. Returns false on an empty queue.</summary>
-    public bool TryPeekQueuedMessage(out string message)
+    /// <summary>
+    /// Reads the head item without removing it (#1074) — the drain peeks, sends, and only
+    /// <see cref="RemoveQueuedMessage"/>s that exact item on a successful dispatch, so a failed drained
+    /// send leaves the message queued rather than dropping it. Returns the <em>item</em>, not its text,
+    /// so the drain removes it by identity: the head stays live (Remove button and all) during the
+    /// daemon round trip, and a positional dequeue-index-0 would drop the wrong message if the operator
+    /// removed something meanwhile. Returns false (and null) on an empty queue.
+    /// </summary>
+    public bool TryPeekQueuedMessage(out QueuedChatMessageViewModel? head)
     {
-        if (QueuedMessages.Count == 0)
-        {
-            message = string.Empty;
-            return false;
-        }
-
-        message = QueuedMessages[0].Text;
-        return true;
+        head = QueuedMessages.Count == 0 ? null : QueuedMessages[0];
+        return head is not null;
     }
 
-    /// <summary>Removes the head after its send has been dispatched (#1074). Call only once the post succeeded — a failed dispatch must leave the head in place.</summary>
-    public void DequeueHead()
+    /// <summary>
+    /// Removes one queued message by identity (#1074) — the Remove button's callback, and the drain's
+    /// consume-on-successful-dispatch. Identity, never index, so a removal that races the head's
+    /// in-flight dispatch drops exactly the intended item and nothing behind it. No-ops if the item is
+    /// already gone (the operator removed it mid-dispatch). Clears the drain-pause flag: acting on the
+    /// queue — Remove included — is a resume signal, so removing a failed head lets the rest send.
+    /// </summary>
+    internal void RemoveQueuedMessage(QueuedChatMessageViewModel item)
     {
-        if (QueuedMessages.Count == 0)
-        {
-            return;
-        }
-
-        QueuedMessages.RemoveAt(0);
-        OnPropertyChanged(nameof(HasQueuedMessages));
-    }
-
-    private void RemoveQueuedMessage(QueuedChatMessageViewModel item)
-    {
-        if (QueuedMessages.Remove(item))
+        var removed = QueuedMessages.Remove(item);
+        LastSendFailed = false;
+        if (removed)
         {
             OnPropertyChanged(nameof(HasQueuedMessages));
         }
@@ -261,9 +259,9 @@ public sealed partial class ChatViewModel : ObservableObject
         IsSending = false;
         _pendingUserMessage = null;
         StatusText = errorMessage;
-        // Pauses the poll's queue drain (#1074) until the operator's next send/enqueue — a failed
-        // queued send stays queued (the drain peeks, only DequeueHead's on success), so this stops it
-        // retrying every tick without dropping it.
+        // Pauses the poll's queue drain (#1074) until the operator's next send/enqueue/remove — a
+        // failed queued send stays queued (the drain peeks, only removes the item on success), so this
+        // stops it retrying every tick without dropping it.
         LastSendFailed = true;
     }
 

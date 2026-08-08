@@ -1198,12 +1198,15 @@ public partial class MainWindow : Window
                 // LastSendFailed flag — NOT StatusText, which also carries success notices (mode change,
                 // "context cleared") that must not stall the queue — so one failure pauses the drain
                 // (until the operator's next send/enqueue) rather than cascading or busy-retrying.
-                if (!chat.IsSending && !chat.LastSendFailed && chat.TryPeekQueuedMessage(out var queued))
+                if (!chat.IsSending && !chat.LastSendFailed && chat.TryPeekQueuedMessage(out var queued) && queued is not null)
                 {
-                    chat.BeginDrainedSend(queued, sessionMetadata.Turns.Count);
-                    if (await PostChatTurnAsync(currentRoomDirectoryPath, queued).ConfigureAwait(true))
+                    chat.BeginDrainedSend(queued.Text, sessionMetadata.Turns.Count);
+                    if (await PostChatTurnAsync(currentRoomDirectoryPath, queued.Text).ConfigureAwait(true))
                     {
-                        chat.DequeueHead();
+                        // Remove the exact item dispatched, by identity — the head stayed live during
+                        // the post, so a positional dequeue could drop a different message the operator
+                        // removed meanwhile (#1074 second-reader). No-ops if they removed this one.
+                        chat.RemoveQueuedMessage(queued);
                     }
                 }
             }

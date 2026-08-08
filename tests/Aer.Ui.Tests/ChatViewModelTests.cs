@@ -119,23 +119,23 @@ public class ChatViewModelTests
     }
 
     [Fact]
-    public void TryPeekQueuedMessage_reads_the_head_fifo_without_removing_it_and_is_false_on_empty()
+    public void TryPeekQueuedMessage_reads_the_head_item_fifo_without_removing_it_and_is_false_on_empty()
     {
         var viewModel = new ChatViewModel();
         viewModel.EnqueueMessage("first");
         viewModel.EnqueueMessage("second");
 
-        // Peek reads the head without consuming it — the drain relies on this so a failed dispatch
-        // leaves the message queued.
+        // Peek reads the head item without consuming it — the drain relies on this so a failed dispatch
+        // leaves the message queued, and returns the item (not the text) so removal is by identity.
         Assert.True(viewModel.TryPeekQueuedMessage(out var head));
-        Assert.Equal("first", head);
+        Assert.Equal("first", head!.Text);
         Assert.Equal(2, viewModel.QueuedMessages.Count);
 
-        // DequeueHead consumes it, FIFO.
-        viewModel.DequeueHead();
+        // Removing that exact item consumes it, FIFO.
+        viewModel.RemoveQueuedMessage(head);
         Assert.True(viewModel.TryPeekQueuedMessage(out var next));
-        Assert.Equal("second", next);
-        viewModel.DequeueHead();
+        Assert.Equal("second", next!.Text);
+        viewModel.RemoveQueuedMessage(next);
 
         Assert.False(viewModel.TryPeekQueuedMessage(out _));
         Assert.False(viewModel.HasQueuedMessages);
@@ -144,19 +144,42 @@ public class ChatViewModelTests
     [Fact]
     public void A_failed_dispatch_leaves_the_peeked_head_queued_so_it_is_never_dropped()
     {
-        // Finding #1: the drain peeks then only DequeueHeads on success. A dispatch failure (FailSend)
-        // must leave the head in the queue — the issue's bound is "never silently dropped on failure".
+        // Finding #1: the drain peeks then only removes the item on success. A dispatch failure
+        // (FailSend) must leave the head in the queue — the bound is "never silently dropped on failure".
         var viewModel = new ChatViewModel();
         viewModel.EnqueueMessage("do not lose me");
         viewModel.EnqueueMessage("nor me");
 
         Assert.True(viewModel.TryPeekQueuedMessage(out var head));
-        viewModel.BeginDrainedSend(head, currentTurnsCount: 0);
-        viewModel.FailSend("the daemon was unreachable"); // dispatch failed — no DequeueHead
+        viewModel.BeginDrainedSend(head!.Text, currentTurnsCount: 0);
+        viewModel.FailSend("the daemon was unreachable"); // dispatch failed — item not removed
 
         Assert.Equal(2, viewModel.QueuedMessages.Count);
         Assert.Equal("do not lose me", viewModel.QueuedMessages[0].Text);
         Assert.True(viewModel.LastSendFailed);
+    }
+
+    [Fact]
+    public void A_head_removed_during_its_own_dispatch_does_not_drop_the_message_behind_it()
+    {
+        // Second-reader round 2: the head stays in the queue during the daemon round trip. If the
+        // operator removes it mid-dispatch, the success path must remove *that* item by identity, not
+        // index 0 — otherwise it drops the message that shuffled into the head slot.
+        var viewModel = new ChatViewModel();
+        viewModel.EnqueueMessage("being sent");
+        viewModel.EnqueueMessage("must survive");
+
+        Assert.True(viewModel.TryPeekQueuedMessage(out var dispatching)); // "being sent"
+        viewModel.BeginDrainedSend(dispatching!.Text, currentTurnsCount: 0);
+
+        // Operator clicks Remove on the in-flight head during the (simulated) await.
+        dispatching.RemoveCommand.Execute(null);
+
+        // The dispatch then succeeds — the drain removes the exact item it sent (already gone → no-op),
+        // NOT whatever is now at index 0.
+        viewModel.RemoveQueuedMessage(dispatching);
+
+        Assert.Equal("must survive", Assert.Single(viewModel.QueuedMessages).Text);
     }
 
     [Fact]
