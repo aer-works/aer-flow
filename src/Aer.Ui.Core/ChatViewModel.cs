@@ -240,14 +240,14 @@ public sealed partial class ChatViewModel : ObservableObject
     /// Removes one queued message by identity (#1074) — the Remove button's callback, and the drain's
     /// consume-on-successful-dispatch. Identity, never index, so a removal that races the head's
     /// in-flight dispatch drops exactly the intended item and nothing behind it. No-ops if the item is
-    /// already gone (the operator removed it mid-dispatch). Clears the drain-pause flag: acting on the
-    /// queue — Remove included — is a resume signal, so removing a failed head lets the rest send.
+    /// already gone (the operator removed it mid-dispatch). Deliberately does NOT touch
+    /// <see cref="LastSendFailed"/>: a remove that interleaves a failing dispatch's await would set the
+    /// flag before <see cref="FailSend"/> re-set it, so a paused queue resumes only on the next
+    /// send/enqueue — race-free, and it self-heals on the operator's next message.
     /// </summary>
     internal void RemoveQueuedMessage(QueuedChatMessageViewModel item)
     {
-        var removed = QueuedMessages.Remove(item);
-        LastSendFailed = false;
-        if (removed)
+        if (QueuedMessages.Remove(item))
         {
             OnPropertyChanged(nameof(HasQueuedMessages));
         }
@@ -259,9 +259,9 @@ public sealed partial class ChatViewModel : ObservableObject
         IsSending = false;
         _pendingUserMessage = null;
         StatusText = errorMessage;
-        // Pauses the poll's queue drain (#1074) until the operator's next send/enqueue/remove — a
-        // failed queued send stays queued (the drain peeks, only removes the item on success), so this
-        // stops it retrying every tick without dropping it.
+        // Pauses the poll's queue drain (#1074) until the operator's next send or enqueue — a failed
+        // queued send stays queued (the drain peeks, only removes the item on success), so this stops
+        // it retrying every tick without dropping it.
         LastSendFailed = true;
     }
 
