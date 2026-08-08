@@ -95,31 +95,17 @@ public sealed partial class HomeViewModel : ObservableObject
     }
 }
 
-/// <summary>One recent room as a live status card — the recents list re-projected as Home's primary surface. Plain-language status per ux-principles.md's vocabulary map, with the precise engine state one disclosure away (the Room view).</summary>
-public sealed partial class RoomCardViewModel(
-    string roomDirectoryPath, string title, string statusText, RoomCardStatus status, Func<string, Task> openRoomAsync)
+/// <summary>
+/// The shared room-status derivation (originally Home's card read model, #187). Home's recents cards
+/// retired with #1071, and the instance side (the card object and its Open command) went with them;
+/// what remains is static — the one place a <see cref="RoomProjection"/> becomes a plain status line
+/// and a <see cref="RoomCardStatus"/>, consumed by the switcher rows, the fleet loader, and mobile.
+/// </summary>
+public static class RoomCardViewModel
 {
-    public string RoomDirectoryPath { get; } = roomDirectoryPath;
-    public string Title { get; } = title;
-    public string StatusText { get; } = statusText;
-    public RoomCardStatus Status { get; } = status;
-
-    /// <summary>Style hooks for the one status system (design-language.md): exactly one of these is true, consumed by the card's classes.</summary>
-    public bool IsNeedsYou => Status == RoomCardStatus.NeedsYou;
-
-    [RelayCommand]
-    private Task Open() => openRoomAsync(RoomDirectoryPath);
-
-    /// <summary>The card title is the room directory's leaf name — the human's handle for the room, with the full path detail-on-demand (ux-principles §3). Forwards to <see cref="RoomProjectionLoader.FriendlyNameFor"/>, the one canonical derivation, so Home cards, the switcher, and the chat header can never show a room three different names (#461/#976).</summary>
+    /// <summary>The room's handle — the directory's leaf name (ux-principles §3), via the one canonical <see cref="RoomProjectionLoader.FriendlyNameFor"/> derivation, so the switcher, the inbox items, and the chat header can never show a room three different names (#461/#976).</summary>
     public static string TitleFor(string roomDirectoryPath)
         => RoomProjectionLoader.FriendlyNameFor(roomDirectoryPath);
-
-    public static RoomCardViewModel FromProjection(
-        string roomDirectoryPath, RoomProjection projection, Func<string, Task> openRoomAsync)
-    {
-        var (statusText, status) = DeriveStatus(projection);
-        return new RoomCardViewModel(roomDirectoryPath, TitleFor(roomDirectoryPath), statusText, status, openRoomAsync);
-    }
 
     /// <summary>
     /// The one place a <see cref="RoomProjection"/> becomes a human status line and a

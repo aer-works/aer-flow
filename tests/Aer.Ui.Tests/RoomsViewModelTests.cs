@@ -443,4 +443,15 @@ public class RoomsViewModelTests
         viewModel.AddTestItem(NeedsYouItem("/tasks/waiting"));
         Assert.False(viewModel.ShowNeedsYouEmpty);
     }
+
+    [Fact]
+    public void ShowNeedsYouEmpty_is_false_on_a_truly_empty_fleet_so_it_never_doubles_up_with_no_rooms_yet()
+    {
+        // Review finding #5: with zero rooms, the switcher already shows "No rooms yet." (HasNoItems);
+        // "Nothing needs you." must not render on top of it when the filter is on.
+        var viewModel = new RoomsViewModel { NeedsYouOnly = true };
+
+        Assert.True(viewModel.HasNoItems);
+        Assert.False(viewModel.ShowNeedsYouEmpty);
+    }
 }

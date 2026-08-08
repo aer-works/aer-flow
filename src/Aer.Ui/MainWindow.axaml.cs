@@ -444,6 +444,10 @@ public partial class MainWindow : Window
                 System.IO.Path.GetDirectoryName(workflowFilePath)!,
                 $"room-{DateTime.Now:yyyyMMdd-HHmmss}");
             ViewModel.CurrentSection = ShellSection.Task;
+            // #1071: Save & Run shows a workflow room in the Task pane, so the ▤ button must return
+            // here (not a stale Chat) if the user later navigates away and back. RunAsync sets the
+            // session's current room; _lastRoomSection is the other half of that invariant.
+            _lastRoomSection = ShellSection.Task;
             await RunAsync(roomDirectoryPath, workflowFilePath, bindingsFilePath);
         };
         // #211: the Outputs preview box is imperative control state, not bound — nothing cleared

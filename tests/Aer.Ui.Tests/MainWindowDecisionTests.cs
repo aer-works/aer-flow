@@ -154,6 +154,9 @@ public class MainWindowDecisionTests
         rooms.RetireInboxItem(roomPath, new StepId("step-a"), new ExecutionId("exec-1"));
 
         Assert.Empty(row.PausedSteps);
+        // Its only gate was answered, so the row is no longer needs-you *now* — the authoritative
+        // count decremented, not left stale until the next projection push (review finding #2).
+        Assert.False(row.HasPausedSteps);
     }
 
     [Fact]
@@ -179,6 +182,9 @@ public class MainWindowDecisionTests
 
         Assert.Equal(new[] { item2 }, row1.PausedSteps);
         Assert.Equal(new[] { item3 }, row2.PausedSteps);
+        // Row 1 still has a second gate (started at 2), so it stays needs-you; row 2 is untouched.
+        Assert.True(row1.HasPausedSteps);
+        Assert.True(row2.HasPausedSteps);
     }
 
     [AvaloniaFact]

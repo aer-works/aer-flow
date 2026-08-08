@@ -465,30 +465,13 @@ public class NavigationShellTests
         }
     }
 
-    // #1071 retired the Home recents cards (incl. the greyed "unavailable" rendering for a stale
-    // recent); a room that no longer loads is the switcher fleet loader's concern now (daemon-driven),
-    // covered by the fleet tests. Nothing Home-side left to assert here.
-    [AvaloniaFact(Skip = "Retired with the Home recents cards (#1071); unavailable rendering moved to the switcher fleet loader.")]
-    public async Task A_recent_that_no_longer_loads_renders_as_an_unavailable_card_not_an_error()
-    {
-        var configFilePath = NewConfigFilePath();
-        var notARoomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-stale-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(notARoomDirectory);
-        try
-        {
-            await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(notARoomDirectory, TestContext.Current.CancellationToken);
-
-            var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
-            await window.InitializeAsync(TestContext.Current.CancellationToken);
-
-            Assert.False(window.ViewModel.Home.HasNoRooms);
-        }
-        finally
-        {
-            DirectoryCleanup.DeleteRecursively(notARoomDirectory);
-        }
-    }
+    // #1071 retired the Home recents cards, and with them the greyed "unavailable" rendering for a
+    // stale local recent — that was a Home-cards feature over LocalUiConfiguration recents, and the
+    // RoomCardStatus.Unavailable derivation had no other producer. The switcher lists the daemon fleet,
+    // where a directory with no snapshot reads "Not yet run" (RoomProjectionLoader.LoadFleetStatusAsync,
+    // unchanged); an explicit per-room "unavailable" state on the switcher is separate design scope
+    // (0018's unavailable band is host-reachability, not per-room deletion). So there is no Home-side
+    // behaviour left to assert, and this test is removed rather than left as a misleading skip.
 
     /// <summary>
     /// docs/design/02-screens.md:58 — the rooms list header reads "Rooms + New", "+ New" starting a

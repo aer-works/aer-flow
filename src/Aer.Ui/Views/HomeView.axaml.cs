@@ -42,13 +42,11 @@ public partial class HomeView : UserControl
     /// pattern (write the picked path into the visible text box, never a hidden field), so Open
     /// still reads from <see cref="RoomDirectoryPathBox"/> exactly as it always has.
     /// <para>
-    /// Owner feedback: asked for a default room directory on Home. Recent rooms already have their
-    /// own one-click cards above (<see cref="MainWindowViewModel.Home"/>'s <c>RoomCards</c>) — the
-    /// best "default" for a room you've already run. What was missing was a starting point for a
-    /// room you haven't opened yet: this picker now opens in the same
-    /// <c>Documents/Baton</c> workspace root <see cref="NewWorkflowViewModel.EffectiveWorkspacePath"/>
-    /// writes guided-flow output under, instead of wherever the OS last remembered — that's the one
-    /// place a fresh room is actually likely to be.
+    /// Owner feedback: asked for a default room directory. Existing rooms are one click away in the
+    /// permanent switcher; what was missing was a starting point for a room you haven't opened yet, so
+    /// this picker opens in the same <c>Documents/Baton</c> workspace root
+    /// <see cref="NewWorkflowViewModel.EffectiveWorkspacePath"/> writes guided-flow output under,
+    /// instead of wherever the OS last remembered — the one place a fresh room is actually likely to be.
     /// </para>
     /// </summary>
     private async void OnBrowseRoomDirectoryClick(object? sender, RoutedEventArgs e)

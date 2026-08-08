@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using Aer.Adapters;
 using Aer.Flow;
@@ -78,8 +79,8 @@ public sealed partial class RoomsViewModel : ObservableObject
     public bool HasErrorText => !string.IsNullOrEmpty(ErrorText);
     public bool HasSelection => SelectedCount > 0;
 
-    /// <summary>#1072: the "Needs you" filter is on but nothing is waiting — the honest empty state ("Nothing needs you.") so a filtered-to-empty list never reads as broken.</summary>
-    public bool ShowNeedsYouEmpty => NeedsYouOnly && !IsBusy && Items.All(i => !i.HasPausedSteps);
+    /// <summary>#1072: the "Needs you" filter is on over a non-empty fleet but nothing is waiting — the honest empty state ("Nothing needs you."). Requires at least one room so it never doubles up with the switcher's own "No rooms yet." on a truly empty fleet.</summary>
+    public bool ShowNeedsYouEmpty => NeedsYouOnly && !IsBusy && Items.Count > 0 && Items.All(i => !i.HasPausedSteps);
 
     public string BulkDeleteConfirmText =>
         $"Really delete {SelectedCount} selected room{(SelectedCount == 1 ? "" : "s")}? This can't be undone.";
@@ -181,6 +182,10 @@ public sealed partial class RoomsViewModel : ObservableObject
 
     private async Task LoadRowPausedStepsAsync(RoomFleetItemViewModel row, CancellationToken cancellationToken)
     {
+        // #1072 review: both callers are fire-and-forget (a toggle flip and a live projection push),
+        // so two loads for one row can overlap. Stamp this load's generation before the await; if a
+        // newer load has since started, discard this one's result instead of appending on top of it.
+        var generation = ++row.PausedStepsLoadGeneration;
         row.PausedSteps.Clear();
 
         RoomProjection projection;
@@ -188,10 +193,16 @@ public sealed partial class RoomsViewModel : ObservableObject
         {
             projection = await RoomProjectionLoader.LoadAsync(row.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
         }
-        catch (AerFlowException)
+        catch (Exception ex) when (ex is AerFlowException or IOException or UnauthorizedAccessException)
         {
-            // A room that no longer loads carries no inline steps this pass — its own row status
-            // handles the stale/unavailable case (HomeViewModel's stale-list rule).
+            // A room that no longer loads (deleted/moved/locked mid-read) carries no inline steps this
+            // pass — its own row status handles the stale case (HomeViewModel's stale-list rule). Caught
+            // here rather than escaping as an unobserved task exception through the fire-and-forget call.
+            return;
+        }
+
+        if (generation != row.PausedStepsLoadGeneration)
+        {
             return;
         }
 
@@ -216,7 +227,23 @@ public sealed partial class RoomsViewModel : ObservableObject
     /// </summary>
     public void RetireInboxItem(string roomDirectoryPath, StepId stepId, ExecutionId executionId)
     {
-        FindRow(roomDirectoryPath)?.RetirePausedStep(stepId, executionId);
+        var row = FindRow(roomDirectoryPath);
+        if (row is null)
+        {
+            return;
+        }
+
+        row.RetirePausedStep(stepId, executionId);
+
+        // Retiring the last gate makes the row no longer needs-you: collapse it out of the filtered
+        // list and drop its (now empty) expansion, so the switcher never shows a needs-you row with
+        // nothing in it, and "Nothing needs you." appears if that was the last one.
+        if (NeedsYouOnly && !row.HasPausedSteps)
+        {
+            row.IsFilteredOut = true;
+            row.IsExpanded = false;
+        }
+
         OnPropertyChanged(nameof(ShowNeedsYouEmpty));
     }
 
@@ -635,6 +662,15 @@ public sealed partial class RoomFleetItemViewModel : ObservableObject
     public ObservableCollection<InboxItemViewModel> PausedSteps { get; } = [];
 
     /// <summary>
+    /// #1072: the generation of the most recently *started* paused-step load for this row. Bumped at
+    /// the head of each <see cref="RoomsViewModel.LoadRowPausedStepsAsync"/> so a load that awaited I/O
+    /// while a newer one started can detect it and discard its result rather than appending on top —
+    /// two overlapping loads (a projection push landing mid-toggle, a double-click) must not duplicate
+    /// the list.
+    /// </summary>
+    internal int PausedStepsLoadGeneration;
+
+    /// <summary>
     /// #1072 (0020 clause 3, the ex-#618 rule): answering a gate retires its item everywhere at once —
     /// here, from this row's expanded paused-step list, matched by gate identity (step + execution) so
     /// the switcher's needs-you view drops it immediately rather than waiting for the next projection.
@@ -646,6 +682,16 @@ public sealed partial class RoomFleetItemViewModel : ObservableObject
         if (match != null)
         {
             PausedSteps.Remove(match);
+        }
+
+        // A gate was answered, so this room has one fewer paused step. Decrement the *authoritative*
+        // count (which HasPausedSteps and the filter read) so the row stops reading as needs-you the
+        // instant its last gate is answered — not only when the next projection push re-derives it.
+        // Floors at zero; the next push sets the exact value. Unconditional on the match above because
+        // the filter may be off (the item never loaded) while the gate is real either way.
+        if (PausedStepCount > 0)
+        {
+            PausedStepCount--;
         }
     }
 }
