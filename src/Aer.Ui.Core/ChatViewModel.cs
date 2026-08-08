@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using Aer.Adapters;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace Aer.Ui.Core;
 
@@ -42,6 +43,17 @@ public sealed partial class ChatViewModel : ObservableObject
 
     /// <summary>Informational-only entries (Gemini's modes/plugins) — shown, never selectable.</summary>
     public ObservableCollection<ChatCapabilityItemViewModel> InfoCommands { get; } = [];
+
+    /// <summary>
+    /// Messages typed while a turn was in flight (#1074, slice of #462): the composer never blocks, so
+    /// a send during <see cref="IsSending"/> joins this FIFO instead of posting a concurrent turn. The
+    /// queue is visible (rendered as pending "You" bubbles) and each entry is removable before it
+    /// sends; <c>MainWindow</c>'s live-refresh poll drains the head one turn at a time on completion.
+    /// </summary>
+    public ObservableCollection<QueuedChatMessageViewModel> QueuedMessages { get; } = [];
+
+    /// <summary>True while at least one message is waiting to send — drives the composer's "queued" caption and the pending-bubble list.</summary>
+    public bool HasQueuedMessages => QueuedMessages.Count > 0;
 
     [ObservableProperty]
     private bool isCommandMenuOpen;
@@ -110,12 +122,31 @@ public sealed partial class ChatViewModel : ObservableObject
     private int _turnsCountAtSendTime;
     private string? _pendingUserMessage;
 
+    /// <summary>
+    /// The durable turn count as of the last <see cref="LoadFromMetadata"/> — the send baseline
+    /// (#1074). Completion keys on <see cref="Aer.Adapters.SessionMetadata"/>'s <c>Turns.Count</c>
+    /// growing past the baseline (see line ~<see cref="IsSending"/> handling below), so the baseline
+    /// must be that same durable count, never one derived from <see cref="Messages"/> — which carries
+    /// the optimistic pending echo and so is not stable across polls.
+    /// </summary>
+    public int LastKnownTurnsCount { get; private set; }
+
+    /// <summary>
+    /// True after a send's dispatch failed, until the operator's next send or enqueue (#1074). The
+    /// poll pauses draining while it is set, so one failed queued send neither cascades the rest of
+    /// the queue into repeated failures nor busy-retries every tick. Deliberately separate from
+    /// <see cref="StatusText"/>, which also carries *success* notices (mode changes, "context
+    /// cleared") that must never gate the queue.
+    /// </summary>
+    public bool LastSendFailed { get; private set; }
+
     /// <summary>Rebuilds <see cref="Messages"/> from a freshly loaded/polled <see cref="SessionMetadata"/> — the chat view's counterpart of <see cref="MainWindowViewModel.RebuildRoomSteps"/>.</summary>
     public void LoadFromMetadata(SessionMetadata metadata, string roomDirectoryPath)
     {
         SessionId = metadata.SessionId;
         RoomDirectoryPath = roomDirectoryPath;
         CurrentAdapter = metadata.CurrentAdapter;
+        LastKnownTurnsCount = metadata.Turns.Count;
         // Daily-driver header (02-screens.md): the room name + a worker chip, not "vendor — turn N".
         // The name is the SAME canonical derivation the switcher renders — never a second one (#461/#976).
         HeadlineText = RoomProjectionLoader.FriendlyNameFor(roomDirectoryPath);
@@ -147,14 +178,79 @@ public sealed partial class ChatViewModel : ObservableObject
         }
     }
 
-    /// <summary>Marks a send as in flight and captures enough state for <see cref="LoadFromMetadata"/> to detect completion. Called by <c>MainWindow</c> right before it posts to the daemon.</summary>
+    /// <summary>Marks a send as in flight and captures enough state for <see cref="LoadFromMetadata"/> to detect completion. Called by <c>MainWindow</c> right before it posts the operator's just-typed message; clears the composer.</summary>
     public void BeginSend(string message, int currentTurnsCount)
+        => MarkInFlight(message, currentTurnsCount, clearInput: true);
+
+    /// <summary>
+    /// Marks a *queued* message's send in flight (#1074) — identical to <see cref="BeginSend"/> except
+    /// it leaves <see cref="InputText"/> alone, because the operator may be typing the next message
+    /// while an earlier queued one drains. Called by <c>MainWindow</c>'s poll when the queue drains.
+    /// </summary>
+    public void BeginDrainedSend(string message, int currentTurnsCount)
+        => MarkInFlight(message, currentTurnsCount, clearInput: false);
+
+    private void MarkInFlight(string message, int currentTurnsCount, bool clearInput)
     {
         _turnsCountAtSendTime = currentTurnsCount;
         _pendingUserMessage = message;
         LiveProgressText = string.Empty;
+        StatusText = string.Empty;
+        // A fresh send attempt clears the drain-pause flag (#1074): a queued send that failed pauses
+        // the drain, and the operator acting again — a new send, or a new enqueue — is what resumes it.
+        LastSendFailed = false;
         IsSending = true;
+        if (clearInput)
+        {
+            InputText = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Queues a message typed while a turn is in flight *or while other messages are already queued*
+    /// (#1074), and clears the composer — the send waits for <c>MainWindow</c>'s poll to drain it on
+    /// turn completion. Kept off the daemon deliberately: two concurrent turns are exactly what the
+    /// queue exists to prevent. Also clears <see cref="LastSendFailed"/> so enqueuing after a failed
+    /// drain resumes draining (otherwise, with the queue non-empty every send enqueues, and nothing
+    /// would ever clear the pause).
+    /// </summary>
+    public void EnqueueMessage(string message)
+    {
+        QueuedMessages.Add(new QueuedChatMessageViewModel(message, RemoveQueuedMessage));
         InputText = string.Empty;
+        LastSendFailed = false;
+        OnPropertyChanged(nameof(HasQueuedMessages));
+    }
+
+    /// <summary>
+    /// Reads the head item without removing it (#1074) — the drain peeks, sends, and only
+    /// <see cref="RemoveQueuedMessage"/>s that exact item on a successful dispatch, so a failed drained
+    /// send leaves the message queued rather than dropping it. Returns the <em>item</em>, not its text,
+    /// so the drain removes it by identity: the head stays live (Remove button and all) during the
+    /// daemon round trip, and a positional dequeue-index-0 would drop the wrong message if the operator
+    /// removed something meanwhile. Returns false (and null) on an empty queue.
+    /// </summary>
+    public bool TryPeekQueuedMessage(out QueuedChatMessageViewModel? head)
+    {
+        head = QueuedMessages.Count == 0 ? null : QueuedMessages[0];
+        return head is not null;
+    }
+
+    /// <summary>
+    /// Removes one queued message by identity (#1074) — the Remove button's callback, and the drain's
+    /// consume-on-successful-dispatch. Identity, never index, so a removal that races the head's
+    /// in-flight dispatch drops exactly the intended item and nothing behind it. No-ops if the item is
+    /// already gone (the operator removed it mid-dispatch). Deliberately does NOT touch
+    /// <see cref="LastSendFailed"/>: a remove that interleaves a failing dispatch's await would set the
+    /// flag before <see cref="FailSend"/> re-set it, so a paused queue resumes only on the next
+    /// send/enqueue — race-free, and it self-heals on the operator's next message.
+    /// </summary>
+    internal void RemoveQueuedMessage(QueuedChatMessageViewModel item)
+    {
+        if (QueuedMessages.Remove(item))
+        {
+            OnPropertyChanged(nameof(HasQueuedMessages));
+        }
     }
 
     /// <summary>Called on a failed dispatch (the daemon rejected or was unreachable) — <see cref="LoadFromMetadata"/> never runs to clear <see cref="IsSending"/> in that case since no turn was ever started.</summary>
@@ -163,6 +259,10 @@ public sealed partial class ChatViewModel : ObservableObject
         IsSending = false;
         _pendingUserMessage = null;
         StatusText = errorMessage;
+        // Pauses the poll's queue drain (#1074) until the operator's next send or enqueue — a failed
+        // queued send stays queued (the drain peeks, only removes the item on success), so this stops
+        // it retrying every tick without dropping it.
+        LastSendFailed = true;
     }
 
     /// <summary>Appends one live in-turn stream fragment (<c>/api/ws/progress</c>) to <see cref="LiveProgressText"/>.</summary>
@@ -206,13 +306,17 @@ public sealed partial class ChatViewModel : ObservableObject
         LiveProgressText = string.Empty;
         IsSending = false;
         _pendingUserMessage = null;
+        LastSendFailed = false;
+        LastKnownTurnsCount = 0;
         NewChatWorkingDirectory = string.Empty;
         IsStartingNewChat = false;
         CurrentMode = null;
         Messages.Clear();
+        QueuedMessages.Clear();
         InvokableCommands.Clear();
         InfoCommands.Clear();
         IsCommandMenuOpen = false;
+        OnPropertyChanged(nameof(HasQueuedMessages));
         OnPropertyChanged(nameof(IsSessionOpen));
     }
 
@@ -252,4 +356,17 @@ public sealed partial class ChatViewModel : ObservableObject
     /// affordance) call this so the selection is visible, not merely held.
     /// </summary>
     public void RefreshNewChatAdapterSelection() => OnPropertyChanged(nameof(NewChatAdapter));
+}
+
+/// <summary>
+/// One message waiting to send while a turn is in flight (#1074) — its text, and a Remove that pulls
+/// it from <see cref="ChatViewModel.QueuedMessages"/> before it sends. The queue is a projection the
+/// operator can edit, never a second send authority: removing an entry only stops it queuing.
+/// </summary>
+public sealed partial class QueuedChatMessageViewModel(string text, Action<QueuedChatMessageViewModel> remove)
+{
+    public string Text { get; } = text;
+
+    [RelayCommand]
+    private void Remove() => remove(this);
 }

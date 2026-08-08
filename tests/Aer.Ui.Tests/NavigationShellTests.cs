@@ -309,6 +309,87 @@ public class NavigationShellTests
         }
     }
 
+    [AvaloniaFact]
+    public async Task A_send_while_a_turn_is_in_flight_queues_instead_of_posting_a_concurrent_turn()
+    {
+        // #1074 seam: the composer never blocks. With a turn in flight (IsSending), a bare Enter must
+        // QUEUE the message — visible and removable — not post a second concurrent turn. Discriminator:
+        // the queue was empty before, the composer clears after (the message went somewhere, not nowhere).
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-queue-{Guid.NewGuid():N}");
+        try
+        {
+            await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                sessionId: "sess-queue-test", roomDirectoryPath: roomDirectory, adapter: "claude",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
+            Assert.Equal(ShellSection.Chat, window.ViewModel.CurrentSection);
+
+            // A turn is already running.
+            window.ViewModel.Chat.IsSending = true;
+            Assert.False(window.ViewModel.Chat.HasQueuedMessages);
+
+            window.ViewModel.Chat.InputText = "one more thing";
+            window.ChatInputBox.RaiseEvent(new KeyEventArgs
+            {
+                RoutedEvent = InputElement.KeyDownEvent,
+                Key = Key.Enter,
+                KeyModifiers = KeyModifiers.None,
+            });
+
+            Assert.True(window.ViewModel.Chat.HasQueuedMessages);
+            Assert.Equal("one more thing", Assert.Single(window.ViewModel.Chat.QueuedMessages).Text);
+            // IsSending is untouched (no new turn was dispatched by this send) and the composer cleared.
+            Assert.True(window.ViewModel.Chat.IsSending);
+            Assert.Equal(string.Empty, window.ViewModel.Chat.InputText);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task A_send_while_the_queue_is_non_empty_enqueues_behind_it_even_with_nothing_in_flight()
+    {
+        // #1074 finding #3 (FIFO): SendChatMessageAsync gates on IsSending || HasQueuedMessages, so a
+        // new typed message can't jump ahead of already-queued ones when nothing is in flight (the
+        // paused-after-a-failed-drain state). Without the HasQueuedMessages half it would post ahead.
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-fifo-{Guid.NewGuid():N}");
+        try
+        {
+            await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                sessionId: "sess-fifo-test", roomDirectoryPath: roomDirectory, adapter: "claude",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
+
+            // A message is already queued, and nothing is in flight (IsSending false by default).
+            window.ViewModel.Chat.EnqueueMessage("first");
+            Assert.False(window.ViewModel.Chat.IsSending);
+
+            window.ViewModel.Chat.InputText = "second";
+            window.ChatInputBox.RaiseEvent(new KeyEventArgs
+            {
+                RoutedEvent = InputElement.KeyDownEvent,
+                Key = Key.Enter,
+                KeyModifiers = KeyModifiers.None,
+            });
+
+            // "second" joined the queue behind "first" rather than posting ahead of it.
+            Assert.Collection(window.ViewModel.Chat.QueuedMessages,
+                m => Assert.Equal("first", m.Text),
+                m => Assert.Equal("second", m.Text));
+            Assert.Equal(string.Empty, window.ViewModel.Chat.InputText);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
     // #334/#1072: the paused-step derivation the switcher's filter renders comes from
     // HomeViewModel.BuildInboxItem (status wording + preview) and RoomCardViewModel.DeriveStatus (row
     // status). These exercise that derivation directly, from the paused-room fixtures — the narrowing

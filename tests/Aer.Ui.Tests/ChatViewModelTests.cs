@@ -104,6 +104,148 @@ public class ChatViewModelTests
         Assert.True(viewModel.HasStatusText);
     }
 
+    // ---- #1074: the composer never blocks — messages queue and drain on completion ----
+
+    [Fact]
+    public void EnqueueMessage_queues_the_message_clears_the_composer_and_flags_the_queue()
+    {
+        var viewModel = new ChatViewModel { InputText = "one more thing" };
+
+        viewModel.EnqueueMessage("one more thing");
+
+        Assert.True(viewModel.HasQueuedMessages);
+        Assert.Equal("one more thing", Assert.Single(viewModel.QueuedMessages).Text);
+        Assert.Equal(string.Empty, viewModel.InputText);
+    }
+
+    [Fact]
+    public void TryPeekQueuedMessage_reads_the_head_item_fifo_without_removing_it_and_is_false_on_empty()
+    {
+        var viewModel = new ChatViewModel();
+        viewModel.EnqueueMessage("first");
+        viewModel.EnqueueMessage("second");
+
+        // Peek reads the head item without consuming it — the drain relies on this so a failed dispatch
+        // leaves the message queued, and returns the item (not the text) so removal is by identity.
+        Assert.True(viewModel.TryPeekQueuedMessage(out var head));
+        Assert.Equal("first", head!.Text);
+        Assert.Equal(2, viewModel.QueuedMessages.Count);
+
+        // Removing that exact item consumes it, FIFO.
+        viewModel.RemoveQueuedMessage(head);
+        Assert.True(viewModel.TryPeekQueuedMessage(out var next));
+        Assert.Equal("second", next!.Text);
+        viewModel.RemoveQueuedMessage(next);
+
+        Assert.False(viewModel.TryPeekQueuedMessage(out _));
+        Assert.False(viewModel.HasQueuedMessages);
+    }
+
+    [Fact]
+    public void A_failed_dispatch_leaves_the_peeked_head_queued_so_it_is_never_dropped()
+    {
+        // Finding #1: the drain peeks then only removes the item on success. A dispatch failure
+        // (FailSend) must leave the head in the queue — the bound is "never silently dropped on failure".
+        var viewModel = new ChatViewModel();
+        viewModel.EnqueueMessage("do not lose me");
+        viewModel.EnqueueMessage("nor me");
+
+        Assert.True(viewModel.TryPeekQueuedMessage(out var head));
+        viewModel.BeginDrainedSend(head!.Text, currentTurnsCount: 0);
+        viewModel.FailSend("the daemon was unreachable"); // dispatch failed — item not removed
+
+        Assert.Equal(2, viewModel.QueuedMessages.Count);
+        Assert.Equal("do not lose me", viewModel.QueuedMessages[0].Text);
+        Assert.True(viewModel.LastSendFailed);
+    }
+
+    [Fact]
+    public void A_head_removed_during_its_own_dispatch_does_not_drop_the_message_behind_it()
+    {
+        // Second-reader round 2: the head stays in the queue during the daemon round trip. If the
+        // operator removes it mid-dispatch, the success path must remove *that* item by identity, not
+        // index 0 — otherwise it drops the message that shuffled into the head slot.
+        var viewModel = new ChatViewModel();
+        viewModel.EnqueueMessage("being sent");
+        viewModel.EnqueueMessage("must survive");
+
+        Assert.True(viewModel.TryPeekQueuedMessage(out var dispatching)); // "being sent"
+        viewModel.BeginDrainedSend(dispatching!.Text, currentTurnsCount: 0);
+
+        // Operator clicks Remove on the in-flight head during the (simulated) await.
+        dispatching.RemoveCommand.Execute(null);
+
+        // The dispatch then succeeds — the drain removes the exact item it sent (already gone → no-op),
+        // NOT whatever is now at index 0.
+        viewModel.RemoveQueuedMessage(dispatching);
+
+        Assert.Equal("must survive", Assert.Single(viewModel.QueuedMessages).Text);
+    }
+
+    [Fact]
+    public void A_queued_message_removed_before_it_sends_never_sends()
+    {
+        var viewModel = new ChatViewModel();
+        viewModel.EnqueueMessage("regret this");
+        var item = Assert.Single(viewModel.QueuedMessages);
+
+        item.RemoveCommand.Execute(null);
+
+        Assert.False(viewModel.HasQueuedMessages);
+        Assert.False(viewModel.TryPeekQueuedMessage(out _));
+    }
+
+    [Fact]
+    public void BeginDrainedSend_preserves_the_in_progress_InputText_while_BeginSend_clears_it()
+    {
+        // The seam #1074 exists to protect: a queued message draining mid-turn must not wipe what the
+        // operator is currently typing. BeginSend (the just-typed path) still clears; BeginDrainedSend
+        // (the poll's drain path) must leave InputText alone. Both mark the send in flight.
+        var draining = new ChatViewModel { InputText = "still typing this" };
+        draining.BeginDrainedSend("an earlier queued line", currentTurnsCount: 0);
+        Assert.True(draining.IsSending);
+        Assert.Equal("still typing this", draining.InputText);
+
+        // Control arm — the ordinary typed-send path DOES clear the composer, so the assertion above
+        // is about BeginDrainedSend specifically, not about MarkInFlight never clearing.
+        var typed = new ChatViewModel { InputText = "send me" };
+        typed.BeginSend("send me", currentTurnsCount: 0);
+        Assert.Equal(string.Empty, typed.InputText);
+    }
+
+    [Fact]
+    public void The_drain_pause_flag_is_separate_from_StatusText_so_a_success_notice_never_stalls_the_queue()
+    {
+        // Finding #2: the drain gates on LastSendFailed, NOT HasStatusText — StatusText also carries
+        // *success* notices ("Mode set to plan.", "Room context cleared.") that must not pause the
+        // queue. A non-error status must leave LastSendFailed clear.
+        var viewModel = new ChatViewModel { StatusText = "Mode set to plan." };
+        Assert.True(viewModel.HasStatusText);
+        Assert.False(viewModel.LastSendFailed);
+
+        // And a real dispatch failure sets it, then any fresh send OR enqueue clears it — the latter
+        // matters because after a failed drain the queue is non-empty, so the operator's next send
+        // enqueues (never MarkInFlight), and only clearing here resumes the drain (no deadlock).
+        viewModel.FailSend("the daemon was unreachable");
+        Assert.True(viewModel.LastSendFailed);
+        viewModel.EnqueueMessage("try again");
+        Assert.False(viewModel.LastSendFailed);
+    }
+
+    [Fact]
+    public void LoadFromMetadata_tracks_the_durable_turn_count_as_the_send_baseline()
+    {
+        // The completion check keys on metadata.Turns.Count; the send baseline must be that same
+        // durable number, not one derived from Messages (which carries the optimistic echo).
+        var viewModel = new ChatViewModel();
+        viewModel.LoadFromMetadata(MetadataWithTurns(
+            new SessionTurn(1, "claude", "Hello", "Hi", DateTimeOffset.UtcNow, false, false),
+            new SessionTurn(2, "claude", "More", "Sure", DateTimeOffset.UtcNow, false, false)),
+            "/tmp/sess-1");
+
+        Assert.Equal(2, viewModel.LastKnownTurnsCount);
+    }
+
     [Fact]
     public void AppendProgress_AccumulatesEachFragmentIntoLiveProgressText()
     {

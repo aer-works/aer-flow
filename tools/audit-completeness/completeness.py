@@ -1119,7 +1119,7 @@ def fetch_issue(number: int) -> dict:
     try:
         out = subprocess.run(
             ["gh", "issue", "view", str(number), "--repo", "aer-works/baton", "--json", "body,state"],
-            capture_output=True, text=True, cwd=ROOT, timeout=30)
+            capture_output=True, text=True, encoding="utf-8", cwd=ROOT, timeout=30)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise SystemExit(f"!! could not fetch issue #{number}: {e}. Nothing was checked.")
     if out.returncode != 0:
