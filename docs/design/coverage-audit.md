@@ -39,7 +39,7 @@ correct, not duplication: the record says *why*, the journey says *what you get*
 | **The scope ladder** — allow once / this command here / anything here — offered **at the moment of asking**, never buried in settings. | 04, 07 | **→ extends [0004](../decisions/0004-permission-scopes.md).** 0004 has the *scopes*; the ladder-at-point-of-ask is the affordance and is absent. |
 | **Denial is an answer.** A refused worker is told and continues — it does not silently retry and does not die. | 04, 07 | **→ same.** Absent, and it is the difference between a safety feature and a dead end. |
 | **A pending permission dies with its turn**, everywhere at once, and the transcript says why. | 06 | **→ same.** |
-| **A queued message does not send into a blocked worker.** The queue waits on the whole turn, permission included, and says what it is waiting for. "Send now" interrupts — which here means denying the permission — and the control says so. | 06 | **→ same**, affordance to `#367`. |
+| **A queued message does not send into a blocked worker.** The queue waits on the whole turn, permission included, and says what it is waiting for. "Send now" interrupts — which here means denying the permission — and the control says so. | 06 | **→ same**, affordance to `#367`. (The general in-flight-message queue itself now exists — `#1074` — but it waits on a *running turn*; waiting on a *permission* gate, and "Send now", ride the `#367` gate surface.) |
 
 ## 3 · State, errors and freshness
 
@@ -109,12 +109,12 @@ change under `ReconcileTests`. None exists today.
 ## 8 · The eight delights
 
 Not differentiators alone; collectively the difference between a tool you tolerate and one you like.
-**All eight are tracked — three shipped (`#482`/`#463`/refresh-rule); the other five remain unbuilt.**
+**All eight are tracked — three shipped (`#482`/`#463`/refresh-rule), one partial (`#462`'s never-block half, `#1074`); the other four remain unbuilt.**
 
 | Delight | Status |
 |---|---|
 | `y`/`n` for permissions, never bound to Enter, so a reflex cannot approve | **→ `#481`** — closed, **unbuilt** (source checked 2026-08; not in the `#750` set): permissions are config-time only (`AuthorView` checkboxes → adapter flags); no runtime permission gate exists |
-| Typing never blocks; the queue is visible, with interrupt and remove | **→ `#462`** — grouped into open `#750`, **unbuilt**: `ChatInputBox` is disabled while a turn is in flight (typing *does* block); no queue, interrupt or remove exists |
+| Typing never blocks; the queue is visible, with interrupt and remove | **◐ partial** — `#462` (open `#750`). The **never-block + visible + removable queue** half landed via **`#1074`**: the desktop composer no longer disables mid-turn; a send joins a visible, removable FIFO that drains one message per turn-completion. **Interrupt** ("Send now" cancels the running turn) is the deferred half — a distinct mechanism, its own slice. |
 | Failures offer the fix, with the worker that failed already holding the context | ✅ **shipped** — `#482` (desktop verified: `RoomView`'s failed-step banner shows the error text inline with **Try again** / **Ask ⟨worker⟩ to fix it** / **Show full output**) |
 | Jump to the last decision via an event rail | **→ `#459`** — grouped into open `#750`, **unbuilt** (the earlier "(exists)" was wrong): no event rail or keyboard nav to a decision exists anywhere |
 | Status readable without colour | ✅ **shipped** — `#463` |
