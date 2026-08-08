@@ -2113,9 +2113,9 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Rebuilds Home's room cards and decision inbox from Local UI Configuration + durable room contents (M19 Phase 2, #187) — the successor of the M14 recents panel, now HomeViewModel's own read model.</summary>
+    /// <summary>Refreshes the ▤ front door's first-run empty state (#1071): whether any room exists, from Local UI Configuration's recents. The room cards + decision inbox this used to build moved to the switcher and its needs-you filter (#1072).</summary>
     private Task RefreshHomeAsync(CancellationToken cancellationToken)
-        => ViewModel.Home.RefreshAsync(_session, path => OpenAsync(path), cancellationToken);
+        => ViewModel.Home.RefreshAsync(_session, cancellationToken);
 
     /// <summary>
     /// Rebuilds *both* surfaces that answer "what records exist" — Home's cards and the switcher's

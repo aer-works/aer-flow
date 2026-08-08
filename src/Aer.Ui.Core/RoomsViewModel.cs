@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Linq;
 using Aer.Adapters;
+using Aer.Flow;
 using Aer.Flow.Domain;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -18,6 +19,22 @@ public sealed partial class RoomsViewModel : ObservableObject
 {
     [ObservableProperty]
     private bool includeArchived;
+
+    /// <summary>
+    /// #1072: the switcher's "Needs you" filter — the design's "'Needs you' is a filter, not the front
+    /// door" (docs/design/02-screens.md:806). On, the list narrows to rooms with a paused step (the
+    /// needs-you band the switcher already orders first, 0018/#1051) and those rows expand in place to
+    /// their paused step(s). Off, every room shows and nothing is expanded.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNeedsYouEmpty))]
+    private bool needsYouOnly;
+
+    partial void OnNeedsYouOnlyChanged(bool value)
+    {
+        ApplyNeedsYouFilter();
+        _ = RefreshPausedStepsAsync();
+    }
 
     [ObservableProperty]
     private bool isBusy;
@@ -61,6 +78,9 @@ public sealed partial class RoomsViewModel : ObservableObject
     public bool HasErrorText => !string.IsNullOrEmpty(ErrorText);
     public bool HasSelection => SelectedCount > 0;
 
+    /// <summary>#1072: the "Needs you" filter is on but nothing is waiting — the honest empty state ("Nothing needs you.") so a filtered-to-empty list never reads as broken.</summary>
+    public bool ShowNeedsYouEmpty => NeedsYouOnly && !IsBusy && Items.All(i => !i.HasPausedSteps);
+
     public string BulkDeleteConfirmText =>
         $"Really delete {SelectedCount} selected room{(SelectedCount == 1 ? "" : "s")}? This can't be undone.";
 
@@ -98,17 +118,107 @@ public sealed partial class RoomsViewModel : ObservableObject
             }
 
             CurrentItem = openDirectoryPath == null ? null : FindRow(openDirectoryPath);
+
+            // #1072: a rebuild replaced every row, so the "Needs you" filter (and its inline paused
+            // steps) has to be re-applied to the new row objects.
+            ApplyNeedsYouFilter();
+            if (NeedsYouOnly)
+            {
+                await RefreshPausedStepsAsync(cancellationToken).ConfigureAwait(true);
+            }
         }
         finally
         {
             IsBusy = false;
             OnItemSelectionChanged();
             OnPropertyChanged(nameof(HasNoItems));
+            OnPropertyChanged(nameof(ShowNeedsYouEmpty));
         }
     }
 
     /// <summary>Every row's selection checkbox reports back through this (rather than <see cref="Items"/> itself being observed) — see <see cref="RoomFleetItemViewModel"/>'s own <c>selectionChanged</c> callback.</summary>
     private void OnItemSelectionChanged() => SelectedCount = Items.Count(i => i.IsSelected);
+
+    /// <summary>
+    /// #1072: applies the "Needs you" filter to every row without rebuilding the list — a row with no
+    /// paused step is collapsed out while the filter is on, and the row objects (selection, sort,
+    /// scroll) are untouched. Called on toggle, after a refresh, and after a projection push moves a
+    /// room in or out of the needs-you band.
+    /// </summary>
+    private void ApplyNeedsYouFilter()
+    {
+        foreach (var row in Items)
+        {
+            row.IsFilteredOut = NeedsYouOnly && !row.HasPausedSteps;
+        }
+
+        OnPropertyChanged(nameof(ShowNeedsYouEmpty));
+    }
+
+    /// <summary>
+    /// #1072: loads each needs-you row's paused steps from its projection and expands it, so the
+    /// filtered list shows the retired inbox's per-step previews inline (expand-in-place, 0007). Clears
+    /// them when the filter is off. The projection is read from the room directory directly
+    /// (<see cref="RoomProjectionLoader"/>), so this needs no <see cref="RoomClient"/> — a filter
+    /// toggle can drive it without a session.
+    /// </summary>
+    private async Task RefreshPausedStepsAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (var row in Items)
+        {
+            if (NeedsYouOnly && row.HasPausedSteps)
+            {
+                await LoadRowPausedStepsAsync(row, cancellationToken).ConfigureAwait(true);
+                row.IsExpanded = true;
+            }
+            else
+            {
+                row.PausedSteps.Clear();
+                row.IsExpanded = false;
+            }
+        }
+    }
+
+    private async Task LoadRowPausedStepsAsync(RoomFleetItemViewModel row, CancellationToken cancellationToken)
+    {
+        row.PausedSteps.Clear();
+
+        RoomProjection projection;
+        try
+        {
+            projection = await RoomProjectionLoader.LoadAsync(row.RoomDirectoryPath, cancellationToken).ConfigureAwait(true);
+        }
+        catch (AerFlowException)
+        {
+            // A room that no longer loads carries no inline steps this pass — its own row status
+            // handles the stale/unavailable case (HomeViewModel's stale-list rule).
+            return;
+        }
+
+        foreach (var step in projection.State.Steps)
+        {
+            if (step.Status == StepStatus.Paused)
+            {
+                // Opening a paused step is selecting its room: the switcher's existing
+                // selection-is-opening wiring (#336) opens the room where the gate is answered inline,
+                // so this reuses that one open path rather than a second route in (one decision
+                // surface — 02-screens.md:798).
+                row.PausedSteps.Add(HomeViewModel.BuildInboxItem(
+                    row.RoomDirectoryPath, projection, step, _ => { CurrentItem = row; return Task.CompletedTask; }));
+            }
+        }
+    }
+
+    /// <summary>
+    /// #1072: the retired Home inbox's <c>RetireInboxItem</c>, relocated — a gate answered anywhere
+    /// drops its paused-step item from the matching switcher row's expanded list (<see cref="RoomClient"/>
+    /// calls this on decision resolution). Keyed by room + step + execution, the same identity #618 used.
+    /// </summary>
+    public void RetireInboxItem(string roomDirectoryPath, StepId stepId, ExecutionId executionId)
+    {
+        FindRow(roomDirectoryPath)?.RetirePausedStep(stepId, executionId);
+        OnPropertyChanged(nameof(ShowNeedsYouEmpty));
+    }
 
     /// <summary>
     /// The fleet list's ordering rule: rooms that need you first (J3, #1051), then most recently
@@ -169,8 +279,35 @@ public sealed partial class RoomsViewModel : ObservableObject
     /// — two spellings of one directory must resolve to one row here for the same reason they must
     /// resolve to one lock there.
     /// </remarks>
-    public void ApplyProjectionPush(string directoryPath, RoomProjection projection) =>
-        FindRow(directoryPath)?.ApplyProjection(projection);
+    public void ApplyProjectionPush(string directoryPath, RoomProjection projection)
+    {
+        var row = FindRow(directoryPath);
+        if (row is null)
+        {
+            return;
+        }
+
+        row.ApplyProjection(projection);
+
+        // #1072: a push can move a room in or out of the needs-you band; keep the filter, the row's
+        // inline steps, and the empty state honest without a full rebuild.
+        if (NeedsYouOnly)
+        {
+            row.IsFilteredOut = !row.HasPausedSteps;
+            if (row.HasPausedSteps)
+            {
+                _ = LoadRowPausedStepsAsync(row, CancellationToken.None);
+                row.IsExpanded = true;
+            }
+            else
+            {
+                row.PausedSteps.Clear();
+                row.IsExpanded = false;
+            }
+
+            OnPropertyChanged(nameof(ShowNeedsYouEmpty));
+        }
+    }
 
     /// <summary>
     /// The list's one row-identity rule (#336): a directory path resolves to at most one row, under
@@ -471,4 +608,44 @@ public sealed partial class RoomFleetItemViewModel : ObservableObject
 
     [RelayCommand]
     private Task ConfirmDelete() => _deleteAsync(this);
+
+    /// <summary>
+    /// #1072: hidden by the switcher's "Needs you" filter — set by
+    /// <see cref="RoomsViewModel.ApplyNeedsYouFilter"/> when the filter is on and this row has no
+    /// paused step. The row object stays in <see cref="RoomsViewModel.Items"/> (selection and sort are
+    /// preserved); only its container collapses, so toggling the filter never rebuilds the list.
+    /// </summary>
+    [ObservableProperty]
+    private bool isFilteredOut;
+
+    /// <summary>
+    /// #1072: expand-in-place — decision 0007's middle disclosure level ("the row expands where it
+    /// sits to show more of that item's activity and its outputs, without leaving the list"). A
+    /// needs-you row expands to its paused step(s) rather than forcing a drill-in or a second surface.
+    /// </summary>
+    [ObservableProperty]
+    private bool isExpanded;
+
+    /// <summary>
+    /// The paused steps this room is waiting on (#1072) — each with the plain status and an output
+    /// preview, the retired Home decision inbox's per-step items (built by the same
+    /// <see cref="HomeViewModel.BuildInboxItem"/> derivation), now shown inline when a needs-you row
+    /// is expanded. Populated by <see cref="RoomsViewModel"/> when the filter is on; empty otherwise.
+    /// </summary>
+    public ObservableCollection<InboxItemViewModel> PausedSteps { get; } = [];
+
+    /// <summary>
+    /// #1072 (0020 clause 3, the ex-#618 rule): answering a gate retires its item everywhere at once —
+    /// here, from this row's expanded paused-step list, matched by gate identity (step + execution) so
+    /// the switcher's needs-you view drops it immediately rather than waiting for the next projection.
+    /// </summary>
+    public void RetirePausedStep(StepId stepId, ExecutionId executionId)
+    {
+        var match = PausedSteps.FirstOrDefault(
+            s => s.StepName == stepId.Value && s.ExecutionId == executionId.Value);
+        if (match != null)
+        {
+            PausedSteps.Remove(match);
+        }
+    }
 }

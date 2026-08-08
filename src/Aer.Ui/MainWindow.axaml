@@ -140,6 +140,14 @@
               </Button>
             </StackPanel>
           </DockPanel>
+          <!-- #1072: "Needs you" is a filter on the rooms list, not the front door
+               (docs/design/02-screens.md:806). On, the list narrows to rooms with a paused step and
+               those rows expand in place to their step(s) — the retired Home inbox, relocated. -->
+          <ToggleButton x:Name="SwitcherNeedsYouToggle" IsChecked="{Binding Rooms.NeedsYouOnly}"
+                        HorizontalAlignment="Left" Padding="8,3" Margin="0,2,0,0"
+                        ToolTip.Tip="Show only rooms that need you">
+            <TextBlock Classes="caption" Text="Needs you" />
+          </ToggleButton>
           <TextBlock Classes="caption secondary" Foreground="{DynamicResource Status.Failed}"
                      TextWrapping="Wrap" Text="{Binding Rooms.ErrorText}"
                      IsVisible="{Binding Rooms.HasErrorText}" />
@@ -155,35 +163,71 @@
 
         <TextBlock DockPanel.Dock="Top" Classes="caption secondary" Margin="12,4,12,8"
                    Text="No rooms yet." IsVisible="{Binding Rooms.HasNoItems}" />
+        <!-- #1072: the "Needs you" filter is on but nothing is waiting — an honest empty state so a
+             filtered-to-empty list never reads as broken. -->
+        <TextBlock DockPanel.Dock="Top" Classes="caption secondary" Margin="12,4,12,8"
+                   Text="Nothing needs you." IsVisible="{Binding Rooms.ShowNeedsYouEmpty}" />
 
         <ListBox x:Name="SwitcherList" ItemsSource="{Binding Rooms.Items}"
                  SelectedItem="{Binding Rooms.CurrentItem}"
                  Background="Transparent" BorderThickness="0">
+          <!-- #1072: the "Needs you" filter collapses the container of any row it filters out, rather
+               than rebuilding the list — selection, sort and scroll survive the toggle. -->
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem" x:DataType="vm:RoomFleetItemViewModel">
+              <Setter Property="IsVisible" Value="{Binding !IsFilteredOut}" />
+            </Style>
+          </ListBox.Styles>
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:RoomFleetItemViewModel">
               <!-- Daily-driver row (docs/design/mockups/02-screens.html #daily): the state mark is a
                    *leading* glyph, with the name and a smaller state sub-line stacked to its right —
                    `mark · name · state`. The mark tops-aligns to sit beside the name line, not the
-                   state line below it. -->
-              <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}" Margin="0,2">
-                <!-- Decision 0006 rule 2: mark *and* word, never hue alone. The same marks Home's
-                     cards draw, from the same derivation — a second surface showing the same fact
-                     with its own vocabulary is how #461's "cancelled reads as Finished" came back. -->
-                <Path Data="{Binding Status, Converter={StaticResource StatusToIconGeometryConverter}}"
-                      Stroke="{Binding Status, Converter={StaticResource StatusToIconBrushConverter}}"
-                      Fill="{Binding Status, Converter={StaticResource StatusToIconFillConverter}}"
-                      StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
-                      Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Top" Margin="0,3,0,0" />
-                <StackPanel Spacing="1">
-                  <TextBlock Classes="body-strong" Text="{Binding FriendlyName}"
-                             TextTrimming="CharacterEllipsis" />
-                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-                    <TextBlock Classes="caption secondary" Text="{Binding StatusText}"
+                   state line below it. #1072: below it, the paused step(s) this room is waiting on,
+                   shown inline when the row is expanded (the needs-you filter auto-expands them). -->
+              <StackPanel Margin="0,2">
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                  <!-- Decision 0006 rule 2: mark *and* word, never hue alone. The same marks the
+                       switcher and the fleet loader derive, from the one RoomCardViewModel.DeriveStatus
+                       — a second surface with its own vocabulary is how #461's "cancelled reads as
+                       Finished" came back. -->
+                  <Path Data="{Binding Status, Converter={StaticResource StatusToIconGeometryConverter}}"
+                        Stroke="{Binding Status, Converter={StaticResource StatusToIconBrushConverter}}"
+                        Fill="{Binding Status, Converter={StaticResource StatusToIconFillConverter}}"
+                        StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
+                        Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Top" Margin="0,3,0,0" />
+                  <StackPanel Spacing="1">
+                    <TextBlock Classes="body-strong" Text="{Binding FriendlyName}"
                                TextTrimming="CharacterEllipsis" />
-                    <TextBlock Classes="caption secondary" Text="archived"
-                               IsVisible="{Binding IsArchived}" />
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                      <TextBlock Classes="caption secondary" Text="{Binding StatusText}"
+                                 TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption secondary" Text="archived"
+                                 IsVisible="{Binding IsArchived}" />
+                    </StackPanel>
                   </StackPanel>
                 </StackPanel>
+                <!-- #1072 expand-in-place (0007): each paused step reads its plain status (reply vs
+                     review, #334) and a truncated one-line preview; clicking it selects the room, whose
+                     existing open path renders the gate inline — one decision surface, several entry
+                     points (02-screens.md:798). Full preview text lives in the room. -->
+                <ItemsControl ItemsSource="{Binding PausedSteps}" IsVisible="{Binding IsExpanded}"
+                              Margin="19,3,0,2">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:InboxItemViewModel">
+                      <Button Command="{Binding ReviewCommand}" Classes="quiet" Padding="6,3"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,1">
+                        <StackPanel Spacing="1">
+                          <TextBlock Classes="caption" Text="{Binding StatusText}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="caption secondary" Text="{Binding PreviewText}"
+                                     IsVisible="{Binding HasPreview}" MaxLines="1"
+                                     TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
             </DataTemplate>
           </ListBox.ItemTemplate>
