@@ -275,6 +275,7 @@ public static class TokenGenerator
     private static readonly (string Key, string Group, string Name)[] SemanticBrushAliases =
     {
         ("Color.Accent", "brand", "accent"),
+        ("Color.OnAccent", "brand", "onAccent"),
         ("Color.Background", "surface", "ground"),
         ("Color.SurfaceRaised", "surface", "raised"),
         ("Color.SurfaceSubtle", "surface", "sunk"),

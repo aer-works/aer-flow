@@ -32,6 +32,7 @@
       <Color x:Key="StatusQueuedColor">#88969C</Color>
       <Color x:Key="StatusUnavailableColor">#88969C</Color>
       <SolidColorBrush x:Key="Color.Accent">#3F8C87</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.OnAccent">#FFFFFF</SolidColorBrush>
       <SolidColorBrush x:Key="Color.Background">#F2F4F5</SolidColorBrush>
       <SolidColorBrush x:Key="Color.SurfaceRaised">#FFFFFF</SolidColorBrush>
       <SolidColorBrush x:Key="Color.SurfaceSubtle">#E7EBEC</SolidColorBrush>
@@ -61,6 +62,7 @@
       <Color x:Key="StatusQueuedColor">#6C7A80</Color>
       <Color x:Key="StatusUnavailableColor">#6C7A80</Color>
       <SolidColorBrush x:Key="Color.Accent">#5FB3AD</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.OnAccent">#0B1112</SolidColorBrush>
       <SolidColorBrush x:Key="Color.Background">#14191B</SolidColorBrush>
       <SolidColorBrush x:Key="Color.SurfaceRaised">#1B2124</SolidColorBrush>
       <SolidColorBrush x:Key="Color.SurfaceSubtle">#101517</SolidColorBrush>
