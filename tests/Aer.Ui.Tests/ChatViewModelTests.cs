@@ -119,20 +119,44 @@ public class ChatViewModelTests
     }
 
     [Fact]
-    public void TryDequeueQueuedMessage_is_fifo_and_false_on_an_empty_queue()
+    public void TryPeekQueuedMessage_reads_the_head_fifo_without_removing_it_and_is_false_on_empty()
     {
         var viewModel = new ChatViewModel();
         viewModel.EnqueueMessage("first");
         viewModel.EnqueueMessage("second");
 
-        Assert.True(viewModel.TryDequeueQueuedMessage(out var head));
+        // Peek reads the head without consuming it — the drain relies on this so a failed dispatch
+        // leaves the message queued.
+        Assert.True(viewModel.TryPeekQueuedMessage(out var head));
         Assert.Equal("first", head);
-        Assert.True(viewModel.TryDequeueQueuedMessage(out var next));
-        Assert.Equal("second", next);
+        Assert.Equal(2, viewModel.QueuedMessages.Count);
 
-        // Empty now: nothing to drain, and the flag drops.
-        Assert.False(viewModel.TryDequeueQueuedMessage(out _));
+        // DequeueHead consumes it, FIFO.
+        viewModel.DequeueHead();
+        Assert.True(viewModel.TryPeekQueuedMessage(out var next));
+        Assert.Equal("second", next);
+        viewModel.DequeueHead();
+
+        Assert.False(viewModel.TryPeekQueuedMessage(out _));
         Assert.False(viewModel.HasQueuedMessages);
+    }
+
+    [Fact]
+    public void A_failed_dispatch_leaves_the_peeked_head_queued_so_it_is_never_dropped()
+    {
+        // Finding #1: the drain peeks then only DequeueHeads on success. A dispatch failure (FailSend)
+        // must leave the head in the queue — the issue's bound is "never silently dropped on failure".
+        var viewModel = new ChatViewModel();
+        viewModel.EnqueueMessage("do not lose me");
+        viewModel.EnqueueMessage("nor me");
+
+        Assert.True(viewModel.TryPeekQueuedMessage(out var head));
+        viewModel.BeginDrainedSend(head, currentTurnsCount: 0);
+        viewModel.FailSend("the daemon was unreachable"); // dispatch failed — no DequeueHead
+
+        Assert.Equal(2, viewModel.QueuedMessages.Count);
+        Assert.Equal("do not lose me", viewModel.QueuedMessages[0].Text);
+        Assert.True(viewModel.LastSendFailed);
     }
 
     [Fact]
@@ -145,7 +169,7 @@ public class ChatViewModelTests
         item.RemoveCommand.Execute(null);
 
         Assert.False(viewModel.HasQueuedMessages);
-        Assert.False(viewModel.TryDequeueQueuedMessage(out _));
+        Assert.False(viewModel.TryPeekQueuedMessage(out _));
     }
 
     [Fact]
@@ -167,18 +191,22 @@ public class ChatViewModelTests
     }
 
     [Fact]
-    public void A_fresh_send_clears_a_prior_send_error_so_the_drain_gate_reopens()
+    public void The_drain_pause_flag_is_separate_from_StatusText_so_a_success_notice_never_stalls_the_queue()
     {
-        // The poll drains only while no send-error shows (so one failure can't cascade the queue). A
-        // fresh send must therefore clear that error, or draining would never resume after a failure.
-        var viewModel = new ChatViewModel();
-        viewModel.FailSend("the daemon was unreachable");
+        // Finding #2: the drain gates on LastSendFailed, NOT HasStatusText — StatusText also carries
+        // *success* notices ("Mode set to plan.", "Room context cleared.") that must not pause the
+        // queue. A non-error status must leave LastSendFailed clear.
+        var viewModel = new ChatViewModel { StatusText = "Mode set to plan." };
         Assert.True(viewModel.HasStatusText);
+        Assert.False(viewModel.LastSendFailed);
 
-        viewModel.BeginDrainedSend("retry", currentTurnsCount: 0);
-
-        Assert.False(viewModel.HasStatusText);
-        Assert.Equal(string.Empty, viewModel.StatusText);
+        // And a real dispatch failure sets it, then any fresh send OR enqueue clears it — the latter
+        // matters because after a failed drain the queue is non-empty, so the operator's next send
+        // enqueues (never MarkInFlight), and only clearing here resumes the drain (no deadlock).
+        viewModel.FailSend("the daemon was unreachable");
+        Assert.True(viewModel.LastSendFailed);
+        viewModel.EnqueueMessage("try again");
+        Assert.False(viewModel.LastSendFailed);
     }
 
     [Fact]
