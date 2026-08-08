@@ -12,7 +12,7 @@ exist inside an agent session.
 
 ## Don't scan the QR — use manual entry
 
-`Aer.Ui`'s Enable Remote Access view generates its QR from `LanAddress.TryGetPrimary()`
+`Aer.Ui`'s Settings → Your phone pairing view generates its QR from `LanAddress.TryGetPrimary()`
 (`src/Aer.Ui.Core/LanAddress.cs`), which **deliberately filters out Tailscale's virtual adapter** (it's
 built to avoid picking a VPN/virtual adapter over the real LAN one). The QR will always encode the
 desktop's LAN IP, never its tailnet `100.x` address — scanning it from a phone on a different
@@ -35,9 +35,9 @@ Phase 3 added QR scanning), with the desktop's **Tailscale** IP, not its LAN IP.
 
 ## Running it
 
-1. Start the daemon in remote mode (or use `Aer.Ui`'s Enable Remote Access toggle, which does the
-   same shutdown-and-respawn under the hood): `aer daemon --remote`.
-2. Open `Aer.Ui`'s Enable Remote Access view to generate a pairing code. Ignore the QR.
+1. Start the daemon in remote mode (or use the remote-access toggle in `Aer.Ui`'s Settings → Your
+   phone, which does the same shutdown-and-respawn under the hood): `aer daemon --remote`.
+2. Open `Aer.Ui`'s Settings → Your phone to generate a pairing code. Ignore the QR.
 3. On the phone, open `Aer.Mobile`'s pairing screen and use the manual host/code fields: host =
    the desktop's Tailscale IP from the Prerequisites step, code = the 6-digit code from step 2.
 4. Confirm pairing succeeds.

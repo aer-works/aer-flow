@@ -164,6 +164,24 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The remembered appearance theme (Settings → Appearance, #1068): one of <c>Light</c>,
+    /// <c>Dark</c>, or <c>System</c>. Returns <c>null</c> when nothing has been chosen yet, which the
+    /// app reads as "follow the OS" — the same default the product shipped with before an in-app
+    /// control existed. Like every value in this store it is a rebuildable convenience, never
+    /// authoritative: a missing or unrecognised value simply means the default.
+    /// </summary>
+    public async Task<string?> LoadThemeAsync(CancellationToken cancellationToken = default) =>
+        (await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false)).Theme;
+
+    public async Task RecordThemeAsync(string? theme, CancellationToken cancellationToken = default)
+    {
+        var configuration = await LoadConfigurationAsync(cancellationToken).ConfigureAwait(false);
+        await SaveConfigurationAsync(
+            configuration with { Theme = string.IsNullOrWhiteSpace(theme) ? null : theme.Trim() },
+            cancellationToken).ConfigureAwait(false);
+    }
+
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private async Task<StoredConfiguration> LoadConfigurationAsync(CancellationToken cancellationToken)
@@ -241,5 +259,8 @@ public sealed class LocalUiConfigurationStore(string configFilePath)
         string? LastBindingsFilePath,
         string? LastWorkflowTemplateFilePath,
         string? TailscaleAuthKey,
-        Dictionary<string, List<string>>? RecentCommands);
+        Dictionary<string, List<string>>? RecentCommands,
+        // Optional with a default so the existing constructor call sites (and older config files that
+        // predate this field) need no change — a missing Theme deserialises to null, i.e. "follow the OS".
+        string? Theme = null);
 }

@@ -255,7 +255,13 @@ public sealed partial class RemoteViewModel : ObservableObject
                 SidecarError = null;
             }
 
-            if (EffectivePairingHost != null)
+            // Mint a pairing code exactly when the block that shows it is visible — i.e. remote is on
+            // (ShowPairingBlock, #384). A code minted while remote is off is invisible and churny: the
+            // daemon holds one active code, so each mint invalidates any a phone is mid-scan against.
+            // Harmless when this refresh only ran on the rarely-visited Remote page; #1068 folded it
+            // into Settings, so it now runs on every "check Workers"/"flip the theme" visit, where an
+            // unconditional mint would silently kill a live pairing code for an unrelated reason.
+            if (ShowPairingBlock)
             {
                 await GeneratePairingCodeAsync(session, cancellationToken).ConfigureAwait(true);
             }

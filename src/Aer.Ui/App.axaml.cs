@@ -26,6 +26,11 @@ public partial class App : Application
                 new WorkspaceMigrationNoticeWindow(migrationNotice).Show();
             }
 
+            // #1068: apply the remembered Settings → Appearance theme before the window is shown, so a
+            // saved Light/Dark choice never flashes the OS default first. A tiny local-file read at
+            // startup with nothing else pumping yet; a missing value resolves to "follow the OS".
+            AppearanceTheme.Apply(LocalUiConfigurationStore.CreateDefault().LoadThemeAsync().GetAwaiter().GetResult());
+
             var window = new MainWindow();
             desktop.MainWindow = window;
 

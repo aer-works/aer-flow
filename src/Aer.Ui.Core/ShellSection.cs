@@ -6,7 +6,8 @@ public enum ShellSection
     Home,
     Task,
     Author,
-    Remote,
+    // #1068: renamed from Remote; its view now lives inside Views/SettingsView.
+    Settings,
     Chat,
     Rooms,
 }

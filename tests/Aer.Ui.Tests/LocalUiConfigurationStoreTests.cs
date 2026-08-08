@@ -23,6 +23,89 @@ public class LocalUiConfigurationStoreTests
     }
 
     [Fact]
+    public async Task No_theme_recorded_loads_as_null_meaning_follow_the_os()
+    {
+        var store = new LocalUiConfigurationStore(NewConfigFilePath());
+
+        var theme = await store.LoadThemeAsync(TestContext.Current.CancellationToken);
+
+        Assert.Null(theme);
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    [InlineData("System")]
+    public async Task A_recorded_theme_round_trips(string chosen)
+    {
+        var store = new LocalUiConfigurationStore(NewConfigFilePath());
+
+        await store.RecordThemeAsync(chosen, TestContext.Current.CancellationToken);
+        var theme = await store.LoadThemeAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(chosen, theme);
+    }
+
+    [Fact]
+    public async Task An_old_config_file_without_a_theme_field_still_loads_and_theme_defaults_to_null()
+    {
+        // A config written before the Theme field existed — the five-property shape, no "Theme". The
+        // deserializer must fill the missing member from its default (null) rather than failing, or the
+        // whole file would fall through corrupt-recovery and silently drop the recents with it. This is
+        // the branch the no-file test cannot reach (that one hits the hardcoded empty config).
+        var configFilePath = NewConfigFilePath();
+        Directory.CreateDirectory(Path.GetDirectoryName(configFilePath)!);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-old-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(roomDirectory);
+        try
+        {
+            // JsonSerializer.Serialize escapes the Windows path's backslashes correctly. Built by
+            // concatenation rather than a raw string so the JSON's trailing braces don't collide with
+            // interpolation delimiters.
+            var pathLiteral = System.Text.Json.JsonSerializer.Serialize(roomDirectory);
+            var oldShapedConfig =
+                "{\"RecentRoomDirectories\":[" + pathLiteral + "],\"LastBindingsFilePath\":null," +
+                "\"LastWorkflowTemplateFilePath\":null,\"TailscaleAuthKey\":null,\"RecentCommands\":{}}";
+            await File.WriteAllTextAsync(configFilePath, oldShapedConfig, TestContext.Current.CancellationToken);
+
+            var store = new LocalUiConfigurationStore(configFilePath);
+
+            Assert.Null(await store.LoadThemeAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(
+                Path.GetFullPath(roomDirectory),
+                Assert.Single(await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken)));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
+    [Fact]
+    public async Task Recording_a_theme_leaves_the_recents_list_intact()
+    {
+        // Theme and recents share one config file; writing one must not clobber the other.
+        var configFilePath = NewConfigFilePath();
+        var store = new LocalUiConfigurationStore(configFilePath);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-theme-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(roomDirectory);
+        try
+        {
+            await store.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
+            await store.RecordThemeAsync("Dark", TestContext.Current.CancellationToken);
+
+            Assert.Equal("Dark", await store.LoadThemeAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(
+                Path.GetFullPath(roomDirectory),
+                Assert.Single(await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken)));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
+    [Fact]
     public async Task A_recorded_directory_is_the_first_entry_on_the_next_load()
     {
         var configFilePath = NewConfigFilePath();

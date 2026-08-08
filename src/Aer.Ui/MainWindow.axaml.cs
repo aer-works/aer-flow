@@ -74,6 +74,9 @@ public partial class MainWindow : Window
     private readonly RoomClient _session;
     internal RoomClient Session => _session;
 
+    /// <summary>Retained for the Settings → Appearance theme (#1068): read at startup to sync the toggle's selected state, written when a choice is made. The store is otherwise the RoomClient's (recents, bindings).</summary>
+    private readonly LocalUiConfigurationStore _configurationStore;
+
     private readonly DispatcherTimer _liveRefreshTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 
     /// <summary>
@@ -153,11 +156,16 @@ public partial class MainWindow : Window
     internal Button AddBindingEntryButton => AuthorViewControl.AddBindingEntryButton;
     internal Button CheckBindingsAgainstTemplateButton => AuthorViewControl.CheckBindingsAgainstTemplateButton;
 
-    internal Button RemoteToggleButton => RemoteViewControl.RemoteToggleButton;
-    internal Button RemoteRefreshCodeButton => RemoteViewControl.RemoteRefreshCodeButton;
-    internal Button RemoteOpenSidecarAuthButton => RemoteViewControl.RemoteOpenSidecarAuthButton;
-    internal Button RemoteForgetSidecarButton => RemoteViewControl.RemoteForgetSidecarButton;
-    internal Button SaveTailscaleAuthKeyButton => RemoteViewControl.SaveTailscaleAuthKeyButton;
+    // #1068: Remote folded into Settings, so its pairing controls now live one level down, on the
+    // RemoteView embedded in SettingsView's "Your phone" group.
+    internal Button RemoteToggleButton => SettingsViewControl.RemoteViewControl.RemoteToggleButton;
+    internal Button RemoteRefreshCodeButton => SettingsViewControl.RemoteViewControl.RemoteRefreshCodeButton;
+    internal Button RemoteOpenSidecarAuthButton => SettingsViewControl.RemoteViewControl.RemoteOpenSidecarAuthButton;
+    internal Button RemoteForgetSidecarButton => SettingsViewControl.RemoteViewControl.RemoteForgetSidecarButton;
+    internal Button SaveTailscaleAuthKeyButton => SettingsViewControl.RemoteViewControl.SaveTailscaleAuthKeyButton;
+    internal Button ThemeLightButton => SettingsViewControl.ThemeLightButton;
+    internal Button ThemeDarkButton => SettingsViewControl.ThemeDarkButton;
+    internal Button ThemeSystemButton => SettingsViewControl.ThemeSystemButton;
 
     internal TextBox ChatInputBox => ChatViewControl.ChatInputBox;
     internal Button ChatSendButton => ChatViewControl.ChatSendButton;
@@ -217,6 +225,7 @@ public partial class MainWindow : Window
             Win32Properties.AddWndProcHookCallback(this, WndProcHook);
         }
         DataContext = ViewModel;
+        _configurationStore = configurationStore;
         _session = new RoomClient(
             configurationStore,
             adapters,
@@ -270,7 +279,7 @@ public partial class MainWindow : Window
         NavHomeButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Home;
         NavRoomButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Task;
         NavAuthorButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Author;
-        NavRemoteButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Remote;
+        NavSettingsButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Settings;
         // #336: Chat and Tasks are no longer rail destinations. Chat is reached by opening a session
         // (the switcher routes to the right pane); the management surface is reached from the foot of
         // the switcher list.
@@ -345,6 +354,11 @@ public partial class MainWindow : Window
         // Tailscale admin console and restarting Aer.Ui — found live via direct user feedback.
         RemoteForgetSidecarButton.Click += (_, _) => _ = ViewModel.Remote.ForgetSidecarAsync(_session);
         SaveTailscaleAuthKeyButton.Click += (_, _) => _ = ViewModel.Remote.SaveTailscaleAuthKeyAsync(_session);
+        // #1068: Settings → Appearance. Each choice applies to the running app immediately, marks the
+        // toggle's selected button, and persists so the next launch opens in the chosen theme.
+        ThemeLightButton.Click += (_, _) => _ = ChooseThemeAsync(ThemeNames.Light);
+        ThemeDarkButton.Click += (_, _) => _ = ChooseThemeAsync(ThemeNames.Dark);
+        ThemeSystemButton.Click += (_, _) => _ = ChooseThemeAsync(ThemeNames.System);
         // Home rebuilds its cards/inbox on activation (HomeViewModel's scan-scope decision of
         // record) — fire-and-forget like every other event-handler entry point here.
         ViewModel.SectionChanged += section =>
@@ -361,10 +375,13 @@ public partial class MainWindow : Window
                 ViewModel.NewWorkflow.RefreshVendorReadiness();
             }
 
-            // M21 Phase 3 (#234): remote status + a fresh pairing code on every activation — a
-            // code expires in 60s, so a re-visit should never show a stale/dead one.
-            if (section == ShellSection.Remote)
+            // #1068: Settings folds Workers + Your phone in, so activating it refreshes both the
+            // vendor-readiness line (a CLI may have just been installed, same reasoning as Author's
+            // refresh above) and — M21 Phase 3 (#234) — remote status + a fresh pairing code, since a
+            // code expires in 60s and a re-visit should never show a stale/dead one.
+            if (section == ShellSection.Settings)
             {
+                ViewModel.NewWorkflow.RefreshVendorReadiness();
                 _ = ViewModel.Remote.RefreshAsync(_session);
                 _pairingCountdownTimer.Start();
             }
@@ -384,7 +401,11 @@ public partial class MainWindow : Window
         _pairingCountdownTimer.Tick += (_, _) =>
         {
             ViewModel.Remote.TickPairingCodeCountdown();
-            if (ViewModel.Remote.PairingCodeExpiresInSeconds <= 0)
+            // Regenerate on expiry only while the pairing code is actually shown (ShowPairingBlock) —
+            // the same #1068 reasoning as RefreshAsync's mint gate: with remote off (or no host) the
+            // code isn't displayed, so refreshing it just churns the daemon's single active code while
+            // someone sits on Settings for an unrelated reason.
+            if (ViewModel.Remote.ShowPairingBlock && ViewModel.Remote.PairingCodeExpiresInSeconds <= 0)
             {
                 _ = ViewModel.Remote.GeneratePairingCodeAsync(_session);
             }
@@ -541,6 +562,21 @@ public partial class MainWindow : Window
 
         BindingsFilePathBox.Text = await _session.LoadLastBindingsFilePathAsync(cancellationToken);
         WorkflowTemplatePathBox.Text = await _session.LoadLastWorkflowTemplateFilePathAsync(cancellationToken);
+
+        // #1068: the theme was already applied to the app by App startup; this syncs the Settings
+        // toggle's selected button to the persisted choice (or System when nothing was ever chosen).
+        ViewModel.ThemePreference = await _configurationStore.LoadThemeAsync(cancellationToken) ?? ThemeNames.System;
+    }
+
+    /// <summary>
+    /// #1068: applies a Settings → Appearance choice — to the running app immediately (no restart),
+    /// to the toggle's selected state, and to disk so the next launch opens in it.
+    /// </summary>
+    internal async Task ChooseThemeAsync(string theme)
+    {
+        ViewModel.ThemePreference = theme;
+        AppearanceTheme.Apply(theme);
+        await _configurationStore.RecordThemeAsync(theme);
     }
 
     /// <summary>

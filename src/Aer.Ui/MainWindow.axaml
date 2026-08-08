@@ -116,14 +116,15 @@
             <AccessText Text="_Author" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
-        <!-- M21 Phase 3 (#234): the fourth nav destination — pairing Aer.Mobile. -->
-        <Button x:Name="NavRemoteButton" Classes="nav" Classes.selected="{Binding IsRemoteVisible}"
+        <!-- #1068: Settings, the former Remote destination — it folds pairing ("Your phone") in
+             alongside Workers and Appearance (02-screens). -->
+        <Button x:Name="NavSettingsButton" Classes="nav" Classes.selected="{Binding IsSettingsVisible}"
                 HorizontalAlignment="Stretch">
           <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Remote}"
+            <Path Classes="nav-icon" Data="{StaticResource Icon.Settings}"
                   StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
                   Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="Re_mote" VerticalAlignment="Center" />
+            <AccessText Text="_Settings" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
         <!-- #336 removed two rail buttons. Chat folded into "Open" above (one destination, two
@@ -217,7 +218,7 @@
       <views:HomeView x:Name="HomeViewControl" IsVisible="{Binding IsHomeVisible}" />
       <views:RoomView x:Name="RoomViewControl" IsVisible="{Binding IsRoomVisible}" />
       <views:AuthorView x:Name="AuthorViewControl" IsVisible="{Binding IsAuthorVisible}" />
-      <views:RemoteView x:Name="RemoteViewControl" IsVisible="{Binding IsRemoteVisible}" />
+      <views:SettingsView x:Name="SettingsViewControl" IsVisible="{Binding IsSettingsVisible}" />
       <views:ChatView x:Name="ChatViewControl" IsVisible="{Binding IsChatVisible}" />
       <views:RoomsView x:Name="RoomsViewControl" IsVisible="{Binding IsRoomsVisible}" />
     </Panel>
