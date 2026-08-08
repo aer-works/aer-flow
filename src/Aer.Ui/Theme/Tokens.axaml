@@ -145,4 +145,12 @@
   <!-- vocabulary-ok: technical resource key -->
   <SolidColorBrush x:Key="Vendor.Gemini">#4285F4</SolidColorBrush>
 
+  <!-- The recessed fill for your own transcript turns (docs/design/02-screens.md '.turn.you') and
+       the room-header worker chip. Its colour is the generated design token SurfaceSunkColor — one
+       value, defined once in design/tokens.json — pulled through DynamicResource rather than
+       transcribing its hex here, which is the per-surface adoption of the generated palette that
+       #336/#337 describe (not a legacy light/dark pair). This key was already referenced by the
+       chat header chip before it was ever defined; that silent no-op is fixed by defining it. -->
+  <SolidColorBrush x:Key="Color.SurfaceSubtle" Color="{DynamicResource SurfaceSunkColor}" />
+
 </ResourceDictionary>

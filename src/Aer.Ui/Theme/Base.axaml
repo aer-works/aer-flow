@@ -197,6 +197,21 @@
     <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
   </Style>
 
+  <!-- Transcript turns (docs/design/02-screens.md:70-80, mockup '.turn'/'.turn.you'): a worker's
+       turn is an ordinary card with an accent sender label; your own turn is recessed and
+       borderless with a muted label, so who-said-what reads at a glance without reading the words. -->
+  <Style Selector="Border.card TextBlock.who">
+    <Setter Property="Foreground" Value="{DynamicResource Color.Accent}" />
+  </Style>
+  <Style Selector="Border.card.you">
+    <Setter Property="Background" Value="{DynamicResource Color.SurfaceSubtle}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+  </Style>
+  <Style Selector="Border.card.you TextBlock.who">
+    <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
+  </Style>
+
   <!-- The navigation rail: quiet buttons, accent only on the active section -->
   <Style Selector="Button.nav">
     <Setter Property="HorizontalContentAlignment" Value="Left" />
