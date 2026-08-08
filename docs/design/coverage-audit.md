@@ -45,11 +45,11 @@ correct, not duplication: the record says *why*, the journey says *what you get*
 
 | Call | Source | Status |
 |---|---|---|
-| **One state machine.** Every surface renders the room's state; none derives its own. | 02 | **→ new decision record.** This is the general form of `#467`/`#468` — it makes "no room open while running" *impossible* rather than merely fixed. |
-| **Errors are content.** A failure shows what broke, in the room, with the worker that failed right there to be asked about it. Not a status word with the reason behind a drill-in. | 02, 03 | **→ same record**, plus `#404`. |
+| **One state machine.** Every surface renders the room's state; none derives its own. | 02 | ✅ **landed** — [0020](../decisions/0020-one-state-machine.md) (the record that generalises `#467`/`#468`), enforced by the one `RoomCardViewModel.DeriveStatus` every surface reads; `StatusDerivationTests` pins the task-headline↔card parity so the shell cannot disagree with itself about "running". |
+| **Errors are content.** A failure shows what broke, in the room, with the worker that failed right there to be asked about it. Not a status word with the reason behind a drill-in. | 02, 03 | ✅ **landed** — the rule rides [0020](../decisions/0020-one-state-machine.md); the surface is `#482` (RoomView's failed-step banner shows the error inline) + `#404` (the per-step drill-in shows every outcome's output/detail, not just failures). |
 | **Stale, not blank.** Refreshing never empties a list; previous content stays and is marked stale. | 03 | ✅ **landed** — [0018](../decisions/0018-attention-is-the-primary-signal.md)'s freshness amendment. Arrived independently via the power-cut analysis. |
-| **Success collapses, failure opens.** A passing command shows one line; a failing one opens itself. Status and duration stay visible either way. | 03, 07 | **→ `#267`** — scope extended on the issue. |
-| **Readiness up front.** Which vendor CLIs were detected, at first run and in Settings — the most likely first failure is the least self-evident. | 02 | **→ `#478`.** The first screen a new user meets, and the least self-evident failure in the product. |
+| **Success collapses, failure opens.** A passing command shows one line; a failing one opens itself. Status and duration stay visible either way. | 03, 07 | **→ `#267`** (grouped into open umbrella `#750`, **unbuilt**). The failure-opens half exists as the `#482` failed-step banner; the success-collapse half and the markdown/code rendering `#267` also carries are absent (chat renders through a plain `TextBlock`). |
+| **Readiness up front.** Which vendor CLIs were detected, at first run and in Settings — the most likely first failure is the least self-evident. | 02 | ✅ **landed** — `#478`. Shown at first run (the ▤ front door's Workers line, `#1071`) and in Settings (`#1069`), both from one derivation (`NewWorkflow.VendorReadinessLines`). |
 
 ## 4 · Workers, models, effort
 
@@ -85,8 +85,8 @@ correct, not duplication: the record says *why*, the journey says *what you get*
 | **Documents stay, plumbing goes.** One file list; the only distinction is "in your project" or not. Execution directories are never surfaced. | 04 | **→ same record.** |
 | **Child rooms** nest in the list and report back as a turn; the parent never blocks. | 06 | **→ `#340`** — scope extended with the non-blocking parent, and its interaction with `#480`'s directory lock. |
 | **Two rooms on one folder**: serialised already (verified — the turn lock is keyed on directory path). Surface the wait, name the holder, warn on a duplicate room. | 06 | **→ `#480`.** The engine behaviour is verified and correct; only the *surfacing* is absent. |
-| **Gates render inline**, in the conversation that produced them, reachable from a "needs you" filter and the phone. The separate decision surface goes away. | 02 | **→ `#367`** + `#434`. |
-| Rooms are the front door on both surfaces; "needs you" is a filter, not the landing screen | 02 | ✅ **landed** — 0018 + `#337`. |
+| **Gates render inline**, in the conversation that produced them, reachable from a "needs you" filter and the phone. The separate decision surface goes away. | 02 | Inline gates + phone entry point **→ `#367`**. Desktop "needs you" filter: ✅ **landed** — `#1072` (a filter on the switcher; needs-you rows expand in place to their paused steps, decision 0007's middle level, and the Home decision inbox retired into it). |
+| Rooms are the front door on both surfaces; "needs you" is a filter, not the landing screen | 02 | ✅ **landed** — 0018 + `#337`; the desktop rail is now the three icon-only destinations 02-screens draws (`#1071`), with Home folded into the ▤ rooms front door. |
 
 ## 7 · The nine claims and their demonstrations
 
@@ -109,17 +109,17 @@ change under `ReconcileTests`. None exists today.
 ## 8 · The eight delights
 
 Not differentiators alone; collectively the difference between a tool you tolerate and one you like.
-**All eight now have a home.**
+**All eight are tracked — three shipped (`#482`/`#463`/refresh-rule); the other five remain unbuilt.**
 
 | Delight | Status |
 |---|---|
-| `y`/`n` for permissions, never bound to Enter, so a reflex cannot approve | **→ `#481`** |
-| Typing never blocks; the queue is visible, with interrupt and remove | **→ `#462`** — was partial; the visible/removable half is recorded on it |
-| Failures offer the fix, with the worker that failed already holding the context | **→ `#482`** |
-| Jump to the last decision via an event rail | **→ `#459`** (exists) |
+| `y`/`n` for permissions, never bound to Enter, so a reflex cannot approve | **→ `#481`** — closed, **unbuilt** (source checked 2026-08; not in the `#750` set): permissions are config-time only (`AuthorView` checkboxes → adapter flags); no runtime permission gate exists |
+| Typing never blocks; the queue is visible, with interrupt and remove | **→ `#462`** — grouped into open `#750`, **unbuilt**: `ChatInputBox` is disabled while a turn is in flight (typing *does* block); no queue, interrupt or remove exists |
+| Failures offer the fix, with the worker that failed already holding the context | ✅ **shipped** — `#482` (desktop verified: `RoomView`'s failed-step banner shows the error text inline with **Try again** / **Ask ⟨worker⟩ to fix it** / **Show full output**) |
+| Jump to the last decision via an event rail | **→ `#459`** — grouped into open `#750`, **unbuilt** (the earlier "(exists)" was wrong): no event rail or keyboard nav to a decision exists anywhere |
 | Status readable without colour | ✅ **shipped** — `#463` |
-| *"Thought for 12s"* reported after the fact, never a live counter | **→ `#483`** |
-| Success collapses, failure opens | **→ `#267`** — scope extended |
+| *"Thought for 12s"* reported after the fact, never a live counter | **→ `#483`** — closed, **unbuilt** (source checked 2026-08; not in the `#750` set): no duration / thinking-time rendering exists |
+| Success collapses, failure opens | **→ `#267`** — grouped into open `#750`, **unbuilt** (source checked 2026-08): the failure-open half exists via `#482`'s inline error banner; success-collapse is absent |
 | Refresh never blanks | ✅ **landed** as a rule — [0018](../decisions/0018-attention-is-the-primary-signal.md); built with the rebuild |
 
 ## 9 · Deliberate drops
@@ -134,11 +134,13 @@ Not differentiators alone; collectively the difference between a tool you tolera
 
 The issue-shaped and centrepiece items above are done. Three kinds of work remain, tracked by `#474`.
 
-**New decision records.** Two concepts have no record and are not extensions of one: **one state machine**
-(every surface renders the room's state, none derives its own — the general form of `#467`/`#468`, which
-makes "no room open while running" *impossible* rather than merely fixed, and which carries "errors are
-content" with it), and **artifacts are files** (vendor-neutral, versioned, attributed, diffable — plus
-diff-and-choose on save, and "documents stay, plumbing goes").
+**New decision records.** **One state machine** is now **recorded and landed** —
+[0020](../decisions/0020-one-state-machine.md): every surface renders the room's state from one shared
+derivation (`RoomCardViewModel.DeriveStatus`), pinned by `StatusDerivationTests`, so the general form of
+`#467`/`#468` makes "no room open while running" *impossible* rather than merely fixed, and it carries
+"errors are content" with it. That leaves one concept with no record and no parent: **artifacts are files**
+(vendor-neutral, versioned, attributed, diffable — plus diff-and-choose on save, and "documents stay,
+plumbing goes").
 
 **Records that amend existing ones.** Four items extend a record. The repo's rule is *"never edit a
 decision **to change its meaning**"* ([`decisions/README.md`](../decisions/README.md)) — which is not the
