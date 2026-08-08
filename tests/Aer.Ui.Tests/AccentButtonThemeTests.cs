@@ -15,8 +15,10 @@ namespace Aer.Ui.Tests;
 /// <c>Button.accent</c> under some theme-variant conditions. The fix (<see cref="MainWindow"/>'s
 /// <c>Base.axaml</c>) targets <c>Button.accent /template/ ContentPresenter</c> instead. This test
 /// forces <see cref="ThemeVariant.Light"/> (the variant screenshots showed rendering the OS red
-/// accent before the fix) and asserts the rendered background is Tokens.axaml's light
-/// <c>Color.Accent</c> hex, not any system color.
+/// accent before the fix) and asserts the rendered background is the app's own <c>Color.Accent</c>
+/// hex — now the generated teal from GeneratedTokens.axaml (design/tokens.json <c>brand.accent</c>),
+/// not any system color. Each variant is asserted against its own dictionary's value, which is why
+/// the accent brush is emitted once per ThemeDictionary rather than as one shared brush.
 /// </summary>
 public class AccentButtonThemeTests
 {
@@ -31,9 +33,9 @@ public class AccentButtonThemeTests
 
         var contentPresenter = runButton.GetVisualDescendants().OfType<ContentPresenter>().First();
 
-        // Tokens.axaml's Default (light) dictionary's Color.Accent — not any SystemAccentColor-derived brush.
-        Assert.Equal(Color.Parse("#0E6FA8"), ((ISolidColorBrush)contentPresenter.Background!).Color);
-        Assert.Equal(Color.Parse("#0E6FA8"), ((ISolidColorBrush)contentPresenter.BorderBrush!).Color);
+        // GeneratedTokens.axaml's Light dictionary Color.Accent (brand.accent) — not any SystemAccentColor brush.
+        Assert.Equal(Color.Parse("#3F8C87"), ((ISolidColorBrush)contentPresenter.Background!).Color);
+        Assert.Equal(Color.Parse("#3F8C87"), ((ISolidColorBrush)contentPresenter.BorderBrush!).Color);
     }
 
     [AvaloniaFact]
@@ -47,8 +49,8 @@ public class AccentButtonThemeTests
 
         var contentPresenter = runButton.GetVisualDescendants().OfType<ContentPresenter>().First();
 
-        // Tokens.axaml's Dark dictionary's Color.Accent.
-        Assert.Equal(Color.Parse("#3B9FD6"), ((ISolidColorBrush)contentPresenter.Background!).Color);
-        Assert.Equal(Color.Parse("#3B9FD6"), ((ISolidColorBrush)contentPresenter.BorderBrush!).Color);
+        // GeneratedTokens.axaml's Dark dictionary Color.Accent (brand.accent).
+        Assert.Equal(Color.Parse("#5FB3AD"), ((ISolidColorBrush)contentPresenter.Background!).Color);
+        Assert.Equal(Color.Parse("#5FB3AD"), ((ISolidColorBrush)contentPresenter.BorderBrush!).Color);
     }
 }

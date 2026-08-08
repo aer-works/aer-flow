@@ -96,8 +96,13 @@
        Button itself lets that built-in styling win depending on theme variant. Targeting the
        template's ContentPresenter directly (the same mechanism the pointerover/pressed states
        below already use) forces Color.Accent to win unconditionally. -->
+  <!-- Foreground is Color.OnAccent, not a fixed White: the Quiet accent is a dusty teal whose dark
+       variant (#5FB3AD) is light enough that white label text falls below the contrast floor. The
+       token carries the readable pairing per variant (white on the light-mode teal, near-black on
+       the lighter dark-mode teal), so the label follows the accent instead of assuming it stays dark
+       enough for white. -->
   <Style Selector="Button.accent">
-    <Setter Property="Foreground" Value="White" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.OnAccent}" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <Style Selector="Button.accent /template/ ContentPresenter#PART_ContentPresenter">
@@ -107,7 +112,7 @@
   <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentHover}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.AccentHover}" />
-    <Setter Property="Foreground" Value="White" />
+    <Setter Property="Foreground" Value="{DynamicResource Color.OnAccent}" />
   </Style>
   <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentPressed}" />
@@ -195,6 +200,21 @@
   <Style Selector="Button.card:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
     <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
+  </Style>
+
+  <!-- Transcript turns (docs/design/02-screens.md:70-80, mockup '.turn'/'.turn.you'): a worker's
+       turn is an ordinary card with an accent sender label; your own turn is recessed and
+       borderless with a muted label, so who-said-what reads at a glance without reading the words. -->
+  <Style Selector="Border.card TextBlock.who">
+    <Setter Property="Foreground" Value="{DynamicResource Color.Accent}" />
+  </Style>
+  <Style Selector="Border.card.you">
+    <Setter Property="Background" Value="{DynamicResource Color.SurfaceSubtle}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="BoxShadow" Value="0 0 0 0 #00000000" />
+  </Style>
+  <Style Selector="Border.card.you TextBlock.who">
+    <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
   </Style>
 
   <!-- The navigation rail: quiet buttons, accent only on the active section -->

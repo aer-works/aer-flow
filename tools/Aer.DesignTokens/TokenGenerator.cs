@@ -265,6 +265,26 @@ public static class TokenGenerator
     // ---- Avalonia -------------------------------------------------------------------------
 
     /// <summary>
+    /// The app's semantic colour vocabulary (the <c>Color.*</c> keys views bind by name) mapped to
+    /// the <c>tokens.json</c> path (<c>group.name</c>) it resolves to. Only keys whose target has a
+    /// generated twin belong here; a legacy key without one (Color.Surface, Color.BorderSubtle, the
+    /// accent hover/pressed/subtle family, the status ramp, vendor marks) stays defined in
+    /// Theme/Tokens.axaml until its value is added to design/tokens.json. Each becomes ONE brush per
+    /// theme variant (see GenerateAvalonia) so a brush resolves to its own variant's colour.
+    /// </summary>
+    private static readonly (string Key, string Group, string Name)[] SemanticBrushAliases =
+    {
+        ("Color.Accent", "brand", "accent"),
+        ("Color.OnAccent", "brand", "onAccent"),
+        ("Color.Background", "surface", "ground"),
+        ("Color.SurfaceRaised", "surface", "raised"),
+        ("Color.SurfaceSubtle", "surface", "sunk"),
+        ("Color.Border", "surface", "rule"),
+        ("Color.Text", "text", "primary"),
+        ("Color.TextSecondary", "text", "secondary"),
+    };
+
+    /// <summary>
     /// A <c>ResourceDictionary</c> with <c>ThemeDictionaries</c> for Light and Dark, which is what
     /// lets Avalonia follow the OS preference: the app sets <c>ThemeVariant.Default</c> and the
     /// correct set resolves per variant, so "system" needs no code of its own.
@@ -297,6 +317,19 @@ public static class TokenGenerator
         EmitColorGroup("surface", "Surface");
         EmitColorGroup("text", "Text");
         EmitColorGroup("status", "Status");
+
+        // The semantic colour brushes the Avalonia views bind by name (Color.Accent, Color.Text, …),
+        // materialized from the same tokens as the <Color>s above so blue->teal is one source of
+        // truth (design/tokens.json) and cannot be half-applied. One brush per variant, inside its
+        // ThemeDictionary: a single shared brush cannot hold two colours at once, so the dark window
+        // would render the light accent (#209's per-variant regression test catches exactly that).
+        // Only keys with a generated twin appear; those without one still live in Tokens.axaml.
+        foreach (var (key, group, name) in SemanticBrushAliases)
+        {
+            var (lightValue, darkValue) = Variants(root.GetProperty(group).GetProperty(name), $"{group}.{name}");
+            light.AppendLine($"""      <SolidColorBrush x:Key="{key}">{lightValue}</SolidColorBrush>""");
+            dark.AppendLine($"""      <SolidColorBrush x:Key="{key}">{darkValue}</SolidColorBrush>""");
+        }
 
         var invariant = new StringBuilder();
 

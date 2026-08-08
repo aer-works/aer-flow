@@ -1,8 +1,15 @@
-<!-- M19 Phase 2 (#187): docs/archive/ux/design-language.md's token system, materialized. These are the
-     product's identity carried as named resources (the one-product-not-a-collage directive):
-     every surface consumes tokens by name — a raw hex value, ad-hoc font size, or magic pixel
-     number in a view is a defect from this phase onward. Semantic color only: light and dark are
-     two mappings of one system (ThemeDictionaries), never two themes. -->
+<!-- M19 Phase 2 (#187): the product's identity as named resources — every surface consumes tokens
+     by name, so a raw hex value, ad-hoc font size, or magic pixel number in a *view* is still a
+     defect. What this file holds narrowed with the 0006 "Quiet" palette migration (#1065): the
+     colour palette's source of truth is now design/tokens.json, materialized into
+     GeneratedTokens.axaml and consumed through the Color.* brushes emitted there (Color.Accent is
+     the blue→teal flip). This file now carries only what that generated palette does not yet cover:
+       - colours with no token twin: the near-white Color.Surface step, Color.BorderSubtle, and the
+         accent hover/pressed/subtle family (still #216 blue — see #1066 and the note below);
+       - the status ramp (its #334 vocabulary split is a separate migration);
+       - Vendor.* brand marks, and the type/space/radius/elevation/motion scale, which the generated
+         ramp supersedes per-surface as each layout is restyled (#336/#337), not in one sweep.
+     Semantic color only: light and dark are two mappings of one system (ThemeDictionaries). -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
@@ -10,23 +17,19 @@
 
     <!-- Light -->
     <ResourceDictionary x:Key="Default">
-      <SolidColorBrush x:Key="Color.Background">#F7F8F9</SolidColorBrush>
-      <!-- Surface/SurfaceRaised were identical (#FFFFFF/#FFFFFF) — no color step, so nothing read
-           as elevated. Base content now sits a hair below pure white; raised surfaces (cards,
-           the needs-you callout) keep #FFFFFF and pick up Elevation.Raised/.Overlay's shadow. -->
+      <!-- A near-white step between the page ground (Color.Background → SurfaceGroundColor, generated)
+           and raised cards (Color.SurfaceRaised → SurfaceRaisedColor, generated). The generated
+           palette has no equivalent middle neutral, so it stays here until one exists in tokens.json.
+           Raised surfaces keep pure white and pick up Elevation.Raised/.Overlay's shadow. -->
       <SolidColorBrush x:Key="Color.Surface">#FBFBFC</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.SurfaceRaised">#FFFFFF</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.Border">#D7DBDF</SolidColorBrush>
       <SolidColorBrush x:Key="Color.BorderSubtle">#E8EAEC</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.Text">#1A1D21</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.TextSecondary">#5B6572</SolidColorBrush>
       <SolidColorBrush x:Key="Color.TextDisabled">#9AA3AD</SolidColorBrush>
 
-      <!-- #216 post-M19 review: Color.Accent moved from a teal that read as "the same green
-           family" as Status.Succeeded (41deg apart on the wheel) to a blue-teal (~200deg,
-           ~60deg from Succeeded) — distinct at a glance as "primary action" vs. "this succeeded"
-           without abandoning the cool, restrained identity design-language.md calls for. -->
-      <SolidColorBrush x:Key="Color.Accent">#0E6FA8</SolidColorBrush>
+      <!-- Still #216's BLUE, deliberately (#1066). tokens.json carries brand.accent (now teal, live
+           via Color.Accent → BrandAccentColor) and brand.onAccent, but not these derived hover/
+           pressed/subtle steps, and 0006 forbids re-deriving values the owner has not reviewed. They
+           therefore lag the teal base until tokenized — expect a blue-tinted hover/pressed/selection
+           beside the teal accent until #1066 lands. -->
       <SolidColorBrush x:Key="Color.AccentHover">#0C5F8F</SolidColorBrush>
       <SolidColorBrush x:Key="Color.AccentPressed">#0A4D74</SolidColorBrush>
       <SolidColorBrush x:Key="Color.AccentSubtleBg">#DFEDF5</SolidColorBrush>
@@ -64,17 +67,11 @@
 
     <!-- Dark: same system, second mapping. Depth leans on surface steps, not shadows. -->
     <ResourceDictionary x:Key="Dark">
-      <SolidColorBrush x:Key="Color.Background">#15171B</SolidColorBrush>
       <SolidColorBrush x:Key="Color.Surface">#1D2025</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.SurfaceRaised">#25292F</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.Border">#343A42</SolidColorBrush>
       <SolidColorBrush x:Key="Color.BorderSubtle">#2A2F36</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.Text">#E8EAED</SolidColorBrush>
-      <SolidColorBrush x:Key="Color.TextSecondary">#9BA3AE</SolidColorBrush>
       <SolidColorBrush x:Key="Color.TextDisabled">#5D656F</SolidColorBrush>
 
-      <!-- #216: same blue-teal shift as light — see that dictionary's comment. -->
-      <SolidColorBrush x:Key="Color.Accent">#3B9FD6</SolidColorBrush>
+      <!-- Still #216's blue derivatives — see the light dictionary's note and #1066. -->
       <SolidColorBrush x:Key="Color.AccentHover">#57B3E8</SolidColorBrush>
       <SolidColorBrush x:Key="Color.AccentPressed">#2C86BA</SolidColorBrush>
       <SolidColorBrush x:Key="Color.AccentSubtleBg">#17293A</SolidColorBrush>
