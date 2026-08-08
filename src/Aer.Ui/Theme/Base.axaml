@@ -217,37 +217,43 @@
     <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
   </Style>
 
-  <!-- The navigation rail: quiet buttons, accent only on the active section -->
+  <!-- The navigation rail (#1071): icon-only bordered squares, per docs/design/mockups/02-screens.html's
+       .rail styling — a 29x29 icon in a 1px rule border, radius 6, quiet by default (rule border,
+       secondary glyph). The active destination alone takes the accent border, accent glyph, and the
+       recessed "sunk" fill (Color.SurfaceSubtle). Icon-only means the label mnemonics give way to
+       ToolTip.Tip + tab order (each rail Button carries a tooltip in MainWindow.axaml). -->
   <Style Selector="Button.nav">
-    <Setter Property="HorizontalContentAlignment" Value="Left" />
-    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Width" Value="29" />
+    <Setter Property="Height" Value="29" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
   <Style Selector="Button.nav /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBgTransparent}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Border}" />
     <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
   </Style>
-  <Style Selector="Button.nav.selected">
-    <Setter Property="FontWeight" Value="SemiBold" />
-  </Style>
   <Style Selector="Button.nav.selected /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Background" Value="{DynamicResource Color.SurfaceSubtle}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
     <Setter Property="Foreground" Value="{DynamicResource Color.Accent}" />
   </Style>
   <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Background" Value="{DynamicResource Color.SurfaceSubtle}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Border}" />
     <Setter Property="Foreground" Value="{DynamicResource Color.TextSecondary}" />
   </Style>
   <Style Selector="Button.nav.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Background" Value="{DynamicResource Color.SurfaceSubtle}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
     <Setter Property="Foreground" Value="{DynamicResource Color.Accent}" />
   </Style>
   <Style Selector="Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource Color.AccentSubtleBg}" />
-    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Background" Value="{DynamicResource Color.SurfaceSubtle}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Color.Accent}" />
   </Style>
 
   <!-- #218: nav icons track the same Foreground the nav button's own text uses — Path.Stroke

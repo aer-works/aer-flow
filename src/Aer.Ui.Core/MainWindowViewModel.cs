@@ -31,6 +31,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsChatVisible))]
     [NotifyPropertyChangedFor(nameof(IsRoomsVisible))]
     [NotifyPropertyChangedFor(nameof(IsDetailVisible))]
+    [NotifyPropertyChangedFor(nameof(IsRoomsFrontDoorSelected))]
     private ShellSection currentSection = ShellSection.Home;
 
     public bool IsHomeVisible => CurrentSection == ShellSection.Home;
@@ -66,6 +67,14 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// genuinely different views; what went away is the user having to know which one they wanted.
     /// </summary>
     public bool IsDetailVisible => IsRoomVisible || IsChatVisible;
+
+    /// <summary>
+    /// Whether the single <c>▤ Rooms</c> rail button (#1071) reads as active. The rail collapsed Home
+    /// and "the record you have open" into one front-door button, so it is selected whenever the
+    /// content pane is showing either the first-run/empty surface (<see cref="IsHomeVisible"/>) or an
+    /// open room (<see cref="IsDetailVisible"/>) — the two states that live behind the one glyph.
+    /// </summary>
+    public bool IsRoomsFrontDoorSelected => IsHomeVisible || IsDetailVisible;
 
     /// <summary>The Enable Remote Access view's state (M21 Phase 3, issue #234) — see <see cref="RemoteViewModel"/>.</summary>
     public RemoteViewModel Remote { get; } = new();

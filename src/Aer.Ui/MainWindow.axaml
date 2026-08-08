@@ -80,58 +80,34 @@
     <Border DockPanel.Dock="Left" Background="{DynamicResource Color.SurfaceRaised}"
             BorderBrush="{DynamicResource Color.BorderSubtle}" BorderThickness="0,0,1,0"
             BoxShadow="{DynamicResource Elevation.Raised}">
-      <StackPanel Margin="8" Spacing="4" Width="132">
-        <!-- ux-principles.md §5, "keyboard-first, mouse-complete": AccessText's underscore is a
-             real Alt+letter mnemonic (Avalonia's built-in AccessKeyHandler), not decoration — it
-             both binds the shortcut and renders the visible hint the principle calls for. -->
-        <!-- #218: nav icons, same stroke-Path pattern as the status icons (#206) — stroke follows
-             the button's own Foreground so selected/hover states color the icon for free. -->
-        <Button x:Name="NavHomeButton" Classes="nav" Classes.selected="{Binding IsHomeVisible}"
-                HorizontalAlignment="Stretch">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Home}"
-                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="_Home" VerticalAlignment="Center" />
-          </StackPanel>
+      <StackPanel Margin="8" Spacing="5" Width="45">
+        <!-- #1071: the rail is icon-only now — three bordered glyphs ▤ ◱ ⚙ (docs/design/02-screens.md,
+             every screen). The labels and their Alt-mnemonics give way to ToolTip.Tip; keyboard reach
+             stays through tab order. Icon stroke follows the button's Foreground, so the active
+             destination's accent glyph comes for free from Button.nav.selected (Base.axaml). -->
+        <!-- ▤ Rooms — the front door. #336 made "the record you have open" one destination; #1071
+             folds Home into it, so one button covers the rooms world: selected whether the first-run
+             surface or an open room is showing, click lands on the open room or (none open) first run. -->
+        <Button x:Name="NavRoomsButton" Classes="nav" Classes.selected="{Binding IsRoomsFrontDoorSelected}"
+                ToolTip.Tip="Rooms">
+          <Path Classes="nav-icon" Data="{StaticResource Icon.Task}"
+                StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                Width="15" Height="15" Stretch="Uniform" />
         </Button>
-        <!-- #336: one destination for "the record you have open", whichever shape it is. This was
-             two rail buttons (Task and Chat) that a user had to already know the answer to before
-             navigating — the shape of a record is a property of the record, not a choice. -->
-        <Button x:Name="NavRoomButton" Classes="nav" Classes.selected="{Binding IsDetailVisible}"
-                HorizontalAlignment="Stretch">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Task}"
-                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="_Open" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
+        <!-- ◱ Author — the template/authoring world (02-screens' template + drawing screens). -->
         <Button x:Name="NavAuthorButton" Classes="nav" Classes.selected="{Binding IsAuthorVisible}"
-                HorizontalAlignment="Stretch">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Author}"
-                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="_Author" VerticalAlignment="Center" />
-          </StackPanel>
+                ToolTip.Tip="Author">
+          <Path Classes="nav-icon" Data="{StaticResource Icon.Author}"
+                StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                Width="15" Height="15" Stretch="Uniform" />
         </Button>
-        <!-- #1068: Settings, the former Remote destination — it folds pairing ("Your phone") in
-             alongside Workers and Appearance (02-screens). -->
+        <!-- ⚙ Settings (#1068) — Workers, Your phone, Appearance. -->
         <Button x:Name="NavSettingsButton" Classes="nav" Classes.selected="{Binding IsSettingsVisible}"
-                HorizontalAlignment="Stretch">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Settings}"
-                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="_Settings" VerticalAlignment="Center" />
-          </StackPanel>
+                ToolTip.Tip="Settings">
+          <Path Classes="nav-icon" Data="{StaticResource Icon.Settings}"
+                StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                Width="15" Height="15" Stretch="Uniform" />
         </Button>
-        <!-- #336 removed two rail buttons. Chat folded into "Open" above (one destination, two
-             renderings). Tasks became the permanent switcher list to the right of this rail — a
-             fleet you can only see by navigating away from your work is not a switcher; its
-             management affordances live on at the foot of that list. NavChatButton/NavTasksButton
-             are gone as controls, not merely hidden. -->
       </StackPanel>
     </Border>
 

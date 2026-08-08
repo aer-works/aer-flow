@@ -195,7 +195,8 @@ public class DesignTokenDriftTests
     private static readonly HashSet<string> NonStatusGlyphs = new(StringComparer.Ordinal)
     {
         "Icon.Refresh",
-        "Icon.Home",
+        // Icon.Home retired with #1071's rail restyle — the Home rail button folded into the one ▤
+        // Rooms front door, so its house glyph has no remaining use (mirrors #1068 dropping Icon.Remote).
         "Icon.Task",
         "Icon.Author",
         "Icon.Folder",
