@@ -140,9 +140,8 @@
               </Button>
             </StackPanel>
           </DockPanel>
-          <!-- #1072: "Needs you" is a filter on the rooms list, not the front door
-               (docs/design/02-screens.md:806). On, the list narrows to rooms with a paused step and
-               those rows expand in place to their step(s) — the retired Home inbox, relocated. -->
+          <!-- #1072: the switcher's needs-you filter toggle — RoomsViewModel.NeedsYouOnly carries what
+               it does and the design behind it. -->
           <ToggleButton x:Name="SwitcherNeedsYouToggle" IsChecked="{Binding Rooms.NeedsYouOnly}"
                         HorizontalAlignment="Left" Padding="8,3" Margin="0,2,0,0"
                         ToolTip.Tip="Show only rooms that need you">
@@ -163,8 +162,7 @@
 
         <TextBlock DockPanel.Dock="Top" Classes="caption secondary" Margin="12,4,12,8"
                    Text="No rooms yet." IsVisible="{Binding Rooms.HasNoItems}" />
-        <!-- #1072: the "Needs you" filter is on but nothing is waiting — an honest empty state so a
-             filtered-to-empty list never reads as broken. -->
+        <!-- #1072: shown when the filter is on with nothing waiting — see RoomsViewModel.ShowNeedsYouEmpty. -->
         <TextBlock DockPanel.Dock="Top" Classes="caption secondary" Margin="12,4,12,8"
                    Text="Nothing needs you." IsVisible="{Binding Rooms.ShowNeedsYouEmpty}" />
 

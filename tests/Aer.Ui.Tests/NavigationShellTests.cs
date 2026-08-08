@@ -309,11 +309,10 @@ public class NavigationShellTests
         }
     }
 
-    // #1072: the Home decision inbox relocated to the switcher's "needs you" filter, which renders each
-    // paused step from the same HomeViewModel.BuildInboxItem derivation the inbox used (and the same
-    // RoomCardViewModel.DeriveStatus for the row status). These verify that derivation directly — what
-    // the filter draws — from the paused-room fixtures the inbox tests used. The switcher's per-row load
-    // and the filter narrowing are covered by RoomsViewModelNeedsYouFilterTests.
+    // #334/#1072: the paused-step derivation the switcher's filter renders comes from
+    // HomeViewModel.BuildInboxItem (status wording + preview) and RoomCardViewModel.DeriveStatus (row
+    // status). These exercise that derivation directly, from the paused-room fixtures — the narrowing
+    // and empty state itself live in RoomsViewModelTests.
     [Fact]
     public async Task A_paused_review_derives_a_needs_you_status_and_an_inbox_item_with_its_preview()
     {

@@ -131,12 +131,10 @@ public class MainWindowDecisionTests
         }
     }
 
-    // #1072: the Home decision inbox relocated to the switcher's "needs you" filter, so a gate answered
-    // anywhere retires its paused-step item from the matching switcher row's expanded list — RoomClient
-    // calls Rooms.RetireInboxItem (the relocated ex-#618 retire) on decision resolution. That RoomClient
-    // wiring is verified by review + build (there is no RoomClient/daemon-fleet double to drive it
-    // end-to-end here, the same limit #1069 recorded); this pair verifies the relocated retire itself,
-    // in both polarities.
+    // #1072: RoomClient calls Rooms.RetireInboxItem on decision resolution (see RoomsViewModel for what
+    // that does). That call site is verified by review + build — there is no RoomClient/daemon-fleet
+    // double to drive it end-to-end here, the same limit #1069 recorded; this pair verifies the retire
+    // method itself, in both polarities.
     private static Aer.Ui.Core.RoomFleetItem NeedsYouFleetItem(string roomPath, string name, int pausedSteps) =>
         new(roomPath, name, "Workflow", "Waiting for your review", pausedSteps, false,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, Status: Aer.Ui.Core.RoomCardStatus.NeedsYou);
