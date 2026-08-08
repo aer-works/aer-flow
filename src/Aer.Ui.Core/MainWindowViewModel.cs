@@ -15,7 +15,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 {
     public ObservableCollection<PausedStepViewModel> PausedSteps { get; } = [];
 
-    /// <summary>Home's cards + decision inbox (M19 Phase 2, #187) — see <see cref="HomeViewModel"/>.</summary>
+    /// <summary>The ▤ front door (M19 Phase 2, #187) — see <see cref="HomeViewModel"/>.</summary>
     public HomeViewModel Home { get; } = new();
 
     /// <summary>

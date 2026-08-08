@@ -42,7 +42,7 @@ public static class PlainLanguage
     };
 
     /// <summary>
-    /// The room-level headline — Home's card derivation, by delegation rather than by copy. This
+    /// The room-level headline — the shared room-status derivation (<c>RoomCardViewModel.DeriveStatus</c>), by delegation rather than by copy. This
     /// method used to restate the mapping and claim it was shared; the copy drifted (#976: no
     /// Cancelled arm, so a cancelled run's headline said "Finished" — the 0020 worked example,
     /// alive on a second surface) and hard-coded the review wording for every pause, missing

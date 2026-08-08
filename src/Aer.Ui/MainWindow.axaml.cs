@@ -2122,8 +2122,9 @@ public partial class MainWindow : Window
         => ViewModel.Home.RefreshAsync(_session, cancellationToken);
 
     /// <summary>
-    /// Rebuilds *both* surfaces that answer "what records exist" — Home's cards and the switcher's
-    /// list — after a structural change: a record was created, or one was opened for the first time.
+    /// Rebuilds *both* surfaces that answer "what records exist" — the ▤ front door's first-run empty
+    /// state and the switcher's list — after a structural change: a record was created, or one was
+    /// opened for the first time. (The recents cards this once also rebuilt retired with #1071.)
     /// </summary>
     /// <remarks>
     /// <para>

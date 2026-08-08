@@ -186,7 +186,6 @@ public sealed partial class RoomsViewModel : ObservableObject
         // so two loads for one row can overlap. Stamp this load's generation before the await; if a
         // newer load has since started, discard this one's result instead of appending on top of it.
         var generation = ++row.PausedStepsLoadGeneration;
-        row.PausedSteps.Clear();
 
         RoomProjection projection;
         try
@@ -198,6 +197,8 @@ public sealed partial class RoomsViewModel : ObservableObject
             // A room that no longer loads (deleted/moved/locked mid-read) carries no inline steps this
             // pass — its own row status handles the stale case (HomeViewModel's stale-list rule). Caught
             // here rather than escaping as an unobserved task exception through the fire-and-forget call.
+            // The existing list is left as-is on purpose: a swallowed reload must not blank a row that a
+            // prior good load had populated (second-reader finding — the clear used to run before this).
             return;
         }
 
@@ -206,6 +207,10 @@ public sealed partial class RoomsViewModel : ObservableObject
             return;
         }
 
+        // Only now that this load has both succeeded and won its generation do we replace the list.
+        // Clearing earlier (before the await, or before either check) blanked a validly-displayed row
+        // whenever an overlapping load then failed or was superseded.
+        row.PausedSteps.Clear();
         foreach (var step in projection.State.Steps)
         {
             if (step.Status == StepStatus.Paused)
@@ -219,6 +224,15 @@ public sealed partial class RoomsViewModel : ObservableObject
             }
         }
     }
+
+    /// <summary>
+    /// Test seam (#1072 second-reader): awaits one row's inline-step reload directly, so
+    /// <c>RoomsViewModelTests</c> can assert the failed-reload path leaves an already-populated list
+    /// intact — the fire-and-forget callers (<see cref="ApplyProjectionPush"/>, the filter toggle)
+    /// give a test nothing to await. Same reasoning as <see cref="AddTestItem"/>.
+    /// </summary>
+    internal Task ReloadRowPausedStepsForTestAsync(RoomFleetItemViewModel row) =>
+        LoadRowPausedStepsAsync(row, CancellationToken.None);
 
     /// <summary>
     /// #1072: the retired Home inbox's <c>RetireInboxItem</c>, relocated — a gate answered anywhere
@@ -597,9 +611,9 @@ public sealed partial class RoomFleetItemViewModel : ObservableObject
     }
 
     /// <summary>
-    /// This row's status as a mark-bearing state rather than a string (#461's vocabulary), so the
-    /// switcher draws the same silhouette for the same state as Home's cards do — decision 0006's
-    /// rule 2 is only worth anything if every surface honours it. Seeded on load from the fleet's
+    /// This row's status as a mark-bearing state rather than a string (#461's vocabulary), so every
+    /// surface draws the same silhouette for the same state — decision 0006's rule 2 is only worth
+    /// anything if every surface honours it. Seeded on load from the fleet's
     /// canonical <see cref="RoomFleetItem.Status"/> (#1051), then kept live by projection pushes
     /// (<see cref="ApplyProjection"/>). Null only for a never-run room the fleet reports no state for.
     /// </summary>

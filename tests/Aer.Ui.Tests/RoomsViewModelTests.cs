@@ -454,4 +454,29 @@ public class RoomsViewModelTests
         Assert.True(viewModel.HasNoItems);
         Assert.False(viewModel.ShowNeedsYouEmpty);
     }
+
+    [Fact]
+    public async Task A_failed_reload_leaves_an_already_loaded_rows_inline_steps_intact_rather_than_blanking_them()
+    {
+        // Second-reader finding: LoadRowPausedStepsAsync used to Clear() the inline list before the
+        // load resolved, so a fire-and-forget reload that then failed (room deleted/locked mid-read)
+        // blanked a row a prior good load had populated. The fix defers the clear until the load has
+        // both succeeded and won its generation. Control arm: the reload targets a directory with no
+        // snapshot, so RoomProjectionLoader.LoadAsync throws and the catch is the path under test.
+        var viewModel = new RoomsViewModel();
+        var row = viewModel.AddTestItem(
+            NeedsYouItem(Path.Combine(Path.GetTempPath(), $"ui-missing-{Guid.NewGuid():N}")));
+
+        // Stand in for a prior successful load: the expanded row already shows one paused step.
+        row.PausedSteps.Add(new InboxItemViewModel(
+            row.RoomDirectoryPath, "room", "architect", "Waiting for your review", "preview",
+            PausePointKind.ReadyForReview, _ => Task.CompletedTask));
+        Assert.Single(row.PausedSteps);
+
+        await viewModel.ReloadRowPausedStepsForTestAsync(row);
+
+        // The reload failed (no snapshot on disk), so the previously-displayed step must remain. Before
+        // the fix this was zero — the up-front Clear() had already blanked it.
+        Assert.Single(row.PausedSteps);
+    }
 }
