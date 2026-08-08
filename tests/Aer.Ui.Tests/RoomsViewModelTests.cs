@@ -399,4 +399,48 @@ public class RoomsViewModelTests
         Assert.True(session.IsSession);
         Assert.False(workflow.IsSession);
     }
+
+    // ---- #1072: the "Needs you" filter ----
+
+    private static RoomFleetItem NeedsYouItem(string path) =>
+        new(path, FriendlyName: path, TypeLabel: "solo-run-template", StatusText: "Waiting for your review",
+            PausedStepCount: 1, IsArchived: false, Created: DateTimeOffset.UnixEpoch, Updated: DateTimeOffset.UnixEpoch,
+            Status: RoomCardStatus.NeedsYou);
+
+    [Fact]
+    public void NeedsYouOnly_collapses_only_the_rows_with_no_paused_step()
+    {
+        var viewModel = new RoomsViewModel();
+        var waiting = viewModel.AddTestItem(NeedsYouItem("/tasks/waiting"));
+        var idle = viewModel.AddTestItem(NewItem("/tasks/idle"));
+
+        viewModel.NeedsYouOnly = true;
+
+        // A room that needs you stays; a room that doesn't is filtered out (its container collapses).
+        Assert.False(waiting.IsFilteredOut);
+        Assert.True(idle.IsFilteredOut);
+
+        viewModel.NeedsYouOnly = false;
+
+        // The polarity control the other way: filter off, every row shows again.
+        Assert.False(waiting.IsFilteredOut);
+        Assert.False(idle.IsFilteredOut);
+    }
+
+    [Fact]
+    public void ShowNeedsYouEmpty_is_true_only_when_the_filter_is_on_and_nothing_is_waiting()
+    {
+        var viewModel = new RoomsViewModel();
+        viewModel.AddTestItem(NewItem("/tasks/idle"));
+
+        // Filter off: never the empty-state, whatever the rooms are.
+        Assert.False(viewModel.ShowNeedsYouEmpty);
+
+        viewModel.NeedsYouOnly = true;
+        Assert.True(viewModel.ShowNeedsYouEmpty);
+
+        // A room that needs you is present → not the empty state, even with the filter on.
+        viewModel.AddTestItem(NeedsYouItem("/tasks/waiting"));
+        Assert.False(viewModel.ShowNeedsYouEmpty);
+    }
 }

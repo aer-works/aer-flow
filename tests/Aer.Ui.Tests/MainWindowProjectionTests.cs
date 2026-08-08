@@ -205,9 +205,10 @@ public class MainWindowProjectionTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            // M19 Phase 2 (#187): the recents list is projected as Home's task cards now.
-            var card = Assert.Single(window.ViewModel.Home.RoomCards);
-            Assert.Equal(Path.GetFullPath(roomDirectory), card.RoomDirectoryPath);
+            // #1071: the recents cards retired to the permanent switcher; opening a room still records
+            // it, so the ▤ front door's first-run empty state clears and the room box shows the opened
+            // directory. (The switcher's own row content is daemon-driven, covered by the fleet tests.)
+            Assert.False(window.ViewModel.Home.HasNoRooms);
             Assert.Equal(roomDirectory, window.FindViewControl<TextBox>("RoomDirectoryPathBox")!.Text);
         }
         finally
@@ -226,8 +227,8 @@ public class MainWindowProjectionTests
             var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
             await window.OpenAsync(notARoomDirectory, TestContext.Current.CancellationToken);
 
-            // M19 Phase 2 (#187): the recents list is projected as Home's task cards now.
-            Assert.Empty(window.ViewModel.Home.RoomCards);
+            // #1071: a directory that failed to load is not recorded, so the first-run empty state stays.
+            Assert.True(window.ViewModel.Home.HasNoRooms);
         }
         finally
         {
@@ -249,9 +250,9 @@ public class MainWindowProjectionTests
             var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
             await window.InitializeAsync(TestContext.Current.CancellationToken);
 
-            // M19 Phase 2 (#187): the recents list is projected as Home's task cards now.
-            var card = Assert.Single(window.ViewModel.Home.RoomCards);
-            Assert.Equal(Path.GetFullPath(roomDirectory), card.RoomDirectoryPath);
+            // #1071: a recorded room means the first-run empty state is cleared at startup (the recents
+            // cards this used to assert moved to the switcher).
+            Assert.False(window.ViewModel.Home.HasNoRooms);
         }
         finally
         {

@@ -131,74 +131,56 @@ public class MainWindowDecisionTests
         }
     }
 
-    [AvaloniaFact]
-    public async Task Answering_gate_retires_inbox_item_without_home_refresh()
+    // #1072: the Home decision inbox relocated to the switcher's "needs you" filter, so a gate answered
+    // anywhere retires its paused-step item from the matching switcher row's expanded list — RoomClient
+    // calls Rooms.RetireInboxItem (the relocated ex-#618 retire) on decision resolution. That RoomClient
+    // wiring is verified by review + build (there is no RoomClient/daemon-fleet double to drive it
+    // end-to-end here, the same limit #1069 recorded); this pair verifies the relocated retire itself,
+    // in both polarities.
+    private static Aer.Ui.Core.RoomFleetItem NeedsYouFleetItem(string roomPath, string name, int pausedSteps) =>
+        new(roomPath, name, "Workflow", "Waiting for your review", pausedSteps, false,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, Status: Aer.Ui.Core.RoomCardStatus.NeedsYou);
+
+    private static Aer.Ui.Core.InboxItemViewModel PausedStep(string roomPath, string name, string step, string exec) =>
+        new(roomPath, name, step, "Waiting for your review", "Preview",
+            Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, exec);
+
+    [Fact]
+    public void Answering_a_gate_retires_its_paused_step_from_the_switcher_row()
     {
-        var testRoot = Path.Combine(Path.GetTempPath(), $"ui-decide-retire-{Guid.NewGuid():N}");
-        var roomDirectory = Path.Combine(testRoot, "task");
-        try
-        {
-            var workflowFilePath = await WriteApprovalGateWorkflowAsync(testRoot);
-            var bindingsFilePath = await WriteApprovalGateBindingsAsync(testRoot);
-            var configStore = new LocalUiConfigurationStore(NewConfigFilePath());
-            await configStore.RecordOpenedAsync(roomDirectory);
+        var rooms = new Aer.Ui.Core.RoomsViewModel();
+        var roomPath = Path.Combine(Path.GetTempPath(), "task-a");
+        var row = rooms.AddTestItem(NeedsYouFleetItem(roomPath, "task-a", 1));
+        row.PausedSteps.Add(PausedStep(roomPath, "task-a", "step-a", "exec-1"));
 
-            var window = new MainWindow(configStore, Adapters);
+        rooms.RetireInboxItem(roomPath, new StepId("step-a"), new ExecutionId("exec-1"));
 
-            await window.RunAsync(roomDirectory, workflowFilePath, bindingsFilePath, TestContext.Current.CancellationToken);
-
-            // Seed the inbox item in Home
-            await window.ViewModel.Home.RefreshAsync(
-                window.Session,
-                path => window.OpenAsync(path));
-
-            var inboxItem = Assert.Single(window.ViewModel.Home.InboxItems);
-            Assert.Equal("a", inboxItem.StepName);
-
-            var pausedStep = Assert.Single(window.ViewModel.PausedSteps);
-
-            // Decide inline without calling Home's refresh
-            await pausedStep.ApproveCommand.ExecuteAsync(null);
-
-            // Assert inbox item is gone immediately
-            Assert.Empty(window.ViewModel.Home.InboxItems);
-        }
-        finally
-        {
-            DirectoryCleanup.DeleteRecursively(testRoot);
-        }
+        Assert.Empty(row.PausedSteps);
     }
 
     [Fact]
-    public void Decision_polarity_does_not_retire_unmatched_inbox_items()
+    public void Retiring_a_gate_leaves_an_unmatched_paused_step_in_place()
     {
-        var home = new Aer.Ui.Core.HomeViewModel();
+        // The polarity control: only the answered gate's item is retired, matched by room + step +
+        // execution — a different step in the same room, and any step in another room, both survive.
+        var rooms = new Aer.Ui.Core.RoomsViewModel();
         var roomPath1 = Path.Combine(Path.GetTempPath(), "task1");
         var roomPath2 = Path.Combine(Path.GetTempPath(), "task2");
+        var row1 = rooms.AddTestItem(NeedsYouFleetItem(roomPath1, "Task 1", 2));
+        var row2 = rooms.AddTestItem(NeedsYouFleetItem(roomPath2, "Task 2", 1));
 
-        var item1 = new Aer.Ui.Core.InboxItemViewModel(
-            roomPath1, "Task 1", "step-a", "Status", "Preview",
-            Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
+        var item1 = PausedStep(roomPath1, "Task 1", "step-a", "exec-1");
+        var item2 = PausedStep(roomPath1, "Task 1", "step-b", "exec-1");
+        var item3 = PausedStep(roomPath2, "Task 2", "step-a", "exec-1");
+        row1.PausedSteps.Add(item1);
+        row1.PausedSteps.Add(item2);
+        row2.PausedSteps.Add(item3);
 
-        var item2 = new Aer.Ui.Core.InboxItemViewModel(
-            roomPath1, "Task 1", "step-b", "Status", "Preview",
-            Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
+        // Retire step-a of task 1 — its row loses that one item; step-b and task 2's step-a stay.
+        rooms.RetireInboxItem(roomPath1, new StepId("step-a"), new ExecutionId("exec-1"));
 
-        var item3 = new Aer.Ui.Core.InboxItemViewModel(
-            roomPath2, "Task 2", "step-a", "Status", "Preview",
-            Aer.Flow.Domain.PausePointKind.ReadyForReview, _ => Task.CompletedTask, "exec-1");
-
-        home.InboxItems.Add(item1);
-        home.InboxItems.Add(item2);
-        home.InboxItems.Add(item3);
-
-        // Retire step-a of task 1
-        home.RetireInboxItem(roomPath1, new StepId("step-a"), new ExecutionId("exec-1"));
-
-        Assert.Equal(2, home.InboxItems.Count);
-        Assert.DoesNotContain(item1, home.InboxItems);
-        Assert.Contains(item2, home.InboxItems);
-        Assert.Contains(item3, home.InboxItems);
+        Assert.Equal(new[] { item2 }, row1.PausedSteps);
+        Assert.Equal(new[] { item3 }, row2.PausedSteps);
     }
 
     [AvaloniaFact]
