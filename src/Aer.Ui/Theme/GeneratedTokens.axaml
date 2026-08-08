@@ -31,6 +31,13 @@
       <Color x:Key="StatusCancelledColor">#88969C</Color>
       <Color x:Key="StatusQueuedColor">#88969C</Color>
       <Color x:Key="StatusUnavailableColor">#88969C</Color>
+      <SolidColorBrush x:Key="Color.Accent">#3F8C87</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Background">#F2F4F5</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.SurfaceRaised">#FFFFFF</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.SurfaceSubtle">#E7EBEC</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Border">#D6DDDF</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Text">#1B2226</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.TextSecondary">#5A676D</SolidColorBrush>
     </ResourceDictionary>
     <ResourceDictionary x:Key="Dark">
       <Color x:Key="BrandAccentColor">#5FB3AD</Color>
@@ -53,6 +60,13 @@
       <Color x:Key="StatusCancelledColor">#6C7A80</Color>
       <Color x:Key="StatusQueuedColor">#6C7A80</Color>
       <Color x:Key="StatusUnavailableColor">#6C7A80</Color>
+      <SolidColorBrush x:Key="Color.Accent">#5FB3AD</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Background">#14191B</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.SurfaceRaised">#1B2124</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.SurfaceSubtle">#101517</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Border">#2A3236</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.Text">#DCE4E6</SolidColorBrush>
+      <SolidColorBrush x:Key="Color.TextSecondary">#94A3A8</SolidColorBrush>
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 
