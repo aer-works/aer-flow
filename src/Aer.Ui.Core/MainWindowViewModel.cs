@@ -27,7 +27,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsHomeVisible))]
     [NotifyPropertyChangedFor(nameof(IsRoomVisible))]
     [NotifyPropertyChangedFor(nameof(IsAuthorVisible))]
-    [NotifyPropertyChangedFor(nameof(IsRemoteVisible))]
+    [NotifyPropertyChangedFor(nameof(IsSettingsVisible))]
     [NotifyPropertyChangedFor(nameof(IsChatVisible))]
     [NotifyPropertyChangedFor(nameof(IsRoomsVisible))]
     [NotifyPropertyChangedFor(nameof(IsDetailVisible))]
@@ -36,9 +36,26 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public bool IsHomeVisible => CurrentSection == ShellSection.Home;
     public bool IsRoomVisible => CurrentSection == ShellSection.Task;
     public bool IsAuthorVisible => CurrentSection == ShellSection.Author;
-    public bool IsRemoteVisible => CurrentSection == ShellSection.Remote;
+    public bool IsSettingsVisible => CurrentSection == ShellSection.Settings;
     public bool IsChatVisible => CurrentSection == ShellSection.Chat;
     public bool IsRoomsVisible => CurrentSection == ShellSection.Rooms;
+
+    /// <summary>
+    /// The Settings → Appearance theme choice (#1068) — one of <see cref="ThemeNames"/>. Pure
+    /// presentation state like <see cref="CurrentSection"/>: the actual variant is applied to the
+    /// application by the Avalonia layer, and the persisted value is loaded into this at startup.
+    /// Defaults to <see cref="ThemeNames.System"/> (follow the OS), the app's behaviour before the
+    /// control existed. The three <c>IsTheme*</c> flags drive the toggle's selected state.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsThemeLight))]
+    [NotifyPropertyChangedFor(nameof(IsThemeDark))]
+    [NotifyPropertyChangedFor(nameof(IsThemeSystem))]
+    private string themePreference = ThemeNames.System;
+
+    public bool IsThemeLight => ThemePreference == ThemeNames.Light;
+    public bool IsThemeDark => ThemePreference == ThemeNames.Dark;
+    public bool IsThemeSystem => ThemePreference == ThemeNames.System;
 
     /// <summary>
     /// Whether the shell is showing an opened record, whichever shape it has (#336). The switcher

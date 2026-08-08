@@ -7,10 +7,13 @@
              xmlns:vm="clr-namespace:Aer.Ui.Core;assembly=Aer.Ui.Core"
              x:Class="Aer.Ui.Views.RemoteView"
              x:DataType="vm:MainWindowViewModel">
-  <ScrollViewer>
-    <StackPanel Margin="24" Spacing="{DynamicResource Space.8}" MaxWidth="760" HorizontalAlignment="Left">
-      <TextBlock Classes="display" Text="Remote Access" />
-
+  <!-- #1068: folded into Settings' "Your phone" group. This control is now an embeddable content
+       block — the outer scroll, margin and page title are provided by SettingsView, so a nested
+       ScrollViewer and a second "Remote Access" heading don't stack inside the Settings page. The
+       compact "Your phone" summary 02-screens draws (paired device + last seen, one line) is a
+       separate design reconciliation this control's own #384 note flags; this slice relocates the
+       existing pairing UI without redrawing it. -->
+  <StackPanel Spacing="{DynamicResource Space.8}" HorizontalAlignment="Left">
       <StackPanel Spacing="{DynamicResource Space.3}">
         <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Remote.StatusText}" />
         <TextBlock Classes="secondary" Foreground="{DynamicResource Status.Failed}" TextWrapping="Wrap"
@@ -162,5 +165,4 @@
         </ItemsControl>
       </StackPanel>
     </StackPanel>
-  </ScrollViewer>
 </UserControl>

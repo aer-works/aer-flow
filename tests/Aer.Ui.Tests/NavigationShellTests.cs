@@ -461,7 +461,66 @@ public class NavigationShellTests
         Assert.False(window.ViewModel.IsHomeVisible);
         Assert.False(window.ViewModel.IsRoomVisible);
         Assert.False(window.ViewModel.IsChatVisible);
-        Assert.False(window.ViewModel.IsRemoteVisible);
+        Assert.False(window.ViewModel.IsSettingsVisible);
+    }
+
+    /// <summary>
+    /// #1068: Settings is the former Remote destination. Navigating to it shows the Settings section
+    /// (hiding everything else), and the pairing UI that used to be its own destination is folded in —
+    /// reachable through the RemoteView embedded in SettingsView, so the fold didn't drop it.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task NavigatingToSettings_showsSettingsAndFoldsInTheRemotePairingSurface()
+    {
+        var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+        await window.InitializeAsync(TestContext.Current.CancellationToken);
+
+        window.ViewModel.CurrentSection = ShellSection.Settings;
+
+        Assert.True(window.ViewModel.IsSettingsVisible);
+        Assert.False(window.ViewModel.IsHomeVisible);
+        Assert.False(window.ViewModel.IsRoomVisible);
+        Assert.False(window.ViewModel.IsChatVisible);
+        Assert.False(window.ViewModel.IsRoomsVisible);
+
+        // The pairing controls survive the fold: they now resolve through SettingsView, not a
+        // standalone Remote view. A null here means the fold dropped the surface.
+        Assert.NotNull(window.RemoteToggleButton);
+        Assert.NotNull(window.ThemeSystemButton);
+    }
+
+    /// <summary>
+    /// #1068: choosing a theme in Settings → Appearance applies it to the running app, marks that
+    /// choice selected on the toggle, and persists it so the next launch opens in it. Starts from the
+    /// System default so the assertions discriminate a real change from a no-op.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Choosing_a_theme_applies_it_marks_it_selected_and_persists_it()
+    {
+        var configFilePath = NewConfigFilePath();
+        var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
+        await window.InitializeAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(window.ViewModel.IsThemeSystem);
+
+        var original = Avalonia.Application.Current!.RequestedThemeVariant;
+        try
+        {
+            await window.ChooseThemeAsync(ThemeNames.Dark);
+
+            Assert.Equal(ThemeNames.Dark, window.ViewModel.ThemePreference);
+            Assert.True(window.ViewModel.IsThemeDark);
+            Assert.False(window.ViewModel.IsThemeSystem);
+            Assert.Equal(Avalonia.Styling.ThemeVariant.Dark, Avalonia.Application.Current!.RequestedThemeVariant);
+            Assert.Equal(
+                ThemeNames.Dark,
+                await new LocalUiConfigurationStore(configFilePath).LoadThemeAsync(TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            // Theme is app-global; don't leak the change into other tests.
+            Avalonia.Application.Current!.RequestedThemeVariant = original;
+        }
     }
 
     [AvaloniaFact]

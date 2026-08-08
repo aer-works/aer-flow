@@ -23,6 +23,54 @@ public class LocalUiConfigurationStoreTests
     }
 
     [Fact]
+    public async Task No_theme_recorded_loads_as_null_meaning_follow_the_os()
+    {
+        var store = new LocalUiConfigurationStore(NewConfigFilePath());
+
+        var theme = await store.LoadThemeAsync(TestContext.Current.CancellationToken);
+
+        Assert.Null(theme);
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    [InlineData("System")]
+    public async Task A_recorded_theme_round_trips(string chosen)
+    {
+        var store = new LocalUiConfigurationStore(NewConfigFilePath());
+
+        await store.RecordThemeAsync(chosen, TestContext.Current.CancellationToken);
+        var theme = await store.LoadThemeAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(chosen, theme);
+    }
+
+    [Fact]
+    public async Task Recording_a_theme_leaves_the_recents_list_intact()
+    {
+        // Theme and recents share one config file; writing one must not clobber the other.
+        var configFilePath = NewConfigFilePath();
+        var store = new LocalUiConfigurationStore(configFilePath);
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-config-theme-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(roomDirectory);
+        try
+        {
+            await store.RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
+            await store.RecordThemeAsync("Dark", TestContext.Current.CancellationToken);
+
+            Assert.Equal("Dark", await store.LoadThemeAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(
+                Path.GetFullPath(roomDirectory),
+                Assert.Single(await store.LoadRecentRoomDirectoriesAsync(TestContext.Current.CancellationToken)));
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
+    [Fact]
     public async Task A_recorded_directory_is_the_first_entry_on_the_next_load()
     {
         var configFilePath = NewConfigFilePath();

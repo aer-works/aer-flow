@@ -202,6 +202,9 @@ public class DesignTokenDriftTests
         "Icon.Remote",
         "Icon.Chat",
         "Icon.Fleet",
+        // #1068: the Settings nav destination's gear — a control (where you go to adjust things), not a
+        // state a room can be in, so it is deliberately not in the token-driven status ramp.
+        "Icon.Settings",
     };
 
     /// <summary>
