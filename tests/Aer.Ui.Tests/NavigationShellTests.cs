@@ -508,4 +508,19 @@ public class NavigationShellTests
         // The refresh affordance the header already had must survive the "+ New" restructure.
         Assert.NotNull(window.FindControl<Button>("SwitcherRefreshButton"));
     }
+
+    /// <summary>
+    /// #1062: Home used to carry a "Start from template" button beside its "Rooms" heading that
+    /// duplicated the empty-state card's identical button (both fired OnStartTemplateClick), so the
+    /// empty state showed two stacked. With the switcher's "+ New" now the always-available new-room
+    /// affordance (#1061), that header button is gone — the empty-state card's one remains.
+    /// </summary>
+    [AvaloniaFact]
+    public void Home_no_longer_carries_a_duplicate_start_from_template_button_beside_its_heading()
+    {
+        var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+
+        Assert.Null(window.FindViewControl<Button>("HeaderStartTemplateButton"));
+        Assert.NotNull(window.FindViewControl<Button>("StartTemplateButton"));
+    }
 }

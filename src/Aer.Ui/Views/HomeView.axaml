@@ -42,12 +42,9 @@
       </StackPanel>
 
       <StackPanel Spacing="{DynamicResource Space.3}">
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch">
-        <TextBlock Classes="heading" Text="Rooms" VerticalAlignment="Center" />
-        <Button x:Name="HeaderStartTemplateButton" Classes="accent" Margin="16,0,0,0" Click="OnStartTemplateClick" VerticalAlignment="Center">
-          <AccessText Text="_Start from template" />
-        </Button>
-      </StackPanel>
+      <!-- The new-room affordance lives in the switcher header ("+ New", #1061) and the empty-state
+           card below; a third "Start from template" here duplicated both (#1062). -->
+      <TextBlock Classes="heading" Text="Rooms" />
       <!-- The empty state says what to do next (Phase 5): first run, no history yet.
            x:Name is a testability seam for journey J8's desktop leg (#313) — the view-mounted
            test asserts this card is shown with real actions on an empty first run. -->
