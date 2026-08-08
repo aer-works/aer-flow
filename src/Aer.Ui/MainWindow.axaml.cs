@@ -829,14 +829,33 @@ public partial class MainWindow : Window
             return;
         }
 
-        chat.BeginSend(message, chat.Messages.Count(m => m.IsFromUser));
+        // #1074: the composer never blocks (slice of #462). A send while a turn is in flight queues
+        // rather than posting a second, concurrent turn; MainWindow's live-refresh poll drains the
+        // queue one message per completion. EnqueueMessage clears the composer, same as BeginSend does.
+        if (chat.IsSending)
+        {
+            chat.EnqueueMessage(message);
+            return;
+        }
 
+        chat.BeginSend(message, chat.LastKnownTurnsCount);
+        await PostChatTurnAsync(roomDirectoryPath, message).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Posts one already-in-flight chat turn to the daemon (#262) and surfaces a dispatch failure.
+    /// The caller marks the send in flight first — <see cref="ChatViewModel.BeginSend"/> for a typed
+    /// message, <see cref="ChatViewModel.BeginDrainedSend"/> for a queued one (#1074) — so this does
+    /// only the post and its failure mapping; completion is observed by the live-refresh poll.
+    /// </summary>
+    private async Task PostChatTurnAsync(string roomDirectoryPath, string message)
+    {
         var outcome = await _session.SendSessionMessageAsync(
             new SendSessionMessageRequest(DirectoryPath: roomDirectoryPath, Message: message)).ConfigureAwait(true);
 
         if (outcome.ErrorMessage is { } error)
         {
-            chat.FailSend(error);
+            ViewModel.Chat.FailSend(error);
         }
     }
 
@@ -1165,7 +1184,18 @@ public partial class MainWindow : Window
             var sessionMetadata = await _session.LoadSessionMetadataAsync(currentRoomDirectoryPath, cancellationToken).ConfigureAwait(true);
             if (sessionMetadata != null)
             {
-                ViewModel.Chat.LoadFromMetadata(sessionMetadata, currentRoomDirectoryPath);
+                var chat = ViewModel.Chat;
+                chat.LoadFromMetadata(sessionMetadata, currentRoomDirectoryPath);
+
+                // #1074: LoadFromMetadata clears IsSending when the turn lands — drain one queued
+                // message here, on the same tick that observed completion. Gated on no send-error
+                // showing so a failed queued send stops the drain with the rest of the queue intact,
+                // rather than the next tick cascading the whole queue into repeated failures.
+                if (!chat.IsSending && !chat.HasStatusText && chat.TryDequeueQueuedMessage(out var queued))
+                {
+                    chat.BeginDrainedSend(queued, sessionMetadata.Turns.Count);
+                    await PostChatTurnAsync(currentRoomDirectoryPath, queued).ConfigureAwait(true);
+                }
             }
         }
 

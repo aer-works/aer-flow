@@ -82,14 +82,38 @@
                   IsVisible="{Binding Chat.IsSessionOpen}">
         <!-- AcceptsReturn stays true so Shift+Enter inserts a newline; a bare Enter is intercepted by
              MainWindow's OnChatInputBoxKeyDown and sends instead. -->
+        <!-- #1074 (slice of #462): the composer never disables while a turn is in flight — a send
+             then queues (below) instead of posting a concurrent turn. "A busy anything is never a
+             reason you cannot act" (02-screens.md). -->
         <TextBox x:Name="ChatInputBox" Width="600" AcceptsReturn="True" MaxHeight="80"
-                 Text="{Binding Chat.InputText}" IsEnabled="{Binding !Chat.IsSending}"
+                 Text="{Binding Chat.InputText}"
                  PlaceholderText="Reply…" />
-        <Button x:Name="ChatSendButton" Classes="accent" Content="Send"
-                IsEnabled="{Binding !Chat.IsSending}" />
+        <Button x:Name="ChatSendButton" Classes="accent" Content="Send" />
         <Button x:Name="ChatCommandsButton" Content="Commands" />
         <ProgressBar IsIndeterminate="True" Width="20" Height="20" VerticalAlignment="Center"
                      IsVisible="{Binding Chat.IsSending}" />
+      </StackPanel>
+
+      <!-- #1074: messages typed during an in-flight turn wait here and send when it frees — visible
+           and removable, per the design's "the queue … says what it is waiting for". Kept visually
+           plain on purpose; rich message rendering is #267. -->
+      <StackPanel IsVisible="{Binding Chat.HasQueuedMessages}" Spacing="{DynamicResource Space.1}"
+                  Margin="0,4,0,0">
+        <TextBlock Classes="caption secondary" Text="Queued — sends when the reply finishes." />
+        <ItemsControl ItemsSource="{Binding Chat.QueuedMessages}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:QueuedChatMessageViewModel">
+              <Border Classes="card you" Margin="0,0,0,4">
+                <DockPanel>
+                  <Button DockPanel.Dock="Right" Content="Remove" VerticalAlignment="Center"
+                          Command="{Binding RemoveCommand}" />
+                  <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Text}"
+                             VerticalAlignment="Center" />
+                </DockPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
       </StackPanel>
 
       <!-- "Start new chat" entry point (#290): no dependency on the template picker, which forced

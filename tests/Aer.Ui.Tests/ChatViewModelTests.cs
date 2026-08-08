@@ -104,6 +104,97 @@ public class ChatViewModelTests
         Assert.True(viewModel.HasStatusText);
     }
 
+    // ---- #1074: the composer never blocks — messages queue and drain on completion ----
+
+    [Fact]
+    public void EnqueueMessage_queues_the_message_clears_the_composer_and_flags_the_queue()
+    {
+        var viewModel = new ChatViewModel { InputText = "one more thing" };
+
+        viewModel.EnqueueMessage("one more thing");
+
+        Assert.True(viewModel.HasQueuedMessages);
+        Assert.Equal("one more thing", Assert.Single(viewModel.QueuedMessages).Text);
+        Assert.Equal(string.Empty, viewModel.InputText);
+    }
+
+    [Fact]
+    public void TryDequeueQueuedMessage_is_fifo_and_false_on_an_empty_queue()
+    {
+        var viewModel = new ChatViewModel();
+        viewModel.EnqueueMessage("first");
+        viewModel.EnqueueMessage("second");
+
+        Assert.True(viewModel.TryDequeueQueuedMessage(out var head));
+        Assert.Equal("first", head);
+        Assert.True(viewModel.TryDequeueQueuedMessage(out var next));
+        Assert.Equal("second", next);
+
+        // Empty now: nothing to drain, and the flag drops.
+        Assert.False(viewModel.TryDequeueQueuedMessage(out _));
+        Assert.False(viewModel.HasQueuedMessages);
+    }
+
+    [Fact]
+    public void A_queued_message_removed_before_it_sends_never_sends()
+    {
+        var viewModel = new ChatViewModel();
+        viewModel.EnqueueMessage("regret this");
+        var item = Assert.Single(viewModel.QueuedMessages);
+
+        item.RemoveCommand.Execute(null);
+
+        Assert.False(viewModel.HasQueuedMessages);
+        Assert.False(viewModel.TryDequeueQueuedMessage(out _));
+    }
+
+    [Fact]
+    public void BeginDrainedSend_preserves_the_in_progress_InputText_while_BeginSend_clears_it()
+    {
+        // The seam #1074 exists to protect: a queued message draining mid-turn must not wipe what the
+        // operator is currently typing. BeginSend (the just-typed path) still clears; BeginDrainedSend
+        // (the poll's drain path) must leave InputText alone. Both mark the send in flight.
+        var draining = new ChatViewModel { InputText = "still typing this" };
+        draining.BeginDrainedSend("an earlier queued line", currentTurnsCount: 0);
+        Assert.True(draining.IsSending);
+        Assert.Equal("still typing this", draining.InputText);
+
+        // Control arm — the ordinary typed-send path DOES clear the composer, so the assertion above
+        // is about BeginDrainedSend specifically, not about MarkInFlight never clearing.
+        var typed = new ChatViewModel { InputText = "send me" };
+        typed.BeginSend("send me", currentTurnsCount: 0);
+        Assert.Equal(string.Empty, typed.InputText);
+    }
+
+    [Fact]
+    public void A_fresh_send_clears_a_prior_send_error_so_the_drain_gate_reopens()
+    {
+        // The poll drains only while no send-error shows (so one failure can't cascade the queue). A
+        // fresh send must therefore clear that error, or draining would never resume after a failure.
+        var viewModel = new ChatViewModel();
+        viewModel.FailSend("the daemon was unreachable");
+        Assert.True(viewModel.HasStatusText);
+
+        viewModel.BeginDrainedSend("retry", currentTurnsCount: 0);
+
+        Assert.False(viewModel.HasStatusText);
+        Assert.Equal(string.Empty, viewModel.StatusText);
+    }
+
+    [Fact]
+    public void LoadFromMetadata_tracks_the_durable_turn_count_as_the_send_baseline()
+    {
+        // The completion check keys on metadata.Turns.Count; the send baseline must be that same
+        // durable number, not one derived from Messages (which carries the optimistic echo).
+        var viewModel = new ChatViewModel();
+        viewModel.LoadFromMetadata(MetadataWithTurns(
+            new SessionTurn(1, "claude", "Hello", "Hi", DateTimeOffset.UtcNow, false, false),
+            new SessionTurn(2, "claude", "More", "Sure", DateTimeOffset.UtcNow, false, false)),
+            "/tmp/sess-1");
+
+        Assert.Equal(2, viewModel.LastKnownTurnsCount);
+    }
+
     [Fact]
     public void AppendProgress_AccumulatesEachFragmentIntoLiveProgressText()
     {

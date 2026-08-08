@@ -309,6 +309,45 @@ public class NavigationShellTests
         }
     }
 
+    [AvaloniaFact]
+    public async Task A_send_while_a_turn_is_in_flight_queues_instead_of_posting_a_concurrent_turn()
+    {
+        // #1074 seam: the composer never blocks. With a turn in flight (IsSending), a bare Enter must
+        // QUEUE the message — visible and removable — not post a second concurrent turn. Discriminator:
+        // the queue was empty before, the composer clears after (the message went somewhere, not nowhere).
+        var roomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-queue-{Guid.NewGuid():N}");
+        try
+        {
+            await InteractiveSessionMaterializer.MaterializeToDirectoryAsync(
+                sessionId: "sess-queue-test", roomDirectoryPath: roomDirectory, adapter: "claude",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+            await window.OpenAsync(roomDirectory, TestContext.Current.CancellationToken);
+            Assert.Equal(ShellSection.Chat, window.ViewModel.CurrentSection);
+
+            // A turn is already running.
+            window.ViewModel.Chat.IsSending = true;
+            Assert.False(window.ViewModel.Chat.HasQueuedMessages);
+
+            window.ViewModel.Chat.InputText = "one more thing";
+            window.ChatInputBox.RaiseEvent(new KeyEventArgs
+            {
+                RoutedEvent = InputElement.KeyDownEvent,
+                Key = Key.Enter,
+                KeyModifiers = KeyModifiers.None,
+            });
+
+            Assert.True(window.ViewModel.Chat.HasQueuedMessages);
+            Assert.Equal("one more thing", Assert.Single(window.ViewModel.Chat.QueuedMessages).Text);
+            Assert.Equal(string.Empty, window.ViewModel.Chat.InputText);
+        }
+        finally
+        {
+            DirectoryCleanup.DeleteRecursively(roomDirectory);
+        }
+    }
+
     // #334/#1072: the paused-step derivation the switcher's filter renders comes from
     // HomeViewModel.BuildInboxItem (status wording + preview) and RoomCardViewModel.DeriveStatus (row
     // status). These exercise that derivation directly, from the paused-room fixtures — the narrowing
