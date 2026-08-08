@@ -401,7 +401,11 @@ public partial class MainWindow : Window
         _pairingCountdownTimer.Tick += (_, _) =>
         {
             ViewModel.Remote.TickPairingCodeCountdown();
-            if (ViewModel.Remote.PairingCodeExpiresInSeconds <= 0)
+            // Regenerate on expiry only while the pairing code is actually shown (ShowPairingBlock) —
+            // the same #1068 reasoning as RefreshAsync's mint gate: with remote off (or no host) the
+            // code isn't displayed, so refreshing it just churns the daemon's single active code while
+            // someone sits on Settings for an unrelated reason.
+            if (ViewModel.Remote.ShowPairingBlock && ViewModel.Remote.PairingCodeExpiresInSeconds <= 0)
             {
                 _ = ViewModel.Remote.GeneratePairingCodeAsync(_session);
             }

@@ -9,10 +9,10 @@
              x:DataType="vm:MainWindowViewModel">
   <!-- #1068: folded into Settings' "Your phone" group. This control is now an embeddable content
        block — the outer scroll, margin and page title are provided by SettingsView, so a nested
-       ScrollViewer and a second "Remote Access" heading don't stack inside the Settings page. The
-       compact "Your phone" summary 02-screens draws (paired device + last seen, one line) is a
-       separate design reconciliation this control's own #384 note flags; this slice relocates the
-       existing pairing UI without redrawing it. -->
+       ScrollViewer and a second "Remote Access" heading don't stack inside the Settings page. #1068
+       deliberately relocates the full pairing UI without redrawing it; reconciling this group to the
+       compact "Your phone" summary 02-screens draws (paired device + last seen, one line, with the
+       detailed flow progressively disclosed) is tracked by #1070. -->
   <StackPanel Spacing="{DynamicResource Space.8}" HorizontalAlignment="Left">
       <StackPanel Spacing="{DynamicResource Space.3}">
         <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Remote.StatusText}" />
