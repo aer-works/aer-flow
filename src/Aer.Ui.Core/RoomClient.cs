@@ -632,7 +632,7 @@ public sealed partial class RoomClient
                 {
                     ViewModel.DecisionStatusText = string.Empty;
                     ViewModel.IsMutationInFlight = false;
-                    ViewModel.Home.RetireInboxItem(roomDirectoryPath, stepId, executionId);
+                    ViewModel.Rooms.RetireInboxItem(roomDirectoryPath, stepId, executionId);
                     await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
                     return new MutationOutcome(null);
                 }
@@ -721,7 +721,7 @@ public sealed partial class RoomClient
             hostStopSource.Dispose();
         }
 
-        ViewModel.Home.RetireInboxItem(roomDirectoryPath, stepId, executionId);
+        ViewModel.Rooms.RetireInboxItem(roomDirectoryPath, stepId, executionId);
         await _reopenRoomAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
         return new MutationOutcome(null);
     }

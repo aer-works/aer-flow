@@ -65,13 +65,14 @@ public class NavigationShellTests
 
     /// <summary>
     /// #461: a cancelled run reaches <see cref="WorkflowStatus.Terminal"/> like any other — there is
-    /// no cancelled workflow status — so the card derivation fell through to "Finished" and told you
-    /// a task you had just stopped had completed. Cancellation is only visible in the steps.
+    /// no cancelled workflow status — so the status derivation fell through to "Finished" and told you
+    /// a task you had just stopped had completed. Cancellation is only visible in the steps. The
+    /// derivation is <see cref="RoomCardViewModel.DeriveStatus"/>, shared by the switcher and the fleet
+    /// loader (#1071 retired the Home cards this used to read it through).
     /// </summary>
-    [AvaloniaFact]
-    public async Task InitializeAsync_shows_a_cancelled_task_as_cancelled_and_not_as_finished()
+    [Fact]
+    public async Task A_cancelled_task_derives_as_cancelled_and_not_as_finished()
     {
-        var configFilePath = NewConfigFilePath();
         var executionId = new ExecutionId("a-1");
         var roomDirectory = await CreateRoomDirectoryAsync(
             TwoStepSnapshot(),
@@ -82,16 +83,11 @@ public class NavigationShellTests
             TestContext.Current.CancellationToken);
         try
         {
-            await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
+            var projection = await RoomProjectionLoader.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
-            await window.InitializeAsync(TestContext.Current.CancellationToken);
-
-            var card = Assert.Single(window.ViewModel.Home.RoomCards);
-
-            Assert.Equal(RoomCardStatus.Cancelled, card.Status);
-            Assert.Equal("Cancelled", card.StatusText);
+            var (statusText, status) = RoomCardViewModel.DeriveStatus(projection);
+            Assert.Equal(RoomCardStatus.Cancelled, status);
+            Assert.Equal("Cancelled", statusText);
         }
         finally
         {
@@ -154,53 +150,6 @@ public class NavigationShellTests
         return roomDirectory;
     }
 
-    /// <summary>
-    /// #616: pins the summary sentence — why cancelled and failed runs sit in neither count is
-    /// documented once, at <see cref="HomeViewModel"/>'s counting switch. This fixture read
-    /// "2 finished" before that switch keyed on the card's derivation.
-    /// </summary>
-    [AvaloniaFact]
-    public async Task InitializeAsync_does_not_count_a_cancelled_task_as_finished_in_the_summary()
-    {
-        var configFilePath = NewConfigFilePath();
-        var finishedId = new ExecutionId("f-1");
-        var finishedCriticId = new ExecutionId("f-2");
-        var cancelledId = new ExecutionId("c-1");
-        var finishedDirectory = await CreateRoomDirectoryAsync(
-            TwoStepSnapshot(),
-            [
-                new FlowEvent.ExecutionRequestAccepted(MakeRequest(finishedId, Architect)),
-                new FlowEvent.ExecutionSucceeded(finishedId),
-                new FlowEvent.ExecutionRequestAccepted(MakeRequest(finishedCriticId, Critic)),
-                new FlowEvent.ExecutionSucceeded(finishedCriticId),
-            ],
-            TestContext.Current.CancellationToken);
-        var cancelledDirectory = await CreateRoomDirectoryAsync(
-            TwoStepSnapshot(),
-            [
-                new FlowEvent.ExecutionRequestAccepted(MakeRequest(cancelledId, Architect)),
-                new FlowEvent.ExecutionCancelled(cancelledId),
-            ],
-            TestContext.Current.CancellationToken);
-        try
-        {
-            var store = new LocalUiConfigurationStore(configFilePath);
-            await store.RecordOpenedAsync(finishedDirectory, TestContext.Current.CancellationToken);
-            await store.RecordOpenedAsync(cancelledDirectory, TestContext.Current.CancellationToken);
-
-            var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
-            await window.InitializeAsync(TestContext.Current.CancellationToken);
-
-            Assert.Equal(
-                "Nothing is waiting on you — 0 working, 1 finished.",
-                window.ViewModel.Home.InboxSummaryText);
-        }
-        finally
-        {
-            DirectoryCleanup.DeleteRecursively(finishedDirectory);
-            DirectoryCleanup.DeleteRecursively(cancelledDirectory);
-        }
-    }
 
     [AvaloniaFact]
     public async Task InitializeAsync_starts_on_the_home_section()
@@ -211,7 +160,8 @@ public class NavigationShellTests
         Assert.Equal(ShellSection.Home, window.ViewModel.CurrentSection);
         Assert.True(window.ViewModel.IsHomeVisible);
         Assert.False(window.ViewModel.IsRoomVisible);
-        Assert.Equal("Nothing is waiting on you.", window.ViewModel.Home.InboxSummaryText);
+        // #1071: a bare launch lands on the ▤ front door's first-run surface, with no room open.
+        Assert.True(window.ViewModel.Home.HasNoRooms);
     }
 
     [AvaloniaFact]
@@ -359,30 +309,29 @@ public class NavigationShellTests
         }
     }
 
-    [AvaloniaFact]
-    public async Task InitializeAsync_surfaces_a_paused_recent_as_an_inbox_item_with_its_artifact_preview()
+    // #334/#1072: the paused-step derivation the switcher's filter renders comes from
+    // HomeViewModel.BuildInboxItem (status wording + preview) and RoomCardViewModel.DeriveStatus (row
+    // status). These exercise that derivation directly, from the paused-room fixtures — the narrowing
+    // and empty state itself live in RoomsViewModelTests.
+    [Fact]
+    public async Task A_paused_review_derives_a_needs_you_status_and_an_inbox_item_with_its_preview()
     {
-        var configFilePath = NewConfigFilePath();
         var roomDirectory = await CreatePausedRoomDirectoryAsync(
             "The plan looks solid overall.", TestContext.Current.CancellationToken);
         try
         {
-            await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
+            var projection = await RoomProjectionLoader.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
-            await window.InitializeAsync(TestContext.Current.CancellationToken);
+            var (statusText, status) = RoomCardViewModel.DeriveStatus(projection);
+            Assert.Equal(RoomCardStatus.NeedsYou, status);
+            Assert.Equal("Waiting for your review", statusText);
 
-            var card = Assert.Single(window.ViewModel.Home.RoomCards);
-            Assert.Equal(RoomCardStatus.NeedsYou, card.Status);
-            Assert.Equal("Waiting for your review", card.StatusText);
-
-            var item = Assert.Single(window.ViewModel.Home.InboxItems);
+            var pausedStep = projection.State.Steps.Single(s => s.Status == StepStatus.Paused);
+            var item = HomeViewModel.BuildInboxItem(roomDirectory, projection, pausedStep, _ => Task.CompletedTask);
             Assert.Equal("critic", item.StepName);
             Assert.Equal("Waiting for your review — review.md ready", item.StatusText);
             Assert.True(item.HasPreview);
             Assert.Equal("The plan looks solid overall.", item.PreviewText);
-            Assert.Equal("1 step is waiting for your review.", window.ViewModel.Home.InboxSummaryText);
         }
         finally
         {
@@ -390,30 +339,25 @@ public class NavigationShellTests
         }
     }
 
-    [AvaloniaFact]
-    public async Task InitializeAsync_surfaces_a_needs_input_pause_as_a_reply_not_a_review()
+    [Fact]
+    public async Task A_needs_input_pause_derives_a_reply_not_a_review()
     {
         // #334: the exact bug — a settled chat turn showed "Waiting for your review" and a [Review]
-        // button. A NeedsInput pause must read as "your turn to reply" on every Home surface.
-        var configFilePath = NewConfigFilePath();
+        // button. A NeedsInput pause must read as "your turn to reply" wherever the derivation renders.
         var roomDirectory = await CreateNeedsInputRoomDirectoryAsync("ok", TestContext.Current.CancellationToken);
         try
         {
-            await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
+            var projection = await RoomProjectionLoader.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
 
-            var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
-            await window.InitializeAsync(TestContext.Current.CancellationToken);
+            var (statusText, status) = RoomCardViewModel.DeriveStatus(projection);
+            Assert.Equal(RoomCardStatus.NeedsYou, status);
+            Assert.Equal("Waiting for your reply", statusText);
 
-            var card = Assert.Single(window.ViewModel.Home.RoomCards);
-            Assert.Equal(RoomCardStatus.NeedsYou, card.Status);
-            Assert.Equal("Waiting for your reply", card.StatusText);
-
-            var item = Assert.Single(window.ViewModel.Home.InboxItems);
+            var pausedStep = projection.State.Steps.Single(s => s.Status == StepStatus.Paused);
+            var item = HomeViewModel.BuildInboxItem(roomDirectory, projection, pausedStep, _ => Task.CompletedTask);
             Assert.Equal(PausePointKind.NeedsInput, item.Kind);
             Assert.Equal("Waiting for your reply", item.StatusText);
             Assert.Equal("Reply", item.ActionLabel);
-            Assert.Equal("1 room is waiting for your reply.", window.ViewModel.Home.InboxSummaryText);
         }
         finally
         {
@@ -421,26 +365,24 @@ public class NavigationShellTests
         }
     }
 
-    [AvaloniaFact]
-    public async Task Inbox_review_opens_the_task_and_navigates_to_the_task_section()
+    [Fact]
+    public async Task A_paused_step_item_opens_the_room_it_points_at()
     {
-        var configFilePath = NewConfigFilePath();
         var roomDirectory = await CreatePausedRoomDirectoryAsync(
             "Needs another pass at the error handling.", TestContext.Current.CancellationToken);
         try
         {
-            await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(roomDirectory, TestContext.Current.CancellationToken);
+            var projection = await RoomProjectionLoader.LoadAsync(roomDirectory, TestContext.Current.CancellationToken);
+            var pausedStep = projection.State.Steps.Single(s => s.Status == StepStatus.Paused);
 
-            var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
-            await window.InitializeAsync(TestContext.Current.CancellationToken);
-
-            var item = Assert.Single(window.ViewModel.Home.InboxItems);
+            string? opened = null;
+            var item = HomeViewModel.BuildInboxItem(
+                roomDirectory, projection, pausedStep, path => { opened = path; return Task.CompletedTask; });
             await item.ReviewCommand.ExecuteAsync(null);
 
-            Assert.Equal(ShellSection.Task, window.ViewModel.CurrentSection);
-            Assert.Equal(
-                Path.GetFullPath(roomDirectory), window.FindViewControl<TextBox>("RoomDirectoryPathBox")!.Text);
+            // Review opens the room the item points at — on the switcher that selects its row, whose
+            // existing open path renders the gate inline (#1072/#336).
+            Assert.Equal(roomDirectory, opened);
         }
         finally
         {
@@ -523,30 +465,13 @@ public class NavigationShellTests
         }
     }
 
-    [AvaloniaFact]
-    public async Task A_recent_that_no_longer_loads_renders_as_an_unavailable_card_not_an_error()
-    {
-        var configFilePath = NewConfigFilePath();
-        var notARoomDirectory = Path.Combine(Path.GetTempPath(), $"ui-shell-stale-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(notARoomDirectory);
-        try
-        {
-            await new LocalUiConfigurationStore(configFilePath)
-                .RecordOpenedAsync(notARoomDirectory, TestContext.Current.CancellationToken);
-
-            var window = new MainWindow(new LocalUiConfigurationStore(configFilePath));
-            await window.InitializeAsync(TestContext.Current.CancellationToken);
-
-            var card = Assert.Single(window.ViewModel.Home.RoomCards);
-            Assert.Equal(RoomCardStatus.Unavailable, card.Status);
-            Assert.Equal("Not available — moved, deleted, or not a room", card.StatusText);
-            Assert.Empty(window.ViewModel.Home.InboxItems);
-        }
-        finally
-        {
-            DirectoryCleanup.DeleteRecursively(notARoomDirectory);
-        }
-    }
+    // #1071 retired the Home recents cards, and with them the greyed "unavailable" rendering for a
+    // stale local recent — that was a Home-cards feature over LocalUiConfiguration recents, and the
+    // RoomCardStatus.Unavailable derivation had no other producer. The switcher lists the daemon fleet,
+    // where a directory with no snapshot reads "Not yet run" (RoomProjectionLoader.LoadFleetStatusAsync,
+    // unchanged); an explicit per-room "unavailable" state on the switcher is separate design scope
+    // (0018's unavailable band is host-reachability, not per-room deletion). So there is no Home-side
+    // behaviour left to assert, and this test is removed rather than left as a misleading skip.
 
     /// <summary>
     /// docs/design/02-screens.md:58 — the rooms list header reads "Rooms + New", "+ New" starting a

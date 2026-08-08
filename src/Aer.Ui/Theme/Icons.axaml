@@ -71,7 +71,6 @@
        "approve/check", "reject/cross" pairing); Retry reuses Icon.Refresh (an "again" arrow
        already exists, no need for a near-duplicate). Only the four genuinely new glyphs live
        here: Home, Task, Author, and Folder (the picker button, #212). -->
-  <StreamGeometry x:Key="Icon.Home">M 2,8 L 8,2.5 L 14,8 M 4,6.8 L 4,13 L 12,13 L 12,6.8</StreamGeometry>
 
   <!-- A checklist — three list lines, the last one shorter (owner feedback: both the original
        two-circles-and-a-diagonal draft *and* the flowchart-node draft that replaced it still read

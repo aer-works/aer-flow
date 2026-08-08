@@ -80,58 +80,34 @@
     <Border DockPanel.Dock="Left" Background="{DynamicResource Color.SurfaceRaised}"
             BorderBrush="{DynamicResource Color.BorderSubtle}" BorderThickness="0,0,1,0"
             BoxShadow="{DynamicResource Elevation.Raised}">
-      <StackPanel Margin="8" Spacing="4" Width="132">
-        <!-- ux-principles.md §5, "keyboard-first, mouse-complete": AccessText's underscore is a
-             real Alt+letter mnemonic (Avalonia's built-in AccessKeyHandler), not decoration — it
-             both binds the shortcut and renders the visible hint the principle calls for. -->
-        <!-- #218: nav icons, same stroke-Path pattern as the status icons (#206) — stroke follows
-             the button's own Foreground so selected/hover states color the icon for free. -->
-        <Button x:Name="NavHomeButton" Classes="nav" Classes.selected="{Binding IsHomeVisible}"
-                HorizontalAlignment="Stretch">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Home}"
-                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="_Home" VerticalAlignment="Center" />
-          </StackPanel>
+      <StackPanel Margin="8" Spacing="5" Width="45">
+        <!-- #1071: the rail is icon-only now — three bordered glyphs ▤ ◱ ⚙ (docs/design/02-screens.md,
+             every screen). The labels and their Alt-mnemonics give way to ToolTip.Tip; keyboard reach
+             stays through tab order. Icon stroke follows the button's Foreground, so the active
+             destination's accent glyph comes for free from Button.nav.selected (Base.axaml). -->
+        <!-- ▤ Rooms — the front door. #336 made "the record you have open" one destination; #1071
+             folds Home into it, so one button covers the rooms world: selected whether the first-run
+             surface or an open room is showing, click lands on the open room or (none open) first run. -->
+        <Button x:Name="NavRoomsButton" Classes="nav" Classes.selected="{Binding IsRoomsFrontDoorSelected}"
+                ToolTip.Tip="Rooms">
+          <Path Classes="nav-icon" Data="{StaticResource Icon.Task}"
+                StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                Width="15" Height="15" Stretch="Uniform" />
         </Button>
-        <!-- #336: one destination for "the record you have open", whichever shape it is. This was
-             two rail buttons (Task and Chat) that a user had to already know the answer to before
-             navigating — the shape of a record is a property of the record, not a choice. -->
-        <Button x:Name="NavRoomButton" Classes="nav" Classes.selected="{Binding IsDetailVisible}"
-                HorizontalAlignment="Stretch">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Task}"
-                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="_Open" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
+        <!-- ◱ Author — the template/authoring world (02-screens' template + drawing screens). -->
         <Button x:Name="NavAuthorButton" Classes="nav" Classes.selected="{Binding IsAuthorVisible}"
-                HorizontalAlignment="Stretch">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Author}"
-                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="_Author" VerticalAlignment="Center" />
-          </StackPanel>
+                ToolTip.Tip="Author">
+          <Path Classes="nav-icon" Data="{StaticResource Icon.Author}"
+                StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                Width="15" Height="15" Stretch="Uniform" />
         </Button>
-        <!-- #1068: Settings, the former Remote destination — it folds pairing ("Your phone") in
-             alongside Workers and Appearance (02-screens). -->
+        <!-- ⚙ Settings (#1068) — Workers, Your phone, Appearance. -->
         <Button x:Name="NavSettingsButton" Classes="nav" Classes.selected="{Binding IsSettingsVisible}"
-                HorizontalAlignment="Stretch">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <Path Classes="nav-icon" Data="{StaticResource Icon.Settings}"
-                  StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" />
-            <AccessText Text="_Settings" VerticalAlignment="Center" />
-          </StackPanel>
+                ToolTip.Tip="Settings">
+          <Path Classes="nav-icon" Data="{StaticResource Icon.Settings}"
+                StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                Width="15" Height="15" Stretch="Uniform" />
         </Button>
-        <!-- #336 removed two rail buttons. Chat folded into "Open" above (one destination, two
-             renderings). Tasks became the permanent switcher list to the right of this rail — a
-             fleet you can only see by navigating away from your work is not a switcher; its
-             management affordances live on at the foot of that list. NavChatButton/NavTasksButton
-             are gone as controls, not merely hidden. -->
       </StackPanel>
     </Border>
 
@@ -164,6 +140,13 @@
               </Button>
             </StackPanel>
           </DockPanel>
+          <!-- #1072: the switcher's needs-you filter toggle — RoomsViewModel.NeedsYouOnly carries what
+               it does and the design behind it. -->
+          <ToggleButton x:Name="SwitcherNeedsYouToggle" IsChecked="{Binding Rooms.NeedsYouOnly}"
+                        HorizontalAlignment="Left" Padding="8,3" Margin="0,2,0,0"
+                        ToolTip.Tip="Show only rooms that need you">
+            <TextBlock Classes="caption" Text="Needs you" />
+          </ToggleButton>
           <TextBlock Classes="caption secondary" Foreground="{DynamicResource Status.Failed}"
                      TextWrapping="Wrap" Text="{Binding Rooms.ErrorText}"
                      IsVisible="{Binding Rooms.HasErrorText}" />
@@ -179,35 +162,70 @@
 
         <TextBlock DockPanel.Dock="Top" Classes="caption secondary" Margin="12,4,12,8"
                    Text="No rooms yet." IsVisible="{Binding Rooms.HasNoItems}" />
+        <!-- #1072: shown when the filter is on with nothing waiting — see RoomsViewModel.ShowNeedsYouEmpty. -->
+        <TextBlock DockPanel.Dock="Top" Classes="caption secondary" Margin="12,4,12,8"
+                   Text="Nothing needs you." IsVisible="{Binding Rooms.ShowNeedsYouEmpty}" />
 
         <ListBox x:Name="SwitcherList" ItemsSource="{Binding Rooms.Items}"
                  SelectedItem="{Binding Rooms.CurrentItem}"
                  Background="Transparent" BorderThickness="0">
+          <!-- #1072: the "Needs you" filter collapses the container of any row it filters out, rather
+               than rebuilding the list — selection, sort and scroll survive the toggle. -->
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem" x:DataType="vm:RoomFleetItemViewModel">
+              <Setter Property="IsVisible" Value="{Binding !IsFilteredOut}" />
+            </Style>
+          </ListBox.Styles>
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:RoomFleetItemViewModel">
               <!-- Daily-driver row (docs/design/mockups/02-screens.html #daily): the state mark is a
                    *leading* glyph, with the name and a smaller state sub-line stacked to its right —
                    `mark · name · state`. The mark tops-aligns to sit beside the name line, not the
-                   state line below it. -->
-              <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}" Margin="0,2">
-                <!-- Decision 0006 rule 2: mark *and* word, never hue alone. The same marks Home's
-                     cards draw, from the same derivation — a second surface showing the same fact
-                     with its own vocabulary is how #461's "cancelled reads as Finished" came back. -->
-                <Path Data="{Binding Status, Converter={StaticResource StatusToIconGeometryConverter}}"
-                      Stroke="{Binding Status, Converter={StaticResource StatusToIconBrushConverter}}"
-                      Fill="{Binding Status, Converter={StaticResource StatusToIconFillConverter}}"
-                      StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
-                      Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Top" Margin="0,3,0,0" />
-                <StackPanel Spacing="1">
-                  <TextBlock Classes="body-strong" Text="{Binding FriendlyName}"
-                             TextTrimming="CharacterEllipsis" />
-                  <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-                    <TextBlock Classes="caption secondary" Text="{Binding StatusText}"
+                   state line below it. #1072: below it, the paused step(s) this room is waiting on,
+                   shown inline when the row is expanded (the needs-you filter auto-expands them). -->
+              <StackPanel Margin="0,2">
+                <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                  <!-- Decision 0006 rule 2: mark *and* word, never hue alone. The same marks the
+                       switcher and the fleet loader derive, from the one RoomCardViewModel.DeriveStatus
+                       — a second surface with its own vocabulary is how #461's "cancelled reads as
+                       Finished" came back. -->
+                  <Path Data="{Binding Status, Converter={StaticResource StatusToIconGeometryConverter}}"
+                        Stroke="{Binding Status, Converter={StaticResource StatusToIconBrushConverter}}"
+                        Fill="{Binding Status, Converter={StaticResource StatusToIconFillConverter}}"
+                        StrokeThickness="1.6" StrokeLineCap="Round" StrokeJoin="Round"
+                        Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Top" Margin="0,3,0,0" />
+                  <StackPanel Spacing="1">
+                    <TextBlock Classes="body-strong" Text="{Binding FriendlyName}"
                                TextTrimming="CharacterEllipsis" />
-                    <TextBlock Classes="caption secondary" Text="archived"
-                               IsVisible="{Binding IsArchived}" />
+                    <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+                      <TextBlock Classes="caption secondary" Text="{Binding StatusText}"
+                                 TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption secondary" Text="archived"
+                                 IsVisible="{Binding IsArchived}" />
+                    </StackPanel>
                   </StackPanel>
                 </StackPanel>
+                <!-- #1072 expand-in-place (0007): each paused step reads its plain status (reply vs
+                     review, #334) and a truncated one-line preview; clicking it selects the room, whose
+                     existing open path renders the gate inline — one decision surface, several entry
+                     points (02-screens.md:798). Full preview text lives in the room. -->
+                <ItemsControl ItemsSource="{Binding PausedSteps}" IsVisible="{Binding IsExpanded}"
+                              Margin="19,3,0,2">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:InboxItemViewModel">
+                      <Button Command="{Binding ReviewCommand}" Classes="quiet" Padding="6,3"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,1">
+                        <StackPanel Spacing="1">
+                          <TextBlock Classes="caption" Text="{Binding StatusText}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Classes="caption secondary" Text="{Binding PreviewText}"
+                                     IsVisible="{Binding HasPreview}" MaxLines="1"
+                                     TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
             </DataTemplate>
           </ListBox.ItemTemplate>

@@ -276,8 +276,12 @@ public partial class MainWindow : Window
             RefreshBindingsTemplateCrossCheck();
         };
         CheckBindingsAgainstTemplateButton.Click += (_, _) => RefreshBindingsTemplateCrossCheck();
-        NavHomeButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Home;
-        NavRoomButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Task;
+        // #1071: one ▤ Rooms button covers the front door. With a room open it returns to that room's
+        // own pane (Task or Chat, whichever OpenAsync last showed — _lastRoomSection); with nothing
+        // open it lands on the first-run/empty surface (Home). #336 folded Chat into "the record you
+        // have open"; this folds Home in too, so the rail is the three glyphs 02-screens draws.
+        NavRoomsButton.Click += (_, _) => ViewModel.CurrentSection =
+            _session.CurrentRoomDirectoryPath is not null ? _lastRoomSection : ShellSection.Home;
         NavAuthorButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Author;
         NavSettingsButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Settings;
         // #336: Chat and Tasks are no longer rail destinations. Chat is reached by opening a session
@@ -359,13 +363,17 @@ public partial class MainWindow : Window
         ThemeLightButton.Click += (_, _) => _ = ChooseThemeAsync(ThemeNames.Light);
         ThemeDarkButton.Click += (_, _) => _ = ChooseThemeAsync(ThemeNames.Dark);
         ThemeSystemButton.Click += (_, _) => _ = ChooseThemeAsync(ThemeNames.System);
-        // Home rebuilds its cards/inbox on activation (HomeViewModel's scan-scope decision of
-        // record) — fire-and-forget like every other event-handler entry point here.
+        // #1071: Home is the ▤ front door's first-run/empty surface now. Activating it refreshes the
+        // "No rooms yet." empty-state (Home.HasNoRooms) and the vendor-readiness line — 02-screens'
+        // first-run screen shows readiness (#478/#285, the same source Settings and Author use, a CLI
+        // installed while the app is open should show without a restart). Fire-and-forget like every
+        // other event-handler entry point here.
         ViewModel.SectionChanged += section =>
         {
             if (section == ShellSection.Home)
             {
                 _ = RefreshHomeAsync(CancellationToken.None);
+                ViewModel.NewWorkflow.RefreshVendorReadiness();
             }
 
             // M19 Phase 4 (#189): the read-only vendor-readiness line refreshes on Author
@@ -436,6 +444,10 @@ public partial class MainWindow : Window
                 System.IO.Path.GetDirectoryName(workflowFilePath)!,
                 $"room-{DateTime.Now:yyyyMMdd-HHmmss}");
             ViewModel.CurrentSection = ShellSection.Task;
+            // #1071: Save & Run shows a workflow room in the Task pane, so the ▤ button must return
+            // here (not a stale Chat) if the user later navigates away and back. RunAsync sets the
+            // session's current room; _lastRoomSection is the other half of that invariant.
+            _lastRoomSection = ShellSection.Task;
             await RunAsync(roomDirectoryPath, workflowFilePath, bindingsFilePath);
         };
         // #211: the Outputs preview box is imperative control state, not bound — nothing cleared
@@ -546,15 +558,18 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Populates Home's cards + inbox from Local UI Configuration (UI spec §3.1), plus (M15
+    /// Populates the ▤ front door's first-run/empty surface (the "No rooms yet." state + the
+    /// vendor-readiness line, #1071/#478) from Local UI Configuration (UI spec §3.1), plus (M15
     /// Phase 1) pre-fills the Run action's bindings/template inputs from whatever was last
-    /// remembered — call once at startup.
+    /// remembered — call once at startup. Readiness is refreshed here as well as on activation so a
+    /// bare launch that lands on first-run shows it without a section change firing.
     /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         _ = _session.EnsureDaemonConnectedAsync(cancellationToken);
 
         await RefreshHomeAsync(cancellationToken);
+        ViewModel.NewWorkflow.RefreshVendorReadiness();
 
         // #336: the switcher is chrome, not a destination, so nothing will ever "activate" it into
         // existence — it has to be populated once at startup and kept current by pushes thereafter.
@@ -639,6 +654,15 @@ public partial class MainWindow : Window
     private bool _isOpeningFromSwitcher;
 
     /// <summary>
+    /// Which pane the currently-open room renders in — <see cref="ShellSection.Task"/> or
+    /// <see cref="ShellSection.Chat"/>, set by <see cref="OpenAsync"/> (#1071). The one ▤ Rooms rail
+    /// button uses it to return to the open room's own pane when clicked from Author/Settings, so a
+    /// session room doesn't snap to the workflow pane. Defaults to Task; only meaningful while
+    /// <c>_session.CurrentRoomDirectoryPath</c> is non-null.
+    /// </summary>
+    private ShellSection _lastRoomSection = ShellSection.Task;
+
+    /// <summary>
     /// Opens the record a switcher row points at (#336). Routing between the chat and workflow panes
     /// is <see cref="OpenAsync"/>'s existing job — it already decides by whether the directory has
     /// session metadata, the same structural fact <see cref="RoomFleetItem.IsSession"/> carries, so
@@ -694,12 +718,14 @@ public partial class MainWindow : Window
         {
             ViewModel.Chat.LoadFromMetadata(sessionMetadata, roomDirectoryPath);
             ViewModel.CurrentSection = ShellSection.Chat;
+            _lastRoomSection = ShellSection.Chat;
             await RefreshChatModeAsync(sessionMetadata.SessionId, cancellationToken).ConfigureAwait(true);
         }
         else
         {
             ViewModel.Chat.Clear();
             ViewModel.CurrentSection = ShellSection.Task;
+            _lastRoomSection = ShellSection.Task;
         }
 
         if (_session.LastLoadSucceeded)
@@ -2091,13 +2117,14 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Rebuilds Home's room cards and decision inbox from Local UI Configuration + durable room contents (M19 Phase 2, #187) — the successor of the M14 recents panel, now HomeViewModel's own read model.</summary>
+    /// <summary>Refreshes the ▤ front door's first-run empty state (#1071): whether any room exists, from Local UI Configuration's recents. The room cards + decision inbox this used to build moved to the switcher and its needs-you filter (#1072).</summary>
     private Task RefreshHomeAsync(CancellationToken cancellationToken)
-        => ViewModel.Home.RefreshAsync(_session, path => OpenAsync(path), cancellationToken);
+        => ViewModel.Home.RefreshAsync(_session, cancellationToken);
 
     /// <summary>
-    /// Rebuilds *both* surfaces that answer "what records exist" — Home's cards and the switcher's
-    /// list — after a structural change: a record was created, or one was opened for the first time.
+    /// Rebuilds *both* surfaces that answer "what records exist" — the ▤ front door's first-run empty
+    /// state and the switcher's list — after a structural change: a record was created, or one was
+    /// opened for the first time. (The recents cards this once also rebuilt retired with #1071.)
     /// </summary>
     /// <remarks>
     /// <para>

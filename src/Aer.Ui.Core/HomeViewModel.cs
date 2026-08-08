@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using Aer.Adapters;
 using Aer.Flow;
 using Aer.Flow.Artifacts;
@@ -9,130 +8,42 @@ using CommunityToolkit.Mvvm.Input;
 namespace Aer.Ui.Core;
 
 /// <summary>
-/// Home's read model (M19 Phase 2, issue #187): the recent room directories as live status cards,
-/// and the decision inbox — everything across those rooms currently waiting on the human, one item
-/// per paused step, each leading with the artifact to review (information-architecture.md).
-/// Rebuilt from durable contents on every refresh (§3.1, §11) with the same rebuild-from-scratch
-/// discipline as every other projection surface — never reconciled.
-/// <para>
-/// <b>Inbox scan-scope decision of record (the phase's named open question):</b> the inbox scans
-/// <em>all</em> recent room directories, not just the open room — Home exists precisely for the
-/// moment no room is open yet, and an inbox that only knew about the open room would be empty
-/// exactly when it matters most. The scan is bounded by the recents list the store already caps,
-/// and it refreshes on Home activation plus the poller's tick while an open room is being
-/// observed — not on its own timer.
-/// </para>
+/// The ▤ front door's first-run/empty read model (originally M19 Phase 2, #187 — Home). Its recent
+/// room cards and cross-room decision inbox moved to the permanent switcher and its "needs you"
+/// filter (#1071/#1072); what remains here is whether any room exists at all
+/// (<see cref="HasNoRooms"/>, for the "No rooms yet." empty state) and the shared
+/// <see cref="BuildInboxItem"/> derivation the switcher's filter reuses so both surfaces phrase and
+/// preview a paused step identically. The card/inbox value types (<see cref="RoomCardViewModel"/>,
+/// <see cref="RoomCardStatus"/>, <see cref="PauseKind"/>, <see cref="InboxItemViewModel"/>) live on
+/// below — they outlived Home and are consumed across the switcher, the fleet loader, and mobile.
 /// </summary>
 public sealed partial class HomeViewModel : ObservableObject
 {
     private const int InboxPreviewMaxLength = 400;
 
-    public ObservableCollection<RoomCardViewModel> RoomCards { get; } = [];
-    public ObservableCollection<InboxItemViewModel> InboxItems { get; } = [];
-
-    /// <summary>The inbox's one-line summary — the honest empty state ("empty" must not read as "broken": running/finished counts say why nothing is waiting).</summary>
-    [ObservableProperty]
-    private string inboxSummaryText = "Nothing is waiting on you.";
-
-    /// <summary>True when there is no room history at all — Home's empty state says what to do next (M19 Phase 5, #190) instead of showing a blank page.</summary>
+    /// <summary>True when there is no room history at all — the ▤ front door's first-run empty state (#1071/#190) shows "No rooms yet." instead of a blank page.</summary>
     [ObservableProperty]
     private bool hasNoRooms = true;
 
     /// <summary>
-    /// Rebuilds cards and inbox from the recents list. A listed directory that no longer loads is
-    /// stale list state (§3) — skipped, never surfaced as an error; it simply has no card this
-    /// refresh.
+    /// Reads whether any room exists, for the first-run empty state (#1071). The room cards and the
+    /// decision inbox this used to also build from the recents list moved to the permanent switcher
+    /// and its "needs you" filter (#1072), so this now only asks whether there is history at all — a
+    /// listed directory that no longer loads still counts as history (the user recorded it).
     /// </summary>
-    public async Task RefreshAsync(
-        RoomClient session, Func<string, Task> openRoomAsync, CancellationToken cancellationToken = default)
+    public async Task RefreshAsync(RoomClient session, CancellationToken cancellationToken = default)
     {
         var recents = await session.LoadRecentRoomDirectoriesAsync(cancellationToken).ConfigureAwait(true);
-
-        RoomCards.Clear();
-        InboxItems.Clear();
-
-        foreach (var roomDirectoryPath in recents)
-        {
-            RoomProjection projection;
-            try
-            {
-                projection = await RoomProjectionLoader.LoadAsync(roomDirectoryPath, cancellationToken).ConfigureAwait(true);
-            }
-            catch (AerFlowException)
-            {
-                // §3's stale-list rule: reflected as a greyed card, never an error — the entry
-                // stays visible (the user recorded it; hiding it silently would misreport their
-                // own history) but carries no inbox items and no live status.
-                RoomCards.Add(new RoomCardViewModel(
-                    roomDirectoryPath,
-                    RoomCardViewModel.TitleFor(roomDirectoryPath),
-                    "Not available — moved, deleted, or not a room",
-                    RoomCardStatus.Unavailable,
-                    openRoomAsync));
-                continue;
-            }
-
-            var card = RoomCardViewModel.FromProjection(roomDirectoryPath, projection, openRoomAsync);
-            RoomCards.Add(card);
-
-            if (card.Status == RoomCardStatus.NeedsYou)
-            {
-                foreach (var stepState in projection.State.Steps)
-                {
-                    if (stepState.Status == StepStatus.Paused)
-                    {
-                        InboxItems.Add(BuildInboxItem(roomDirectoryPath, projection, stepState, openRoomAsync));
-                    }
-                }
-            }
-        }
-
-        HasNoRooms = RoomCards.Count == 0;
-        UpdateInboxSummary();
+        HasNoRooms = recents.Count == 0;
     }
 
     /// <summary>
-    /// The inbox summary's one derivation, shared by <see cref="RefreshAsync"/> and
-    /// <see cref="RetireInboxItem"/> — #618's retire path first restated this switch inline, which
-    /// is exactly the two-copies drift the same issue exists to end on the gate surfaces.
-    /// Counts come from the card's one status derivation, not re-derived from the raw
-    /// WorkflowStatus (#616: the raw switch counted every Terminal run as "finished", so a failed
-    /// or cancelled room inflated the finished count). Failed, Cancelled and Unavailable are
-    /// deliberately in neither count because the summary sentence doesn't speak of them.
+    /// Builds one paused step's decision-inbox item (#334's reply-vs-review wording, an inline output
+    /// preview). Shared: the retired Home inbox built these from every recent room; the switcher's
+    /// "needs you" filter (#1072) now builds them per expanded row from the same derivation, so the
+    /// two surfaces can never phrase or preview a gate differently.
     /// </summary>
-    private void UpdateInboxSummary()
-    {
-        var runningCount = RoomCards.Count(card => card.Status == RoomCardStatus.Running);
-        var finishedCount = RoomCards.Count(card => card.Status == RoomCardStatus.Finished);
-        var needsInputCount = InboxItems.Count(item => item.Kind == PausePointKind.NeedsInput);
-        InboxSummaryText = InboxItems.Count switch
-        {
-            0 when RoomCards.Count == 0 => "Nothing is waiting on you.",
-            0 => $"Nothing is waiting on you — {runningCount} working, {finishedCount} finished.",
-            _ => SummaryForPending(needsInputCount, InboxItems.Count - needsInputCount),
-        };
-    }
-
-    /// <summary>
-    /// #618 (0020 clause 3): answering a gate once retires it everywhere. Removes the matching inbox
-    /// item immediately by gate identity (roomDirectoryPath, StepId, ExecutionId) without a full Home refresh.
-    /// </summary>
-    public void RetireInboxItem(string roomDirectoryPath, StepId stepId, ExecutionId executionId)
-    {
-        var key = AerPaths.RecordKey(roomDirectoryPath);
-        var matching = InboxItems.FirstOrDefault(item =>
-            AerPaths.RecordKeyComparer.Equals(AerPaths.RecordKey(item.RoomDirectoryPath), key) &&
-            item.StepName == stepId.Value &&
-            item.ExecutionId == executionId.Value);
-
-        if (matching != null)
-        {
-            InboxItems.Remove(matching);
-            UpdateInboxSummary();
-        }
-    }
-
-    private static InboxItemViewModel BuildInboxItem(
+    internal static InboxItemViewModel BuildInboxItem(
         string roomDirectoryPath, RoomProjection projection, StepState stepState, Func<string, Task> openRoomAsync)
     {
         // Lead with the thing to review (ux-principles §4): the paused execution's first durable
@@ -182,59 +93,19 @@ public sealed partial class HomeViewModel : ObservableObject
             openRoomAsync,
             stepState.LatestExecutionId?.Value ?? string.Empty);
     }
-
-    // #334: needs-input and ready-for-review are different human acts (#319 filters them apart), so
-    // the one-line summary counts them separately rather than calling every pause a "review". The
-    // review-only phrasing is kept verbatim — NavigationShellTests pins it.
-    private static string SummaryForPending(int needsInputCount, int reviewCount)
-    {
-        var reviewOnly = reviewCount == 1
-            ? "1 step is waiting for your review."
-            : $"{reviewCount} steps are waiting for your review.";
-        if (needsInputCount == 0)
-        {
-            return reviewOnly;
-        }
-
-        var replyOnly = needsInputCount == 1
-            ? "1 room is waiting for your reply."
-            : $"{needsInputCount} rooms are waiting for your reply.";
-        if (reviewCount == 0)
-        {
-            return replyOnly;
-        }
-
-        var replyPart = needsInputCount == 1 ? "1 waiting for your reply" : $"{needsInputCount} waiting for your reply";
-        var reviewPart = reviewCount == 1 ? "1 for your review" : $"{reviewCount} for your review";
-        return $"{replyPart}, {reviewPart}.";
-    }
 }
 
-/// <summary>One recent room as a live status card — the recents list re-projected as Home's primary surface. Plain-language status per ux-principles.md's vocabulary map, with the precise engine state one disclosure away (the Room view).</summary>
-public sealed partial class RoomCardViewModel(
-    string roomDirectoryPath, string title, string statusText, RoomCardStatus status, Func<string, Task> openRoomAsync)
+/// <summary>
+/// The shared room-status derivation (originally Home's card read model, #187). Home's recents cards
+/// retired with #1071, and the instance side (the card object and its Open command) went with them;
+/// what remains is static — the one place a <see cref="RoomProjection"/> becomes a plain status line
+/// and a <see cref="RoomCardStatus"/>, consumed by the switcher rows, the fleet loader, and mobile.
+/// </summary>
+public static class RoomCardViewModel
 {
-    public string RoomDirectoryPath { get; } = roomDirectoryPath;
-    public string Title { get; } = title;
-    public string StatusText { get; } = statusText;
-    public RoomCardStatus Status { get; } = status;
-
-    /// <summary>Style hooks for the one status system (design-language.md): exactly one of these is true, consumed by the card's classes.</summary>
-    public bool IsNeedsYou => Status == RoomCardStatus.NeedsYou;
-
-    [RelayCommand]
-    private Task Open() => openRoomAsync(RoomDirectoryPath);
-
-    /// <summary>The card title is the room directory's leaf name — the human's handle for the room, with the full path detail-on-demand (ux-principles §3). Forwards to <see cref="RoomProjectionLoader.FriendlyNameFor"/>, the one canonical derivation, so Home cards, the switcher, and the chat header can never show a room three different names (#461/#976).</summary>
+    /// <summary>The room's handle — the directory's leaf name (ux-principles §3), via the one canonical <see cref="RoomProjectionLoader.FriendlyNameFor"/> derivation, so the switcher, the inbox items, and the chat header can never show a room three different names (#461/#976).</summary>
     public static string TitleFor(string roomDirectoryPath)
         => RoomProjectionLoader.FriendlyNameFor(roomDirectoryPath);
-
-    public static RoomCardViewModel FromProjection(
-        string roomDirectoryPath, RoomProjection projection, Func<string, Task> openRoomAsync)
-    {
-        var (statusText, status) = DeriveStatus(projection);
-        return new RoomCardViewModel(roomDirectoryPath, TitleFor(roomDirectoryPath), statusText, status, openRoomAsync);
-    }
 
     /// <summary>
     /// The one place a <see cref="RoomProjection"/> becomes a human status line and a
