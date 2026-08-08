@@ -1,10 +1,8 @@
-using Aer.Adapters;
 using Aer.Ui.Core;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using System;
-using System.IO;
 
 namespace Aer.Ui.Views;
 
@@ -13,45 +11,20 @@ public partial class HomeView : UserControl
 {
     public HomeView() => InitializeComponent();
 
-    /// <summary>The empty state's action to launch the template picker window (M22 Phase 3).</summary>
+    /// <summary>The empty state's action to launch the template picker window (M22 Phase 3) — the
+    /// same new-room flow the switcher header's "+ New" runs, shared on <see cref="MainWindow.StartNewRoomFromTemplateAsync"/>.</summary>
     private async void OnStartTemplateClick(object? sender, RoutedEventArgs e)
     {
-        var topLevel = TopLevel.GetTopLevel(this) as MainWindow;
-        var picker = new TemplatePickerWindow(topLevel);
-        if (topLevel != null)
+        if (TopLevel.GetTopLevel(this) is not MainWindow topLevel)
         {
-            await picker.ShowDialog(topLevel);
+            return;
         }
 
-        if (picker.MaterializedRoomDirectoryPath is { } roomPath)
+        // The picked path is mirrored into Home's visible directory box so a subsequent manual Open
+        // reads the room just created, exactly as this handler always did.
+        if (await topLevel.StartNewRoomFromTemplateAsync() is { } roomPath)
         {
             RoomDirectoryPathBox.Text = roomPath;
-            if (topLevel != null)
-            {
-                // A record becomes visible the moment it exists on disk, not when its first
-                // execution happens to succeed. Materializing a workflow used to leave it listed
-                // nowhere: Run registers the room only on a 2xx (RoomClient.RunAsync's
-                // _reopenRoomAsync call), so a run that was refused — "something else is already
-                // running against this directory" — created a real room directory that no surface
-                // knew about. Found by running the app: a freshly created room was reachable only
-                // through the folder picker.
-                await topLevel.RefreshRecordListsAsync();
-                if (await InteractiveSessionMaterializer.ReadRoomKindAsync(roomPath) == RoomKind.Interactive)
-                {
-                    // A chat/codebase session's initial turn is already dispatched (or about to be)
-                    // by the daemon's own fire-and-forget background task -- Open, not Run, so this
-                    // doesn't start a second, competing execution against the same room directory
-                    // (M24 Phase 1 desktop chat UI, issue #262). Open also routes to the dedicated
-                    // Chat view once it detects the interactive room marker, which Run never did.
-                    await topLevel.OpenAsync(roomPath);
-                }
-                else
-                {
-                    var workflowPath = System.IO.Path.Combine(roomPath, "workflow.json");
-                    var bindingsPath = System.IO.Path.Combine(roomPath, "bindings.json"); // vocabulary-ok: technical file path
-                    await topLevel.RunAsync(roomPath, workflowPath, bindingsPath);
-                }
-            }
         }
     }
 

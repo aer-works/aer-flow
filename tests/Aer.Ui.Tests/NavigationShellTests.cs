@@ -488,4 +488,39 @@ public class NavigationShellTests
             DirectoryCleanup.DeleteRecursively(notARoomDirectory);
         }
     }
+
+    /// <summary>
+    /// docs/design/02-screens.md:58 — the rooms list header reads "Rooms + New", "+ New" starting a
+    /// room. Guards that the switcher header actually carries a "+ New" affordance (the invisible-but-
+    /// green failure class: a wired handler with no button to fire it), and that restructuring the
+    /// header to add it did not drop the existing refresh affordance beside the "Rooms" label.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_switcher_header_carries_a_plus_new_affordance_beside_the_rooms_label()
+    {
+        var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+
+        var newButton = window.FindControl<Button>("SwitcherNewButton");
+        Assert.NotNull(newButton);
+        var label = Assert.IsType<TextBlock>(newButton.Content);
+        Assert.Equal("+ New", label.Text);
+
+        // The refresh affordance the header already had must survive the "+ New" restructure.
+        Assert.NotNull(window.FindControl<Button>("SwitcherRefreshButton"));
+    }
+
+    /// <summary>
+    /// #1062: Home used to carry a "Start from template" button beside its "Rooms" heading that
+    /// duplicated the empty-state card's identical button (both fired OnStartTemplateClick), so the
+    /// empty state showed two stacked. With the switcher's "+ New" now the always-available new-room
+    /// affordance (#1061), that header button is gone — the empty-state card's one remains.
+    /// </summary>
+    [AvaloniaFact]
+    public void Home_no_longer_carries_a_duplicate_start_from_template_button_beside_its_heading()
+    {
+        var window = new MainWindow(new LocalUiConfigurationStore(NewConfigFilePath()));
+
+        Assert.Null(window.FindViewControl<Button>("HeaderStartTemplateButton"));
+        Assert.NotNull(window.FindViewControl<Button>("StartTemplateButton"));
+    }
 }

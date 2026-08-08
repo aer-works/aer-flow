@@ -276,6 +276,7 @@ public partial class MainWindow : Window
         // the switcher list.
         SwitcherManageButton.Click += (_, _) => ViewModel.CurrentSection = ShellSection.Rooms;
         SwitcherRefreshButton.Click += (_, _) => _ = ViewModel.Rooms.RefreshAsync(_session);
+        SwitcherNewButton.Click += (_, _) => _ = StartNewRoomFromTemplateAsync();
         RoomsViewControl.RoomsRefreshButton.Click += (_, _) => _ = ViewModel.Rooms.RefreshAsync(_session);
         RoomsViewControl.RoomsIncludeArchivedCheckBox.IsCheckedChanged += (_, _) => _ = ViewModel.Rooms.RefreshAsync(_session);
         // Bulk select (issue #288): these two need the session the same way the single-row actions'
@@ -707,6 +708,39 @@ public partial class MainWindow : Window
         BindingsFilePathBox.Text = bindingsFilePath;
 
         await _session.RunAsync(roomDirectoryPath, workflowTemplateFilePath, bindingsFilePath, cancellationToken);
+    }
+
+    /// <summary>
+    /// The "new room" action behind both entry points to it — Home's empty-state button and the
+    /// switcher header's "+ New" (docs/design/02-screens.md:58, the list header reads "Rooms + New").
+    /// Extracted here so the two callers share one path: open the Template Picker, and on a materialized
+    /// room, register it (<see cref="RefreshRecordListsAsync"/>) then open or run it by its kind — Open,
+    /// not Run, for an interactive room whose first turn the daemon already dispatches (issue #262).
+    /// Returns the materialized room's directory, or null if the picker was dismissed.
+    /// </summary>
+    internal async Task<string?> StartNewRoomFromTemplateAsync(CancellationToken cancellationToken = default)
+    {
+        var picker = new Views.TemplatePickerWindow(this);
+        await picker.ShowDialog(this);
+
+        if (picker.MaterializedRoomDirectoryPath is not { } roomPath)
+        {
+            return null;
+        }
+
+        await RefreshRecordListsAsync(cancellationToken);
+        if (await InteractiveSessionMaterializer.ReadRoomKindAsync(roomPath) == RoomKind.Interactive)
+        {
+            await OpenAsync(roomPath, cancellationToken);
+        }
+        else
+        {
+            var workflowPath = System.IO.Path.Combine(roomPath, "workflow.json");
+            var bindingsPath = System.IO.Path.Combine(roomPath, "bindings.json"); // vocabulary-ok: technical file path
+            await RunAsync(roomPath, workflowPath, bindingsPath, cancellationToken);
+        }
+
+        return roomPath;
     }
 
     /// <summary>

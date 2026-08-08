@@ -144,15 +144,25 @@
             BorderBrush="{DynamicResource Color.BorderSubtle}" BorderThickness="0,0,1,0">
       <DockPanel>
         <StackPanel DockPanel.Dock="Top" Margin="12,12,12,8" Spacing="{DynamicResource Space.2}">
-          <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
-            <TextBlock Classes="body-strong" Text="Rooms" VerticalAlignment="Center" />
-            <Button x:Name="SwitcherRefreshButton" Classes="quiet" ToolTip.Tip="Refresh"
-                    VerticalAlignment="Center">
-              <Path Data="{StaticResource Icon.Refresh}" Stroke="{DynamicResource Color.TextSecondary}"
-                    StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
-                    Width="14" Height="14" Stretch="Uniform" />
+          <!-- Daily-driver list header (docs/design/02-screens.md:58, "Rooms + New"): the label at
+               left, "+ New" at right starting a room. Refresh stays a small affordance beside the
+               label; whether it and "Manage rooms…" survive the rail restyle is a later call. -->
+          <DockPanel>
+            <Button x:Name="SwitcherNewButton" DockPanel.Dock="Right" Classes="quiet"
+                    ToolTip.Tip="Start a new room" VerticalAlignment="Center">
+              <TextBlock Classes="body-strong" Text="+ New"
+                         Foreground="{DynamicResource Color.Accent}" />
             </Button>
-          </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="{DynamicResource Space.2}">
+              <TextBlock Classes="body-strong" Text="Rooms" VerticalAlignment="Center" />
+              <Button x:Name="SwitcherRefreshButton" Classes="quiet" ToolTip.Tip="Refresh"
+                      VerticalAlignment="Center">
+                <Path Data="{StaticResource Icon.Refresh}" Stroke="{DynamicResource Color.TextSecondary}"
+                      StrokeThickness="1.4" StrokeLineCap="Round" StrokeJoin="Round"
+                      Width="14" Height="14" Stretch="Uniform" />
+              </Button>
+            </StackPanel>
+          </DockPanel>
           <TextBlock Classes="caption secondary" Foreground="{DynamicResource Status.Failed}"
                      TextWrapping="Wrap" Text="{Binding Rooms.ErrorText}"
                      IsVisible="{Binding Rooms.HasErrorText}" />
